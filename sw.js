@@ -1,5 +1,6 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.5.3';
+var SHELL = 'shell-v0.6.0';
+var OFFLINE = 'offline-v1'; /* карта дільниці, збережена кнопкою «Зберегти карту офлайн» — не чиститься автоматично */
 var TILES = 'tiles-v1';
 var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
   './lib/maplibre-gl.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
@@ -9,7 +10,7 @@ self.addEventListener('install', function (e) {
 });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
-    return Promise.all(ks.filter(function (k) { return k !== SHELL && k !== TILES; }).map(function (k) { return caches.delete(k); }));
+    return Promise.all(ks.filter(function (k) { return k !== SHELL && k !== TILES && k !== OFFLINE; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 
@@ -31,15 +32,25 @@ self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   var url = req.url;
+  /* опис джерела карти: з мережею — свіжий, без мережі (або за 4 с) — той, під який збережено офлайн-тайли */
+  if (/tiles\.openfreemap\.org\/planet$/.test(url)) {
+    e.respondWith(new Promise(function (ok) {
+      var done = false, fb = function () { if (done) return; done = true; caches.open(OFFLINE).then(function (c) { return c.match(url); }).then(function (h) { return h || caches.match(req); }).then(ok); };
+      var t = setTimeout(fb, 4000);
+      fetch(req).then(function (res) {
+        if (done) return; if (!res.ok) return fb(); done = true; clearTimeout(t);
+        var cp = res.clone(); caches.open(TILES).then(function (c) { c.put(req, cp); }); ok(res);
+      }).catch(function () { clearTimeout(t); fb(); });
+    }));
+    return;
+  }
   if (isTile(url)) {
-    e.respondWith(caches.open(TILES).then(function (c) {
-      return c.match(req).then(function (hit) {
-        var net = fetch(req).then(function (res) {
-          if (res && (res.ok || res.type === 'opaque')) { c.put(req, res.clone()); trim(); }
-          return res;
-        }).catch(function () { return hit; });
-        return hit || net;
-      });
+    e.respondWith(caches.match(req).then(function (hit) {
+      var net = fetch(req).then(function (res) {
+        if (res && (res.ok || res.type === 'opaque')) { var cp = res.clone(); caches.open(TILES).then(function (c) { c.put(req, cp); trim(); }); }
+        return res;
+      }).catch(function () { return hit; });
+      return hit || net;
     }));
     return;
   }
