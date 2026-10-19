@@ -219,3 +219,7 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .note-btn{background:#fff;color:#111;border:1.5px solid #111;height:54px}
 .seals-btn{background:#fff;color:#111;border:1.5px solid #D4D4D8;height:54px}
 .seals-btn.done{background:#16A34A;border-color:#16A34A;color:#fff}
+.save-btn{height:60px;font-size:18px}
+.save-btn.wait{background:#52525B}
+.miss{background:#FEE2E2;color:#991B1B;border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.45}
+.miss ul{margin:4px 0 0;padding-left:18px}

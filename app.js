@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.0';
+  var VERSION = '0.14.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -25,7 +25,8 @@
   var PLACEMENTS = ['', 'В середині житлового будинку', 'В підсобному приміщенні', 'В гаражі', 'В квартирі', 'В щиту сходових клітин',
     'В щитовій підвального приміщення', 'На опорі в ящику', 'На внутрішній стороні паркану', 'На фасаді будинку',
     'На тильній стороні будинку', 'На підсобному приміщенні'];
-  var NOTES = ['', 'Самовільне підключення', 'Відсутня/порушена пломба ДП на лічильнику', 'Відсутня/порушена пломба постачальника на клемній',
+  var PH_NOTE = 'Показник із фотофіксацією';
+  var NOTES = ['', PH_NOTE, 'Самовільне підключення', 'Відсутня/порушена пломба ДП на лічильнику', 'Відсутня/порушена пломба постачальника на клемній',
     'Відсутня/порушена пломба постачальника на ввідному', 'Не працює 1-ф лічильник', 'Не працює 3-ф лічильник',
     'Показники зняті в присутності неповнолітніх', 'Показник зі слів споживача', 'Показник повідомили по телефону',
     'Показники повідомили сусіди', 'Проблемний споживач (скарга)', 'Відключений на опорі', 'Відключений на лічильнику'];
@@ -888,7 +889,7 @@
   var PICK_OPTS = { vm: [{ v: 'зчитано', l: 'Зчитано з лічильника' }, { v: 'зі слів споживача', l: 'Зі слів споживача' }, { v: 'по телефону', l: 'Повідомили по телефону' }, { v: 'сусіди', l: 'Повідомили сусіди' }] };
   OFFICIAL.forEach(function (o) { if (o[2] === 'select') PICK_OPTS[o[0]] = o[3]; });
   /* найчастіші примітки (≈80% випадків) — нагорі й контрастно */
-  var HOT_NOTES = ['Показник зі слів споживача', 'Показник повідомили по телефону', 'Показники повідомили сусіди'];
+  var HOT_NOTES = [PH_NOTE, 'Показник зі слів споживача', 'Показник повідомили по телефону', 'Показники повідомили сусіди'];
   PICK_OPTS.noteSel = HOT_NOTES.map(function (n, i) { return { v: n, l: n, hot: true, head: i === 0 ? 'Часті' : '' }; })
     .concat(NOTES.filter(function (n) { return HOT_NOTES.indexOf(n) < 0; }).map(function (n, i) { return { v: n, l: n || 'Без примітки', head: i === 0 ? 'Усі примітки' : '' }; }));
   var PICK_TITLE = { vm: 'Як отримано показник' };
@@ -899,6 +900,7 @@
       el.setAttribute('data-val', v);
       var lab = v; opts.forEach(function (o) { if (typeof o !== 'string' && o.v === v) lab = o.l; });
       el.querySelector('span').textContent = lab || 'Не вибрано'; el.querySelector('span').className = v ? '' : 'mute';
+      if (R.id && $('#r-save')) { readCollect(); readUi(); }
     });
   }
   function villageSelect() {
@@ -1642,7 +1644,7 @@
       updateMap(); renderSheet();
       var np = nx && S.points.get(nx);
       toast(RESNAME[res] + (reading ? ' · ' + fmt(reading) : '') + (np ? ' → далі: ' + addr(np) : ''));
-      if (/^#(read|card)\//.test(location.hash)) { R = {}; if (wasRoute) { renderMap.fitNext = true; go('#map'); } else render(); return; }
+      if (/^#(read|card)\//.test(location.hash)) { R = {}; S.sel = nx || id; renderMap.fitNext = false; go('#map'); var sp = S.points.get(S.sel); setTimeout(function () { if (map && sp) map.easeTo({ center: [sp.lon, sp.lat], zoom: Math.max(map.getZoom(), 17) }); }, 300); return; }
       if (np && map) map.easeTo({ center: [np.lon, np.lat], zoom: Math.max(map.getZoom(), 16.5) });
     });
   }
@@ -2090,8 +2092,14 @@
     var lower = has && sys && v < sys.v, big = has && sys && v - sys.v > 3000;
     var serialOk = R.serial === 'ok' || (R.serial === 'diff' && R.serialFact) || R.serial === 'skip';
     var sealsOk = !!R.sealsSel && R.L.every(function (x) { return x.st; });
-    var need = !has ? 'Внесіть показник' : lower && !R.photo ? 'Зробіть фото лічильника' : !R.sealsSel ? 'Виберіть стан пломб' : !sealsOk ? 'Відмітьте статуси пломб' : null;
-    return { sys: sys, has: has, lower: lower, big: big, serialOk: serialOk, sealsOk: sealsOk, need: need };
+    var miss = [];
+    if (!has) miss.push('внесіть показник');
+    if (lower && !R.photo) miss.push('зробіть фото лічильника (показник менший за попередній)');
+    if (R.photo && (R.form || {}).noteSel !== PH_NOTE) miss.push('у примітці виберіть «' + PH_NOTE + '»');
+    if (!R.sealsSel) miss.push('виберіть стан пломб');
+    else if (!sealsOk) miss.push('відмітьте статус кожної пломби');
+    var need = miss.length ? miss[0] : null;
+    return { sys: sys, has: has, lower: lower, big: big, serialOk: serialOk, sealsOk: sealsOk, need: need, miss: miss };
   }
   function stepHead(n, t, done, sub) {
     return '<div class="rstep"><span class="rnum' + (done ? ' done' : '') + '">' + (done ? icon('check', 16, 3) : n) + '</span><div class="col" style="gap:1px;min-width:0"><div class="h2" style="font-size:17px">' + t + '</div>' + (sub ? '<span class="small mute">' + sub + '</span>' : '') + '</div></div>';
@@ -2131,7 +2139,7 @@
     var done = R.L.filter(function (x) { return x.st; }).length;
     /* порядок і склад полів — точно як «Візит контролера» в старому застосунку */
     app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
-      (isCard ? cardTop(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
+      (isCard ? cardTop(p) + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
       '<div class="card visit">' +
         '<div class="kvs">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
           (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:700">' + esc(f.phone) + '</a></div>' : row('Телефон', '—')) +
@@ -2156,8 +2164,9 @@
         fld("Пофідерна прив'язка", feederHtml) +
       '</div>' +
       '<button class="btn note-btn" data-act="quick" data-v="note" data-id="' + id + '">Повідомлення про візит</button>' +
-      '<button id="r-save" class="btn" data-act="rSave" data-id="' + id + '" style="height:58px"></button>' +
       '<button class="btn seals-btn' + (nL && done === nL ? ' done' : '') + '" data-act="rSealsOpen" data-id="' + id + '">Пломби' + (nL ? ' · ' + done + ' з ' + nL : '') + '</button>' +
+      '<div id="r-miss" class="miss" style="display:none"></div>' +
+      '<button id="r-save" class="btn save-btn" data-act="rSave" data-id="' + id + '">Зберегти</button>' +
       (isCard ? cardBottom(p) : '') +
       '</div>';
     var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); readUi(); };
@@ -2165,7 +2174,12 @@
     if ($('#r-note')) $('#r-note').oninput = function () { R.note = this.value; };
     $('#r-cam').onchange = function () {
       var file = this.files[0]; if (!file) return; toast('Обробляю фото…');
-      compress(file).then(function (bl) { if (R.photoUrl) URL.revokeObjectURL(R.photoUrl); R.photo = bl; R.photoUrl = URL.createObjectURL(bl); readUi(); });
+      compress(file).then(function (bl) {
+        if (R.photoUrl) URL.revokeObjectURL(R.photoUrl); R.photo = bl; R.photoUrl = URL.createObjectURL(bl);
+        /* фото → у примітці одразу «Показник із фотофіксацією» */
+        var nb = document.querySelector('#app [data-f="noteSel"]'); if (nb) { nb.setAttribute('data-val', PH_NOTE); nb.querySelector('span').textContent = PH_NOTE; nb.querySelector('span').className = ''; }
+        readCollect(); readUi();
+      });
     };
     if (isCard) { loadPhotos(id); bindPhotoInputs(id); }
     readUi();
@@ -2186,9 +2200,8 @@
         (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:46px;height:46px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
       '</div>' + dupBox(p);
   }
-  function cardBottom(p) {
-    var rd = lastReading(p.id);
-    return '<details class="card fold-card"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти і адреса на карті</b></span>' + icon('down', 18, 2.4) + '</summary>' +
+  function cardFind(p) {
+    return '<details class="card fold-card"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary>' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div id="photos" class="photos"></div>' +
         '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
@@ -2198,8 +2211,11 @@
         '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
         '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
         '<div class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</div>' +
-        '<button class="btn" data-act="saveFind" data-id="' + p.id + '">Зберегти орієнтир і адресу</button></details>' +
-      '<details class="card fold-card"' + ((cycleMap()[p.id] || {}).result === 'note' ? ' open' : '') + '><summary><span class="row" style="gap:10px">' + icon('list', 18) + '<b>Історія · ' + visitsOf(p.id).length + '</b></span>' + icon('down', 18, 2.4) + '</summary>' +
+        '<button class="btn" data-act="saveFind" data-id="' + p.id + '">Зберегти орієнтир і адресу</button></details>';
+  }
+  function cardBottom(p) {
+    var rd = lastReading(p.id);
+    return '<details class="card fold-card"' + ((cycleMap()[p.id] || {}).result === 'note' ? ' open' : '') + '><summary><span class="row" style="gap:10px">' + icon('list', 18) + '<b>Історія · ' + visitsOf(p.id).length + '</b></span>' + icon('down', 18, 2.4) + '</summary>' +
         '<div class="field"><label for="rdg">Показник передали по телефону</label><div class="row" style="gap:8px"><input id="rdg" class="input" inputmode="numeric" placeholder="Показник зі слів" style="min-width:0;flex:1"><button class="btn out" data-act="saveReading" data-id="' + p.id + '" style="width:auto;padding:0 16px">Зберегти</button></div></div>' +
         (rd.length ? '<div class="col" style="gap:0">' + rd.map(function (v, i) {
           var nx = rd[i + 1], dd = nx ? Number(v.reading) - Number(nx.reading) : null;
@@ -2246,8 +2262,9 @@
     var pb = $('.photo-btn'); if (pb) { pb.classList.toggle('done', !!R.photo); pb.classList.toggle('need', !!st.lower && !R.photo); pb.lastChild.textContent = R.photo ? 'Фото є' : 'Зробити фото'; }
     var s = $('#r-save'); if (!s) return;
     var next = S.route && routeIndex(R.id) >= 0;
-    s.disabled = !!st.need;
-    s.innerHTML = st.need ? st.need : next ? 'Зберегти · до наступної' : 'Зберегти';
+    s.disabled = false; s.classList.toggle('wait', !!st.need);
+    s.innerHTML = 'Зберегти';
+    var h = $('#r-miss'); if (h) { h.innerHTML = st.need && R.tried ? '<b>Щоб зберегти:</b><ul>' + st.miss.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>' : ''; h.style.display = st.need && R.tried ? '' : 'none'; }
     /* галочки в заголовках кроків */
     var nums = document.querySelectorAll('.rnum');
     [st.serialOk, st.has && (!st.lower || !!R.photo), st.sealsOk].forEach(function (d, i) { if (nums[i]) { nums[i].classList.toggle('done', d); nums[i].innerHTML = d ? icon('check', 16, 3) : i + 1; } });
@@ -2266,7 +2283,7 @@
         R.sealsSel = v; readKeep();
       });
     }
-    if (a === 'rSave') return saveRead(R.id);
+    if (a === 'rSave') { readCollect(); var stt = readState(S.points.get(R.id)); if (stt.need) { R.tried = true; readUi(); var hh = $('#r-miss'); if (hh) hh.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('Не все заповнено'); } return saveRead(R.id); }
   }
   /* «Статуси пломб» — окремий екран, як у старому застосунку, плюс кнопка «Наявні всі» */
   function openSealsScreen() {
@@ -2310,7 +2327,6 @@
     var issues = sealsFlat(L) || (sum !== 'all' ? sum.toLowerCase() + ' пломба' : '');
     var notes = [];
     if (F.noteSel) notes.push(F.noteSel);
-    if (R.photo) notes.push('Показ з фотофіксацією');
     if (issues) notes.push('Пломби: ' + issues);
     if (R.note.trim()) notes.push(R.note.trim());
     var v = newVisit({ pointId: id, result: 'ok', prof: p.status, reading: R.val, method: R.photo ? 'зчитано, фотофіксація' : 'зчитано', note: notes.join('; ') || null,
@@ -2322,13 +2338,16 @@
     f.seals = sum === 'all' ? 'Без зауважень' : sum + ' пломба';
     if (!f.serial && R.serialFact) f.serial = R.serialFact;
     p.fields = f;
-    var inRoute = routeIndex(id) >= 0, ph = R.photo;
+    var ph = R.photo;
     put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); return savePoint(p); })
       .then(function () { return ph ? put('photos', { pointId: id, ts: v.ts, kind: 'Показник ' + fmt(v.reading), visit: v.uid, blob: ph }) : null; })
       .then(function () {
         if (R.photoUrl) URL.revokeObjectURL(R.photoUrl); R = {};
         S.route = computeRoute(); toast('Зчитано · ' + fmt(v.reading) + (issues ? ' · пломби: ' + issues : ''));
-        if (inRoute) { S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; go('#map'); } else go('#card/' + id);
+        /* одразу назад в «Обхід»: наступна адреса маршруту, а без маршруту — ця ж точка з результатом */
+        var nx = S.route && S.route.ids[0], sel = nx || id, sp = S.points.get(sel);
+        S.sel = sel; renderMap.fitNext = false; go('#map');
+        setTimeout(function () { if (map && sp) map.easeTo({ center: [sp.lon, sp.lat], zoom: Math.max(map.getZoom(), 17) }); }, 300);
       });
   }
 
