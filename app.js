@@ -1,0 +1,743 @@
+/* Карта контролера · MVP v0.1
+   Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
+(function () {
+  'use strict';
+  var VERSION = '0.1.0';
+
+  /* ---------- довідники ---------- */
+  var ST = {
+    g: { label: 'Доступ завжди', short: 'Завжди', color: '#16A34A' },
+    y: { label: 'При власнику', short: 'Власник', color: '#F59E0B' },
+    r: { label: 'Нема доступу', short: 'Нема', color: '#DC2626' },
+    n: { label: 'Не живуть', short: 'Не живуть', color: '#FFFFFF' }
+  };
+  var ST_ORDER = ['g', 'y', 'r', 'n'];
+  var TAGS = [['dog', 'Собака'], ['eve', 'Після 18:00'], ['wk', 'Вихідні'], ['cam', 'Камера'], ['facade', 'На фасаді'],
+    ['call', 'Дзвонити'], ['jur', 'Юридичний'], ['summer', 'Лише влітку'], ['owner', 'Тільки з власником']];
+  var TAGNAME = {}; TAGS.forEach(function (t) { TAGNAME[t[0]] = t[1]; });
+  var RESULTS = [['ok', 'Зчитано', 'показник внесено'], ['none', 'Не застав', 'повернутись пізніше'],
+    ['blocked', 'Не відкрили', 'були вдома, не пустили'], ['empty', 'Не живуть', 'прибрати з обходу']];
+  var RESNAME = {}; RESULTS.forEach(function (r) { RESNAME[r[0]] = r[1]; });
+  var PLACEMENTS = ['', 'В середині житлового будинку', 'В підсобному приміщенні', 'В гаражі', 'В квартирі', 'В щиту сходових клітин',
+    'В щитовій підвального приміщення', 'На опорі в ящику', 'На внутрішній стороні паркану', 'На фасаді будинку',
+    'На тильній стороні будинку', 'На підсобному приміщенні'];
+  var NOTES = ['', 'Самовільне підключення', 'Відсутня/порушена пломба ДП на лічильнику', 'Відсутня/порушена пломба постачальника на клемній',
+    'Відсутня/порушена пломба постачальника на ввідному', 'Не працює 1-ф лічильник', 'Не працює 3-ф лічильник',
+    'Показники зняті в присутності неповнолітніх', 'Показник зі слів споживача', 'Показник повідомили по телефону',
+    'Показники повідомили сусіди', 'Проблемний споживач (скарга)', 'Відключений на опорі', 'Відключений на лічильнику'];
+  var ZKO = ['', 'Без зауважень', 'Пошкоджено корпус', 'Розбите скло', 'Пошкоджена клемна кришка', 'Пошкоджена шафа обліку'];
+  var SEALS = ['', 'Без зауважень', 'Відсутня пломба', 'Пошкоджена пломба'];
+  var OFFICIAL = [
+    ['fio', 'Абонент', 'text'], ['address', 'Адреса', 'text'], ['phone', 'Телефон', 'tel'], ['serial', 'Серійний номер', 'text'],
+    ['mtype', 'Тип', 'text'], ['instStatus', 'Статус установки', 'text'], ['placement', 'Розміщення', 'select', PLACEMENTS],
+    ['devicePlace', 'Місце прилада', 'text'], ['alarm', 'Сигнал тривоги на лічильнику', 'select', ['', 'Ні', 'Так']],
+    ['readings', 'Показники', 'info'], ['placement2', 'Розміщення (уточнити)', 'select', PLACEMENTS], ['noteSel', 'Примітка', 'select', NOTES],
+    ['zko', 'ЗКО', 'select', ZKO], ['seals', 'Пломби', 'select', SEALS], ['avOld', 'Номінал автомата (старе значення)', 'text'],
+    ['av', 'Номінал автомата', 'text'], ['feederOld', "Пофідерна прив'язка (старе значення)", 'text'],
+    ['feeder', "Пофідерна прив'язка", 'text'], ['sealStatuses', 'Статуси пломб', 'textarea'], ['visitCode', 'Код візиту', 'text']
+  ];
+  var FLAGNAME = { no_street: 'Немає вулиці', no_house: 'Немає номера', dup: 'Можливий дубль', no_village: 'Немає села',
+    village_guess: 'Село визначено автоматично', village_check: 'Перевірити село' };
+  var QUEUE_FLAGS = ['no_street', 'no_house', 'dup', 'no_village'];
+
+  /* ---------- утиліти ---------- */
+  var $ = function (s) { return document.querySelector(s); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+  function dist(a, b) {
+    var R = 6371000, toR = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * toR, dLon = (b.lon - a.lon) * toR;
+    var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function fdist(m) { return m < 1000 ? Math.round(m) + ' м' : (m / 1000).toFixed(1).replace('.', ',') + ' км'; }
+  function cycleKey(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  var MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
+  function monthName() { return MONTHS[new Date().getMonth()]; }
+  function dt(ts) { var d = new Date(ts); return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear(); }
+  function tm(ts) { var d = new Date(ts); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('show'); }, 2200); }
+  function addr(p) { return [p.street, p.house].filter(Boolean).join(', ') || (p.note ? p.note.slice(0, 40) : 'Без адреси'); }
+  function icon(name, size, sw) {
+    size = size || 20; sw = sw || 2.2;
+    var P = {
+      back: '<path d="M15 18l-6-6 6-6"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+      gear: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+      down: '<path d="M6 9l6 6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', go: '<path d="M7 17L17 7M9 7h8v8"/>',
+      check: '<path d="M5 12l5 5 9-10"/>', nav: '<path d="M3 11l18-8-8 18-2-8-8-2z"/>',
+      phone: '<path d="M5 4h4l2 5-3 2a11 11 0 006 6l2-3 5 2v4a2 2 0 01-2 2A17 17 0 013 6a2 2 0 012-2z"/>',
+      home: '<path d="M4 11l8-7 8 7v9H4z"/>', map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
+      list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>', village: '<path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/>',
+      skip: '<path d="M5 5l9 7-9 7zM19 5v14"/>', pin: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+      locate: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+      grid: '<path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="4"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>'
+    };
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || '') + '</svg>';
+  }
+  function dotHtml(st) { return '<span class="dot ' + st + '"></span>'; }
+
+  /* ---------- база даних ---------- */
+  var db;
+  function openDb() {
+    return new Promise(function (res, rej) {
+      var rq = indexedDB.open('kontroler', 1);
+      rq.onupgradeneeded = function () {
+        var d = rq.result;
+        d.createObjectStore('points', { keyPath: 'id' });
+        var v = d.createObjectStore('visits', { keyPath: 'id', autoIncrement: true });
+        v.createIndex('pointId', 'pointId');
+        d.createObjectStore('meta', { keyPath: 'k' });
+      };
+      rq.onsuccess = function () { db = rq.result; res(); };
+      rq.onerror = function () { rej(rq.error); };
+    });
+  }
+  function all(store) { return new Promise(function (res, rej) { var r = db.transaction(store).objectStore(store).getAll(); r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); }; }); }
+  function put(store, obj) { return new Promise(function (res, rej) { var tx = db.transaction(store, 'readwrite'); var r = tx.objectStore(store).put(obj); tx.oncomplete = function () { res(r.result); }; tx.onerror = function () { rej(tx.error); }; }); }
+  function del(store, key) { return new Promise(function (res, rej) { var tx = db.transaction(store, 'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = res; tx.onerror = function () { rej(tx.error); }; }); }
+  function bulkReplace(points, visits, meta) {
+    return new Promise(function (res, rej) {
+      var tx = db.transaction(['points', 'visits', 'meta'], 'readwrite');
+      ['points', 'visits', 'meta'].forEach(function (s) { tx.objectStore(s).clear(); });
+      points.forEach(function (p) { tx.objectStore('points').put(p); });
+      (visits || []).forEach(function (v) { tx.objectStore('visits').put(v); });
+      (meta || []).forEach(function (m) { tx.objectStore('meta').put(m); });
+      tx.oncomplete = res; tx.onerror = function () { rej(tx.error); };
+    });
+  }
+  function setMeta(k, v) { S.meta[k] = v; return put('meta', { k: k, v: v }); }
+
+  /* ---------- стан ---------- */
+  var S = { points: new Map(), visits: [], meta: {}, pos: null, route: null, sel: null, filter: null, skipped: {}, moved: false };
+  function village() { return S.meta.village || null; }
+  function villagePoints(v) { var out = []; S.points.forEach(function (p) { if (p.village === (v || village())) out.push(p); }); return out; }
+  function villages() {
+    var c = {}; S.points.forEach(function (p) { var k = p.village || 'Без села'; c[k] = (c[k] || 0) + 1; });
+    return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (k) { return { name: k, n: c[k] }; });
+  }
+  function visitsOf(pid) { return S.visits.filter(function (v) { return v.pointId === pid; }).sort(function (a, b) { return b.ts - a.ts; }); }
+  var cycleCache = null;
+  function cycleMap() {
+    if (cycleCache) return cycleCache;
+    var ck = cycleKey(), m = {};
+    S.visits.forEach(function (v) { if (cycleKey(new Date(v.ts)) === ck) { if (!m[v.pointId] || m[v.pointId].ts < v.ts) m[v.pointId] = v; } });
+    return (cycleCache = m);
+  }
+  function invalidate() { cycleCache = null; }
+  function doneThisCycle(p) { var v = cycleMap()[p.id]; return !!(v && (v.result === 'ok' || v.result === 'empty')); }
+  function readThisCycle(p) { var v = cycleMap()[p.id]; return !!(v && v.result === 'ok'); }
+
+  /* ---------- GPS ---------- */
+  var watchId = null, gpsListeners = [];
+  function startGps() {
+    if (watchId !== null || !navigator.geolocation) return;
+    watchId = navigator.geolocation.watchPosition(function (pos) {
+      S.pos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
+      gpsListeners.forEach(function (f) { f(S.pos); });
+    }, function (err) { if (err.code === 1) toast('Дозвольте доступ до геолокації'); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  }
+  function onGps(f) { gpsListeners.push(f); }
+  function offGps() { gpsListeners = []; }
+
+  /* ---------- маршрут ---------- */
+  function computeRoute() {
+    var v = village(); if (!v) return null;
+    var cand = villagePoints(v).filter(function (p) { return p.status !== 'n' && !doneThisCycle(p) && !S.skipped[p.id]; });
+    if (!cand.length) return { village: v, ids: [], meters: 0 };
+    var start = S.pos && dist(S.pos, cand[0]) < 30000 ? S.pos : centroid(cand);
+    var late = cand.filter(function (p) { return (p.tags || []).indexOf('eve') >= 0; });
+    var early = cand.filter(function (p) { return (p.tags || []).indexOf('eve') < 0; });
+    var limit = Number(S.meta.dayLimit) || 40;
+    var order = nn(start, early);
+    var lateN = Math.min(late.length, Math.round(limit * 0.25));
+    order = twoOpt(start, order.slice(0, Math.max(1, limit - lateN)), 300);
+    var last = order.length ? order[order.length - 1] : start;
+    order = order.concat(nn(last, late).slice(0, limit - order.length));
+    var m = 0, prev = start;
+    order.forEach(function (p) { m += dist(prev, p); prev = p; });
+    return { village: v, ids: order.map(function (p) { return p.id; }), meters: m, total: cand.length, fromGps: start === S.pos };
+  }
+  function centroid(ps) { var a = 0, b = 0; ps.forEach(function (p) { a += p.lat; b += p.lon; }); return { lat: a / ps.length, lon: b / ps.length }; }
+  function nn(start, pts) {
+    var rest = pts.slice(), out = [], cur = start;
+    while (rest.length) {
+      var bi = 0, bd = Infinity;
+      for (var i = 0; i < rest.length; i++) { var d = dist(cur, rest[i]); if (d < bd) { bd = d; bi = i; } }
+      cur = rest.splice(bi, 1)[0]; out.push(cur);
+    }
+    return out;
+  }
+  function twoOpt(start, r, ms) {
+    var t0 = Date.now(), n = r.length, improved = true;
+    if (n < 4) return r;
+    var P = [start].concat(r);
+    while (improved && Date.now() - t0 < ms) {
+      improved = false;
+      for (var i = 1; i < P.length - 2; i++) {
+        for (var k = i + 1; k < P.length - 1; k++) {
+          var a = P[i - 1], b = P[i], c = P[k], d = P[k + 1];
+          if (dist(a, c) + dist(b, d) < dist(a, b) + dist(c, d) - 0.5) {
+            P = P.slice(0, i).concat(P.slice(i, k + 1).reverse(), P.slice(k + 1)); improved = true;
+          }
+        }
+        if (Date.now() - t0 > ms) break;
+      }
+    }
+    return P.slice(1);
+  }
+  function ensureRoute(force) {
+    if (force || !S.route || S.route.village !== village()) S.route = computeRoute();
+    return S.route;
+  }
+  function routeIndex(pid) { var r = S.route; if (!r) return -1; return r.ids.indexOf(pid); }
+
+  /* ---------- маршрутизація екранів ---------- */
+  var app;
+  function go(h) { if (location.hash === h) render(); else location.hash = h; }
+  function render() {
+    var h = (location.hash || '#home').slice(1).split('/');
+    var name = h[0] || 'home', arg = h[1] ? decodeURIComponent(h[1]) : null;
+    offGps();
+    showMap(name === 'map' || name === 'bind');
+    if (!S.points.size && name !== 'settings') return renderEmpty();
+    var f = { home: renderHome, map: renderMap, card: renderCard, visit: renderVisit, bind: renderBind, villages: renderVillages,
+      list: renderList, queue: renderQueue, settings: renderSettings }[name] || renderHome;
+    f(arg);
+    window.scrollTo(0, 0);
+  }
+  function tabs(active) {
+    var t = [['home', 'Головна', 'home'], ['map', 'Карта', 'map'], ['list', 'Список', 'list'], ['villages', 'Села', 'village']];
+    return '<nav class="tabs">' + t.map(function (x) {
+      var on = x[0] === active;
+      return '<a href="#' + x[0] + '" class="' + (on ? 'on' : '') + '">' + icon(x[2], on ? 18 : 20) + x[1] + '</a>';
+    }).join('') + '</nav>';
+  }
+
+  /* ---------- порожній стан / імпорт ---------- */
+  function renderEmpty() {
+    app.innerHTML = '<div class="screen"><div class="empty">' +
+      '<h1 class="h1">Карта контролера</h1>' +
+      '<p class="mute" style="margin:0;font-weight:600;line-height:1.5">Даних на цьому телефоні ще немає. Завантажте файл з точками (points.json) або резервну копію.</p>' +
+      '<label class="btn" for="imp">Завантажити файл</label><input id="imp" type="file" accept=".json,application/json" hidden>' +
+      '<div class="small mute">Версія ' + VERSION + '. Усі дані зберігаються лише на цьому пристрої.</div>' +
+      '</div></div>';
+    $('#imp').onchange = importFile;
+  }
+  function importFile(e) {
+    var f = e.target.files[0]; if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      var data; try { data = JSON.parse(rd.result); } catch (x) { return toast('Файл пошкоджений'); }
+      var pts = data.points || [], vis = data.visits || [], meta = data.meta || [];
+      if (!pts.length) return toast('У файлі немає точок');
+      if (S.points.size && !confirm('Замінити всі дані на телефоні даними з файлу? (' + pts.length + ' точок)')) return;
+      bulkReplace(pts, vis, meta).then(load).then(function () {
+        if (!S.meta.village) { var v = villages()[0]; setMeta('village', v && v.name !== 'Без села' ? v.name : null); }
+        toast('Завантажено ' + fmt(pts.length) + ' точок'); go('#home');
+      });
+    };
+    rd.readAsText(f);
+  }
+  function exportBackup() {
+    var meta = Object.keys(S.meta).map(function (k) { return { k: k, v: S.meta[k] }; });
+    var data = { version: 1, app: VERSION, exported: new Date().toISOString(), points: Array.from(S.points.values()), visits: S.visits, meta: meta };
+    var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'kontroler-backup-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    setMeta('lastBackup', Date.now()); toast('Резервну копію збережено');
+  }
+  function exportKml() {
+    var col = { g: 'ff4aa316', y: 'ff0b9ef5', r: 'ff2626dc', n: 'ffaaa1a1' };
+    var out = ['<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Карта контролера</name>'];
+    ST_ORDER.forEach(function (s) { out.push('<Style id="' + s + '"><IconStyle><color>' + col[s] + '</color></IconStyle></Style>'); });
+    var by = {}; S.points.forEach(function (p) { var k = p.village || 'Без села'; (by[k] = by[k] || []).push(p); });
+    Object.keys(by).forEach(function (v) {
+      out.push('<Folder><name>' + esc(v) + '</name>');
+      by[v].forEach(function (p) {
+        out.push('<Placemark><name>' + esc(addr(p)) + '</name><description>' + esc([ST[p.status].label].concat((p.tags || []).map(function (t) { return TAGNAME[t]; }), p.note ? [p.note] : []).join('; ')) +
+          '</description><styleUrl>#' + p.status + '</styleUrl><Point><coordinates>' + p.lon + ',' + p.lat + '</coordinates></Point></Placemark>');
+      });
+      out.push('</Folder>');
+    });
+    out.push('</Document></kml>');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out.join('')], { type: 'application/vnd.google-earth.kml+xml' }));
+    a.download = 'kontroler-' + new Date().toISOString().slice(0, 10) + '.kml'; document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  /* ---------- Головна ---------- */
+  function villageSelect(id) {
+    var v = village();
+    return '<select id="' + id + '" class="pill" style="appearance:none;padding-right:16px;max-width:60%">' + villages().map(function (x) {
+      return '<option value="' + esc(x.name) + '"' + (x.name === v ? ' selected' : '') + '>' + esc(x.name) + ' · ' + x.n + '</option>';
+    }).join('') + '</select>';
+  }
+  function bindVillageSelect(id) {
+    var el = $('#' + id); if (!el) return;
+    el.onchange = function () { setMeta('village', el.value === 'Без села' ? null : el.value).then(function () { S.route = null; S.filter = null; S.sel = null; render(); }); };
+  }
+  function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
+  function renderHome() {
+    var ps = villagePoints(), c = counts(ps);
+    var active = ps.filter(function (p) { return p.status !== 'n'; });
+    var read = active.filter(readThisCycle).length;
+    var left = active.filter(function (p) { return !doneThisCycle(p); }).length;
+    var r = ensureRoute(); var first = r && r.ids.length ? S.points.get(r.ids[0]) : null;
+    var km = r ? fdist(r.meters) : '—', hrs = r ? Math.max(1, Math.round((r.meters / 1.25 / 60 + r.ids.length * 3) / 60)) : 0;
+    var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
+    app.innerHTML = '<div class="screen">' +
+      '<div class="between">' + villageSelect('vsel') + '<div class="row"><a class="iconbtn" href="#list" aria-label="Пошук">' + icon('search') + '</a><a class="iconbtn" href="#settings" aria-label="Налаштування">' + icon('gear') + '</a></div></div>' +
+      '<div class="col" style="gap:2px;padding:4px 2px 0"><div class="small mute" style="font-size:13px">' + monthName() + ' · сьогодні</div><h1 class="h1">' + left + ' адрес чекають</h1></div>' +
+      '<a href="#map" data-act="startRoute" class="card big dark" style="gap:16px">' +
+        '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px"><span style="font-size:22px;font-weight:800">Почати обхід</span>' +
+        '<span class="small mute" style="font-size:13px">' + (r ? r.ids.length : 0) + ' адрес на сьогодні · ' + km + (hrs ? ' · ≈ ' + hrs + ' год' : '') + '</span></div>' +
+        '<span style="width:52px;height:52px;border-radius:26px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + icon('go', 22, 2.4) + '</span></div>' +
+        '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
+        '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
+      '<div class="grid2">' + ST_ORDER.map(function (s) {
+        return '<a class="tile" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + '" style="width:22px;height:22px;border:4px solid #fff;box-shadow:0 0 0 1px #E4E4E7' + (s === 'n' ? ';border:3.5px solid #A1A1AA;box-shadow:none' : '') + '"></span>' +
+          '<div class="col"><span class="num">' + c[s] + '</span><span class="small mute" style="font-size:13px">' + ST[s].label + '</span></div></a>';
+      }).join('') + '</div>' +
+      (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
+      '<button class="btn sec" disabled style="border-style:dashed">' + icon('grid') + 'Сектори між контролерами · скоро</button>' +
+      '</div>' + tabs('home');
+    bindVillageSelect('vsel');
+    startGps();
+    onGps(function () { if (S.route && !S.route.fromGps && (location.hash || '#home') === '#home') { S.route = null; offGps(); renderHome(); } });
+  }
+
+  /* ---------- Карта ---------- */
+  var map = null, mapReady = false, mapMode = 'route';
+  function showMap(on) {
+    var el = $('#map');
+    if (!el) { el = document.createElement('div'); el.id = 'map'; document.body.insertBefore(el, app); }
+    el.style.display = on ? 'block' : 'none';
+    if (on && !map) initMap();
+    if (on && map) setTimeout(function () { map.resize(); }, 30);
+  }
+  function initMap() {
+    var start = centroid(villagePoints().length ? villagePoints() : Array.from(S.points.values()));
+    map = new maplibregl.Map({ container: 'map', style: MAP_STYLE(S.meta.layer || 'scheme'), center: [start.lon, start.lat], zoom: 15.5,
+      attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
+    map.touchZoomRotate.disableRotation();
+    map.on('style.load', addLayers);
+    map.on('click', 'pts', function (e) { var f = e.features[0]; if (f && mapMode === 'route') { S.sel = f.properties.id; updateMap(); renderSheet(); } });
+    map.on('movestart', function (e) { if (e.originalEvent) S.moved = true; });
+    map.on('moveend', function () { if (mapMode === 'bind' && S.moved && $('#bindBtn')) $('#bindBtn').disabled = false; });
+    map.on('error', function (e) { if (e && e.error && !/Failed to fetch|NetworkError|AJAXError/.test(e.error.message)) console.warn('map', e.error.message); });
+  }
+  function addLayers() {
+    mapReady = true;
+    if (!map.getSource('route')) {
+      map.addSource('route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('pts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('me', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#FFFFFF', 'line-width': 7 } });
+    map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#111111', 'line-width': 3.5 } });
+    map.addLayer({ id: 'pts', type: 'circle', source: 'pts', paint: {
+      'circle-radius': ['case', ['==', ['get', 'sel'], true], 14, ['>', ['get', 'num'], 0], 10, 6],
+      'circle-color': ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF'],
+      'circle-stroke-color': ['case', ['==', ['get', 'sel'], true], '#111111', ['==', ['get', 'st'], 'n'], '#A1A1AA', '#FFFFFF'],
+      'circle-stroke-width': ['case', ['==', ['get', 'sel'], true], 3, 2],
+      'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
+    map.addLayer({ id: 'me-halo', type: 'circle', source: 'me', paint: { 'circle-radius': 16, 'circle-color': 'rgba(17,17,17,0.12)' } });
+    map.addLayer({ id: 'me', type: 'circle', source: 'me', paint: { 'circle-radius': 7, 'circle-color': '#111111', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 3 } });
+    updateMap();
+    if (S.pendingFit) { var f = S.pendingFit; S.pendingFit = null; f(); }
+  }
+  function updateMe() {
+    if (!map || !mapReady || !map.getSource('me')) return;
+    map.getSource('me').setData({ type: 'FeatureCollection', features: S.pos ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [S.pos.lon, S.pos.lat] }, properties: {} }] : [] });
+  }
+  function updateMap() {
+    if (!map || !mapReady || !map.getSource('pts')) return;
+    var r = mapMode === 'route' ? ensureRoute() : null, order = {};
+    if (r) r.ids.forEach(function (id, i) { order[id] = i + 1; });
+    var feats = [];
+    villagePoints().forEach(function (p) {
+      var num = order[p.id] || 0;
+      var dim = mapMode === 'route' ? (S.filter ? p.status !== S.filter : !num) : true;
+      feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+        properties: { id: p.id, st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim } });
+    });
+    map.getSource('pts').setData({ type: 'FeatureCollection', features: feats });
+    /* номери маршруту — HTML-мітки: не залежать від шрифтів карти і працюють без інтернету */
+    (S.markers || []).forEach(function (mk) { mk.remove(); });
+    S.markers = [];
+    if (r && !S.filter && mapMode === 'route') {
+      r.ids.forEach(function (id, i) {
+        var p = S.points.get(id), sel = id === S.sel, el = document.createElement('button');
+        el.type = 'button'; el.className = 'rnum' + (sel ? ' sel' : '') + ' st-' + p.status; el.textContent = i + 1;
+        el.setAttribute('aria-label', '№' + (i + 1) + ' ' + addr(p));
+        el.onclick = function (e) { e.stopPropagation(); S.sel = id; updateMap(); renderSheet(); };
+        S.markers.push(new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map));
+      });
+    }
+    var line = [];
+    if (r && !S.filter && mapMode === 'route') {
+      if (S.pos) line.push([S.pos.lon, S.pos.lat]);
+      r.ids.forEach(function (id) { var p = S.points.get(id); line.push([p.lon, p.lat]); });
+    }
+    map.getSource('route').setData({ type: 'FeatureCollection', features: line.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: line }, properties: {} }] : [] });
+    map.getSource('me').setData({ type: 'FeatureCollection', features: S.pos ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [S.pos.lon, S.pos.lat] }, properties: {} }] : [] });
+  }
+  function fitTo(ps) {
+    if (!map || !ps.length) return;
+    if (ps.length === 1) return map.easeTo({ center: [ps[0].lon, ps[0].lat], zoom: 17.5 });
+    var b = new maplibregl.LngLatBounds();
+    ps.forEach(function (p) { b.extend([p.lon, p.lat]); });
+    map.fitBounds(b, { padding: { top: 190, bottom: 280, left: 40, right: 40 }, maxZoom: 17.5, duration: 0 });
+  }
+  function setLayer(l) {
+    setMeta('layer', l); mapReady = false;
+    map.setStyle(MAP_STYLE(l));
+    if (l === 'sat' && !navigator.onLine) toast('Супутник доступний лише з інтернетом');
+  }
+  function renderMap() {
+    mapMode = 'route';
+    var r = ensureRoute();
+    if (!S.sel || routeIndex(S.sel) < 0 && !S.points.get(S.sel)) S.sel = r && r.ids[0];
+    var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
+    app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
+      '<div class="row">' + villageSelect('vsel') + '<a class="pill" href="#list" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</a></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">' + ST_ORDER.map(function (s) {
+        return '<button class="ftile' + (S.filter === s ? ' on' : '') + '" data-act="filter" data-st="' + s + '">' + dotHtml(s) + '<b>' + c[s] + '</b><span>' + ST[s].short + '</span></button>';
+      }).join('') + '</div>' +
+      '<div class="between"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
+      '<div class="seg"><button data-act="layer" data-l="scheme" class="' + (lay === 'scheme' ? 'on' : '') + '">Схема</button><button data-act="layer" data-l="sat" class="' + (lay === 'sat' ? 'on' : '') + '">Супутник</button></div></div>' +
+      '</div><div id="sheet"></div>' + tabs('map');
+    bindVillageSelect('vsel');
+    renderSheet();
+    var doFit = function () { updateMap(); var sel = S.points.get(S.sel); if (renderMap.fitNext !== false) { fitTo(sel ? [sel] : villagePoints()); } renderMap.fitNext = true; };
+    if (mapReady) doFit(); else S.pendingFit = doFit;
+    startGps();
+    var lastRecalc = 0;
+    onGps(function () {
+      updateMe(); renderSheet();
+      if (S.route && !S.route.fromGps && Date.now() - lastRecalc > 20000) { lastRecalc = Date.now(); S.route = computeRoute(); S.sel = S.route.ids[0]; updateMap(); renderSheet(); }
+    });
+  }
+  function renderSheet() {
+    var el = $('#sheet'); if (!el) return;
+    var r = S.route, p = S.points.get(S.sel);
+    if (!p) { el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">Відмічені «Зчитано» та «Не живуть» у маршрут не потрапляють.</div></div>' : ''; return; }
+    var idx = routeIndex(p.id), rn = (S.meta.routeNo || {})[village()] || '';
+    var d = S.pos ? fdist(dist(S.pos, p)) : '';
+    el.innerHTML = '<div class="sheet">' +
+      '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px;min-width:0">' +
+      '<div class="row small mute" style="flex-wrap:wrap"><label class="chip" style="height:26px;color:#111">Маршрут №<input id="rno" value="' + esc(rn) + '" placeholder="внести" style="width:84px;border:0;outline:0;background:transparent;font-weight:800"></label>' +
+      (r ? r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) : '') + '</div>' +
+      '<div class="row" style="font-size:18px;font-weight:800">' + (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : '') + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span></div>' +
+      '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
+      '</div>' + dotHtml(p.status) + '</div>' +
+      '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:54px;font-size:15px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
+      (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:54px;height:54px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
+    var rno = $('#rno');
+    rno.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[village()] = rno.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
+  }
+
+  /* ---------- Картка ---------- */
+  function lastReading(pid) { var v = visitsOf(pid).filter(function (x) { return x.reading != null && x.reading !== ''; }); return v; }
+  function renderCard(id) {
+    var p = S.points.get(id); if (!p) return go('#home');
+    var idx = routeIndex(p.id), cv = cycleMap()[p.id], rd = lastReading(p.id), f = p.fields || {};
+    var last = rd[0], prev = rd[1];
+    var delta = last && prev ? Number(last.reading) - Number(prev.reading) : null;
+    var flags = (p.flags || []).filter(function (x) { return FLAGNAME[x]; });
+    var phone = (f.phone || '').replace(/[^\d+]/g, '');
+    var navUrl = 'https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=' + p.lat + ',' + p.lon;
+    app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
+      '<div class="row"><a class="iconbtn" href="#map" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><div class="small mute" style="font-size:13px">' + esc(p.village || 'Без села') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + '</div></div>' +
+      '<div class="card big" style="gap:14px">' +
+        '<h1 class="h1" style="font-size:26px">' + esc(addr(p)) + '</h1>' +
+        '<div class="tags"><span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span><span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() : 'не відвідано') + '</span></div>' +
+        (flags.length ? '<div class="tags">' + flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' : '') +
+        '<a class="btn" href="#visit/' + p.id + '">' + icon('check', 20, 2.6) + 'Відмітити візит</a>' +
+        '<div class="grid2" style="gap:8px"><a class="btn sec" href="' + navUrl + '" target="_blank" rel="noopener">' + icon('nav', 18) + 'Навігація</a>' +
+        (phone ? '<a class="btn sec" href="tel:' + esc(phone) + '">' + icon('phone', 18) + 'Дзвінок</a>' : '<button class="btn sec" disabled>' + icon('phone', 18) + 'Дзвінок</button>') + '</div>' +
+      '</div>' +
+      '<div class="card"><div class="h2" style="font-size:15px">Як знайти</div>' +
+        ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
+        '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
+      '<div class="card"><div class="h2">Показники</div>' +
+        '<div class="grid2" style="gap:8px"><div class="card dark" style="padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">Останній</span><span style="font-size:24px;font-weight:800">' + (last ? fmt(last.reading) : '—') + '</span><span class="small mute">' + (last ? dt(last.ts) + ' · ' + tm(last.ts) : 'ще немає') + '</span></div>' +
+        '<div class="card" style="background:#F6F6F7;padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">З попереднього</span><span style="font-size:24px;font-weight:800">' + (delta != null ? (delta >= 0 ? '+' : '') + fmt(delta) : '—') + '</span><span class="small mute">кВт·год</span></div></div>' +
+        '<div class="field"><label for="rdg">Загальний' + (last ? ' (попередній: ' + fmt(last.reading) + ')' : '') + '</label><input id="rdg" class="input" inputmode="numeric" placeholder="Новий показник"></div>' +
+        '<button class="btn out" data-act="saveReading" data-id="' + p.id + '">Зберегти показник</button>' +
+        (rd.length ? '<button class="btn sec" data-act="toggleHist" style="justify-content:space-between;padding:0 14px;border:0;background:#F6F6F7">Історія показників · ' + rd.length + icon('down', 18, 2.4) + '</button>' +
+          '<div id="hist" style="display:none">' + rd.map(function (v, i) {
+            var nx = rd[i + 1], dd = nx ? Number(v.reading) - Number(nx.reading) : null;
+            return '<div class="list-row" style="justify-content:space-between"><div class="col"><b>' + dt(v.ts) + '</b><span class="small mute">' + tm(v.ts) + (v.method ? ' · ' + esc(v.method) : '') + '</span></div><div class="col" style="align-items:flex-end"><b style="font-size:16px">' + fmt(v.reading) + '</b><span class="small mute">' + (dd != null ? (dd >= 0 ? '+' : '') + fmt(dd) : '—') + '</span></div></div>';
+          }).join('') + '</div>' : '') +
+      '</div>' +
+      '<div class="card"><div class="h2">Адреса на карті</div>' +
+        '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
+        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
+        '<a class="between list-row" href="#bind/' + p.id + '" style="border:0"><span class="mute small" style="font-size:14px">Прив\'язка</span><b class="row" style="gap:6px">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + icon('right', 14, 2.4) + '</b></a>' +
+      '</div>' +
+      '<div class="card"><div class="col" style="gap:2px"><div class="h2">Дані абонента</div><div class="small mute">Усі поля офіційного застосунку, в тому ж порядку</div></div>' +
+        OFFICIAL.map(function (o, i) {
+          var val = f[o[0]] || '', inp;
+          if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + ' · ' + dt(last.ts) : 'Блок «Показники» вище') + '</div>';
+          else if (o[2] === 'select') inp = '<select class="input" data-f="' + o[0] + '">' + o[3].map(function (x) { return '<option' + (x === val ? ' selected' : '') + ' value="' + esc(x) + '">' + esc(x || '—') + '</option>'; }).join('') + '</select>';
+          else if (o[2] === 'textarea') inp = '<textarea class="input" data-f="' + o[0] + '" placeholder="Номер пломби: статус">' + esc(val) + '</textarea>';
+          else inp = '<input class="input" data-f="' + o[0] + '" type="' + (o[2] === 'tel' ? 'tel' : 'text') + '" value="' + esc(val) + '">';
+          return '<div class="field"><label><span style="color:#A1A1AA;margin-right:6px">' + (i + 1) + '</span>' + esc(o[1]) + '</label>' + inp + '</div>';
+        }).join('') +
+        '<button class="btn" data-act="saveCard" data-id="' + p.id + '">Зберегти</button>' +
+      '</div>' +
+      '<button class="btn sec" data-act="deletePoint" data-id="' + p.id + '" style="color:#B91C1C">Видалити точку (дубль)</button>' +
+      '</div>';
+  }
+  function saveCard(id) {
+    var p = S.points.get(id); if (!p) return;
+    var f = Object.assign({}, p.fields || {});
+    document.querySelectorAll('[data-f]').forEach(function (el) { f[el.getAttribute('data-f')] = el.value.trim(); });
+    p.fields = f; p.note = $('#note').value.trim();
+    var v = $('#a-v').value.trim(), s = $('#a-s').value.trim(), h = $('#a-h').value.trim();
+    if (v !== (p.village || '')) { p.village = v || null; S.route = null; }
+    p.street = s; p.house = h;
+    var same = 0;
+    S.points.forEach(function (q) { if (q.id !== p.id && s && h && q.village === p.village && (q.street || '').toLowerCase() === s.toLowerCase() && (q.house || '').toLowerCase() === h.toLowerCase()) same++; });
+    p.flags = (p.flags || []).filter(function (x) {
+      if (x === 'no_street') return !s;
+      if (x === 'no_house') return !h;
+      if (x === 'no_village' || x === 'village_guess' || x === 'village_check') return !v;
+      if (x === 'dup') return same > 0;
+      return true;
+    });
+    p.updated = Date.now();
+    return put('points', p).then(function () { toast('Збережено'); });
+  }
+
+  /* ---------- Візит ---------- */
+  var V = {};
+  function renderVisit(id) {
+    var p = S.points.get(id); if (!p) return go('#home');
+    if (V.id !== id) V = { id: id, res: null, prof: p.status, tags: (p.tags || []).slice() };
+    var idx = routeIndex(id), next = S.route && S.route.ids[idx >= 0 ? idx + 1 : 0];
+    app.innerHTML = '<div class="screen" style="padding-bottom:120px">' +
+      '<div class="row"><a class="iconbtn" href="#card/' + id + '" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><div class="col"><div class="small mute">' + (idx >= 0 ? '№' + (idx + 1) + ' · ' : '') + monthName().toLowerCase() + '</div><div style="font-size:18px;font-weight:800">' + esc(addr(p)) + '</div></div></div>' +
+      '<div class="card"><div class="h2">1. Що сьогодні?</div><div class="grid2" style="gap:8px">' + RESULTS.map(function (r) {
+        return '<button class="opt' + (V.res === r[0] ? ' on' : '') + '" data-act="res" data-v="' + r[0] + '"><b style="font-size:15px">' + r[1] + '</b><small>' + r[2] + '</small></button>';
+      }).join('') + '</div>' +
+      (V.res === 'ok' ? '<div class="field"><label for="vr">Показник (необов\'язково)</label><input id="vr" class="input" inputmode="numeric" placeholder="Загальний"></div>' +
+        '<select id="vm" class="input"><option value="зчитано">Зчитано з лічильника</option><option value="зі слів споживача">Зі слів споживача</option><option value="по телефону">По телефону</option><option value="сусіди">Повідомили сусіди</option></select>' : '') +
+      '</div>' +
+      '<div class="card"><div class="col" style="gap:2px"><div class="h2">2. Доступ до лічильника</div><div class="small mute">Зберігається на наступні місяці</div></div><div class="grid2" style="gap:8px">' + ST_ORDER.map(function (s) {
+        return '<button class="opt' + (V.prof === s ? ' on' : '') + '" data-act="prof" data-v="' + s + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:48px">' + dotHtml(s) + '<b style="font-size:14px">' + ST[s].label + '</b></button>';
+      }).join('') + '</div></div>' +
+      '<div class="card"><div class="h2">3. Мітки</div><div class="tags">' + TAGS.map(function (t) {
+        return '<button class="tag' + (V.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-act="vtag" data-v="' + t[0] + '">' + t[1] + '</button>';
+      }).join('') + '</div><textarea id="vn" class="input" placeholder="Нотатка (необов\'язково)"></textarea></div>' +
+      '</div>' +
+      '<div style="position:fixed;left:16px;right:16px;bottom:calc(16px + var(--safe-b))"><button class="btn" data-act="saveVisit" data-id="' + id + '" ' + (V.res ? '' : 'disabled') + ' style="height:58px">' +
+      (next ? 'Зберегти · до наступної' : 'Зберегти') + icon('arrow', 20, 2.4) + '</button></div>';
+  }
+  function saveVisit(id) {
+    var p = S.points.get(id); if (!p || !V.res) return;
+    var reading = $('#vr') ? $('#vr').value.replace(/\s/g, '') : '';
+    if (reading && !/^\d+(\.\d+)?$/.test(reading)) return toast('Показник: лише цифри');
+    var note = $('#vn').value.trim();
+    var v = { pointId: id, ts: Date.now(), result: V.res, prof: V.prof, reading: reading || null, method: reading ? ($('#vm') ? $('#vm').value : 'зчитано') : null, note: note || null,
+      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null };
+    if (V.res === 'empty') V.prof = 'n';
+    p.status = V.prof; p.tags = V.tags.slice();
+    if (note) p.note = p.note ? p.note + '; ' + note : note;
+    put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); return put('points', p); }).then(function () {
+      V = {}; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true;
+      toast('Збережено: ' + RESNAME[v.result]); go('#map');
+    });
+  }
+  function saveReading(id) {
+    var val = ($('#rdg').value || '').replace(/\s/g, '');
+    if (!/^\d+(\.\d+)?$/.test(val)) return toast('Введіть показник цифрами');
+    var v = { pointId: id, ts: Date.now(), result: 'ok', prof: S.points.get(id).status, reading: val, method: 'зчитано', note: null,
+      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null };
+    put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); S.route = null; toast('Показник збережено'); renderCard(id); });
+  }
+
+  /* ---------- Прив'язка GPS ---------- */
+  var B = {};
+  function renderBind(id) {
+    mapMode = 'bind'; S.moved = false;
+    var p = id && id !== 'new' ? S.points.get(id) : null;
+    B = { id: id, p: p };
+    app.innerHTML = '<svg class="crosshair" width="40" height="52" viewBox="0 0 40 52" role="img" aria-label="Точка лічильника"><path d="M20 50s-17-15-17-29A17 17 0 0137 21c0 14-17 29-17 29z" fill="#111" stroke="#fff" stroke-width="3"/><circle cx="20" cy="21" r="7" fill="' + (p ? ST[p.status].color : '#F59E0B') + '"/></svg>' +
+      '<div class="mapui" style="top:18px"><div class="row"><a class="iconbtn" href="' + (p ? '#card/' + p.id : '#map') + '" aria-label="Скасувати">' + icon('close', 20, 2.4) + '</a>' +
+      '<div class="pill" style="flex-grow:1;height:48px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.06)"><span class="small mute" style="font-size:11px">' + (p ? 'Прив\'язуємо' : 'Нова точка') + '</span><span style="font-size:14px;font-weight:800">' + esc(p ? addr(p) : 'Стань біля лічильника') + '</span></div></div></div>' +
+      '<div class="sheet" style="bottom:calc(16px + var(--safe-b))">' +
+        '<div class="row" style="gap:14px"><div class="acc"><b id="accv">—</b><span class="small mute">метри</span></div><div class="col" style="gap:6px;flex-grow:1"><div id="acct" style="font-size:16px;font-weight:800">Шукаю GPS…</div>' +
+        '<div class="row" style="gap:4px" id="accbar">' + [1, 2, 3, 4].map(function () { return '<span style="height:6px;flex-grow:1;border-radius:3px;background:#E4E4E7"></span>'; }).join('') + '</div>' +
+        '<div class="small mute">Кнопка працює при ±15 м або після ручного уточнення карти</div></div></div>' +
+        (p ? '' : '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="nb-s" class="input" placeholder="Вулиця"><input id="nb-h" class="input" placeholder="Будинок"></div>') +
+        '<button class="btn" id="bindBtn" data-act="doBind" disabled>' + icon('pin') + 'Прив\'язати тут</button>' +
+        '<div class="small mute" style="text-align:center">Стань біля лічильника, а не біля дороги. Або перетягни карту під мітку.</div>' +
+      '</div>';
+    var c = p ? [p.lon, p.lat] : S.pos ? [S.pos.lon, S.pos.lat] : null;
+    var setup = function () { updateMap(); if (c) map.jumpTo({ center: c, zoom: 18.5 }); };
+    if (mapReady) setup(); else S.pendingFit = setup;
+    var first = !p;
+    startGps();
+    var upd = function (pos) {
+      var a = Math.round(pos.acc), lvl = a <= 5 ? 4 : a <= 10 ? 3 : a <= 15 ? 2 : a <= 40 ? 1 : 0;
+      $('#accv').textContent = '±' + a;
+      $('#acct').innerHTML = (lvl >= 2 ? dotHtml('g') + ' Точність добра' : lvl === 1 ? dotHtml('y') + ' Слабка точність' : dotHtml('r') + ' Погана точність');
+      document.querySelectorAll('#accbar span').forEach(function (s, i) { s.style.background = i < lvl ? '#111' : '#E4E4E7'; });
+      $('#bindBtn').disabled = !(a <= 15 || S.moved);
+      if (!S.moved && (first || !p)) { map.jumpTo({ center: [pos.lon, pos.lat], zoom: Math.max(map.getZoom(), 18) }); first = false; }
+      updateMe();
+    };
+    onGps(upd); if (S.pos) upd(S.pos);
+  }
+  function doBind() {
+    var c = map.getCenter(), useGps = !S.moved && S.pos;
+    var lat = useGps ? S.pos.lat : c.lat, lon = useGps ? S.pos.lon : c.lng, acc = useGps ? S.pos.acc : null;
+    var p = B.p;
+    if (!p) {
+      var s = $('#nb-s').value.trim(), h = $('#nb-h').value.trim();
+      var near = null, bd = Infinity; S.points.forEach(function (q) { var d = dist({ lat: lat, lon: lon }, q); if (d < bd && q.village) { bd = d; near = q; } });
+      p = { id: 'n' + Date.now().toString(36), lat: lat, lon: lon, village: near && bd < 1500 ? near.village : village(), street: s, house: h, status: 'y', tags: [], note: '',
+        src: 'GPS', created: new Date().toISOString().slice(0, 10), flags: [].concat(s ? [] : ['no_street'], h ? [] : ['no_house']) };
+      S.points.set(p.id, p);
+    } else {
+      p.lat = +lat.toFixed(6); p.lon = +lon.toFixed(6); p.acc = acc; p.src = useGps ? 'GPS' : 'вручну'; p.bound = Date.now();
+    }
+    S.route = null;
+    put('points', p).then(function () { toast('Точку прив\'язано'); go('#card/' + p.id); });
+  }
+
+  /* ---------- Села ---------- */
+  function renderVillages() {
+    var vs = villages(), allActive = 0, allRead = 0;
+    var rows = vs.map(function (v) {
+      var ps = villagePoints(v.name === 'Без села' ? null : v.name);
+      if (v.name === 'Без села') ps = Array.from(S.points.values()).filter(function (p) { return !p.village; });
+      var c = counts(ps), act = ps.filter(function (p) { return p.status !== 'n'; }), rd = act.filter(readThisCycle).length;
+      allActive += act.length; allRead += rd;
+      var seg = function (s) { return '<span style="flex:' + c[s] + ' 1 0;min-width:' + (c[s] ? 3 : 0) + 'px;background:' + (s === 'n' ? '#fff;box-sizing:border-box;border:1.5px solid #A1A1AA' : ST[s].color) + '"></span>'; };
+      return '<button class="card" data-act="pickVillage" data-v="' + esc(v.name) + '" style="padding:12px 16px;gap:8px;border:0;text-align:left">' +
+        '<div class="between"><div class="col"><b style="font-size:15px">' + esc(v.name) + '</b><span class="small mute">' + v.n + ' точок</span></div>' +
+        '<div class="row"><span style="width:56px;height:6px;border-radius:3px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(rd, act.length) + '%;background:#111;border-radius:3px"></span></span><b style="font-size:18px;min-width:44px;text-align:right">' + pct(rd, act.length) + '%</b></div></div>' +
+        '<div class="bar">' + ST_ORDER.map(seg).join('') + '</div>' +
+        '<div class="row small" style="gap:10px;font-size:11px;color:#3F3F46">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:4px">' + dotHtml(s) + pct(c[s], ps.length) + '%</span>'; }).join('') + '</div></button>';
+    });
+    var q = queuePoints().length;
+    app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Села</h1></div>' +
+      '<div class="card big"><div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Знято за ' + monthName().toLowerCase() + ' · усі абоненти</span><span style="font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1">' + pct(allRead, allActive) + '%</span></div>' +
+      '<span class="small mute" style="font-size:13px;text-align:right">' + fmt(allRead) + ' з ' + fmt(allActive) + '</span></div><div class="bar" style="height:10px"><span style="width:' + pct(allRead, allActive) + '%;background:#111"></span></div></div>' +
+      '<a href="#queue" class="card big dark"><div class="between"><span style="font-size:17px;font-weight:800">Уточнити в полі</span><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(q) + '</span></div><span class="small mute">Без вулиці чи номера, без села, можливі дублі</span></a>' +
+      rows.join('') + '</div>' + tabs('villages');
+  }
+  function queuePoints() { var out = []; S.points.forEach(function (p) { if ((p.flags || []).some(function (f) { return QUEUE_FLAGS.indexOf(f) >= 0; })) out.push(p); }); return out; }
+  var QF = null;
+  function renderQueue() {
+    var qp = queuePoints(), c = {};
+    qp.forEach(function (p) { p.flags.forEach(function (f) { if (QUEUE_FLAGS.indexOf(f) >= 0) c[f] = (c[f] || 0) + 1; }); });
+    var list = qp.filter(function (p) { return !QF || p.flags.indexOf(QF) >= 0; });
+    var ref = S.pos || centroid(villagePoints().length ? villagePoints() : qp);
+    list.sort(function (a, b) { return dist(ref, a) - dist(ref, b); });
+    app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#villages" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Уточнити в полі</h1></div>' +
+      '<div class="tags"><button class="chip' + (!QF ? ' on' : '') + '" data-act="qf" data-v="">Усі · ' + qp.length + '</button>' + QUEUE_FLAGS.filter(function (f) { return c[f]; }).map(function (f) {
+        return '<button class="chip' + (QF === f ? ' on' : '') + '" data-act="qf" data-v="' + f + '">' + FLAGNAME[f] + ' · ' + c[f] + '</button>';
+      }).join('') + '</div><div class="small mute">Відсортовано за відстанню від вас</div>' +
+      '<div class="card" style="gap:0;padding:6px 16px">' + list.slice(0, 150).map(function (p) {
+        return '<a class="list-row" href="#card/' + p.id + '">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ' · ' + p.flags.filter(function (f) { return QUEUE_FLAGS.indexOf(f) >= 0; }).map(function (f) { return FLAGNAME[f]; }).join(', ') + '</span></div><span class="small">' + fdist(dist(ref, p)) + '</span></a>';
+      }).join('') + '</div>' + (list.length > 150 ? '<div class="small mute">Показано 150 найближчих з ' + list.length + '</div>' : '') + '</div>' + tabs('villages');
+  }
+
+  /* ---------- Список / пошук ---------- */
+  var LQ = '';
+  function renderList() {
+    app.innerHTML = '<div class="screen"><div class="row"><label class="pill" style="flex-grow:1;height:52px" for="lq">' + icon('search', 18) + '<input id="lq" value="' + esc(LQ) + '" placeholder="Адреса, рахунок, ПІБ, серійник" style="border:0;outline:0;background:transparent;width:100%;font-weight:600"></label></div>' +
+      '<div class="row"><a class="btn sec" href="#bind/new" style="height:44px">' + icon('plus', 18) + 'Нова точка тут</a></div>' +
+      '<div id="lres" class="card" style="gap:0;padding:6px 16px"></div></div>' + tabs('list');
+    var inp = $('#lq');
+    var run = function () {
+      LQ = inp.value.trim().toLowerCase();
+      var ref = S.pos, res = [];
+      S.points.forEach(function (p) {
+        if (!LQ) { if (p.village === village()) res.push(p); return; }
+        var f = p.fields || {};
+        var hay = [p.village, p.street, p.house, p.note, f.fio, f.serial, f.devicePlace, f.phone, f.account].join(' ').toLowerCase();
+        if (LQ.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; })) res.push(p);
+      });
+      if (ref) res.sort(function (a, b) { return dist(ref, a) - dist(ref, b); });
+      else res.sort(function (a, b) { return (a.street || '').localeCompare(b.street || '', 'uk') || (parseInt(a.house) || 0) - (parseInt(b.house) || 0); });
+      $('#lres').innerHTML = res.length ? res.slice(0, 120).map(function (p) {
+        return '<a class="list-row" href="#card/' + p.id + '">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div>' + (ref ? '<span class="small">' + fdist(dist(ref, p)) + '</span>' : '') + '</a>';
+      }).join('') : '<div class="list-row mute">Нічого не знайдено</div>';
+    };
+    inp.oninput = function () { clearTimeout(run._t); run._t = setTimeout(run, 150); };
+    run(); startGps();
+  }
+
+  /* ---------- Налаштування ---------- */
+  function renderSettings() {
+    var persisted = S.meta._persist;
+    app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Дані</h1></div>' +
+      '<div class="card"><div class="between"><span class="mute">Точок</span><b>' + fmt(S.points.size) + '</b></div><div class="between"><span class="mute">Візитів</span><b>' + fmt(S.visits.length) + '</b></div>' +
+      '<div class="between"><span class="mute">Остання копія</span><b>' + (S.meta.lastBackup ? dt(S.meta.lastBackup) : 'ніколи') + '</b></div><div class="between"><span class="mute">Захист від очищення</span><b>' + (persisted ? 'увімкнено' : 'ні') + '</b></div></div>' +
+      '<div class="card"><div class="field"><label for="dl">Адрес у денному маршруті</label><input id="dl" class="input" inputmode="numeric" value="' + (S.meta.dayLimit || 40) + '"></div></div>' +
+      '<button class="btn" data-act="backup">Зберегти резервну копію</button>' +
+      '<button class="btn sec" data-act="kml">Експорт у KML (MAPS.ME, Google)</button>' +
+      '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept=".json,application/json" hidden>' +
+      '<div class="small mute" style="line-height:1.5">Усі дані зберігаються лише на цьому телефоні. Робіть резервну копію хоча б раз на кілька днів і зберігайте файл у Google Диск або Telegram «Збережене».</div>' +
+      '<div class="small mute">Версія ' + VERSION + ' · карта © OpenStreetMap, супутник © Esri</div></div>';
+    $('#imp2').onchange = importFile;
+    $('#dl').onchange = function () { var n = Math.max(5, Math.min(300, parseInt($('#dl').value) || 40)); setMeta('dayLimit', n); S.route = null; toast('Маршрут: ' + n + ' адрес'); };
+  }
+
+  /* ---------- події ---------- */
+  function onClick(e) {
+    var el = e.target.closest('[data-act]'); if (!el) return;
+    var a = el.getAttribute('data-act'), id = el.getAttribute('data-id');
+    switch (a) {
+      case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; break;
+      case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
+        if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || p.status === S.filter; })); } break;
+      case 'locate': if (S.pos) map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: 17.5 }); else toast('Шукаю GPS…'); break;
+      case 'layer': setLayer(el.getAttribute('data-l')); render(); break;
+      case 'skip': S.skipped[S.sel] = 1; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; updateMap(); renderSheet(); toast('Адресу пропущено до кінця дня'); break;
+      case 'saveCard': saveCard(id); break;
+      case 'deletePoint': if (confirm('Видалити цю точку? Візити теж зникнуть з карти.')) { S.points.delete(id); S.route = null; del('points', id).then(function () { toast('Точку видалено'); go('#home'); }); } break;
+      case 'toggleHist': var h = $('#hist'); h.style.display = h.style.display === 'none' ? 'block' : 'none'; el.querySelector('svg').style.transform = h.style.display === 'none' ? '' : 'rotate(180deg)'; break;
+      case 'saveReading': saveReading(id); break;
+      case 'res': V.res = el.getAttribute('data-v'); if (V.res === 'empty') V.prof = 'n'; renderVisitKeep(); break;
+      case 'prof': V.prof = el.getAttribute('data-v'); renderVisitKeep(); break;
+      case 'vtag': var t = el.getAttribute('data-v'), i = V.tags.indexOf(t); if (i >= 0) V.tags.splice(i, 1); else V.tags.push(t); renderVisitKeep(); break;
+      case 'saveVisit': saveVisit(id); break;
+      case 'doBind': doBind(); break;
+      case 'pickVillage': var v = el.getAttribute('data-v'); setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.sel = null; S.filter = null; go('#home'); }); break;
+      case 'qf': QF = el.getAttribute('data-v') || null; render(); break;
+      case 'backup': exportBackup(); break;
+      case 'kml': exportKml(); break;
+    }
+  }
+  function renderVisitKeep() {
+    var vr = $('#vr') ? $('#vr').value : '', vn = $('#vn') ? $('#vn').value : '', y = window.scrollY;
+    renderVisit(V.id);
+    if ($('#vr')) $('#vr').value = vr; if ($('#vn')) $('#vn').value = vn; window.scrollTo(0, y);
+  }
+
+  /* ---------- запуск ---------- */
+  function load() {
+    return Promise.all([all('points'), all('visits'), all('meta')]).then(function (r) {
+      S.points = new Map(r[0].map(function (p) { return [p.id, p]; }));
+      S.visits = r[1]; S.meta = {}; r[2].forEach(function (m) { S.meta[m.k] = m.v; }); invalidate(); S.route = null;
+    });
+  }
+  function boot() {
+    app = $('#app');
+    document.addEventListener('click', onClick);
+    window.addEventListener('hashchange', render);
+    openDb().then(load).then(function () {
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (ok) { S.meta._persist = ok; });
+      render();
+    }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+  }
+  window.__app = { S: S, computeRoute: computeRoute, map: function () { return map; } };
+  boot();
+})();

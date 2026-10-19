@@ -1,0 +1,55 @@
+/* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
+var SHELL = 'shell-v0.1.0';
+var TILES = 'tiles-v1';
+var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
+  './lib/maplibre-gl.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
+
+self.addEventListener('install', function (e) {
+  e.waitUntil(caches.open(SHELL).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
+});
+self.addEventListener('activate', function (e) {
+  e.waitUntil(caches.keys().then(function (ks) {
+    return Promise.all(ks.filter(function (k) { return k !== SHELL && k !== TILES; }).map(function (k) { return caches.delete(k); }));
+  }).then(function () { return self.clients.claim(); }));
+});
+
+function isTile(url) {
+  return /tiles\.openfreemap\.org|arcgisonline\.com|fonts\.googleapis\.com|fonts\.gstatic\.com/.test(url);
+}
+var trimming = false;
+function trim() {
+  if (trimming) return; trimming = true;
+  caches.open(TILES).then(function (c) {
+    return c.keys().then(function (ks) {
+      var extra = ks.length - 8000;
+      return Promise.all(ks.slice(0, Math.max(0, extra)).map(function (k) { return c.delete(k); }));
+    });
+  }).then(function () { trimming = false; }, function () { trimming = false; });
+}
+
+self.addEventListener('fetch', function (e) {
+  var req = e.request;
+  if (req.method !== 'GET') return;
+  var url = req.url;
+  if (isTile(url)) {
+    e.respondWith(caches.open(TILES).then(function (c) {
+      return c.match(req).then(function (hit) {
+        var net = fetch(req).then(function (res) {
+          if (res && (res.ok || res.type === 'opaque')) { c.put(req, res.clone()); trim(); }
+          return res;
+        }).catch(function () { return hit; });
+        return hit || net;
+      });
+    }));
+    return;
+  }
+  if (new URL(url).origin === self.location.origin) {
+    e.respondWith(caches.match(req, { ignoreSearch: true }).then(function (hit) {
+      var net = fetch(req).then(function (res) {
+        if (res.ok) caches.open(SHELL).then(function (c) { c.put(req, res.clone()); });
+        return res;
+      }).catch(function () { return hit; });
+      return hit || net;
+    }));
+  }
+});
