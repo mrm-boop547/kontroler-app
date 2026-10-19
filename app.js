@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.5';
+  var VERSION = '0.11.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -513,7 +513,7 @@
     /* без входу контролера працювати не можна: кожен візит і кожна точка записуються на когось */
     if (!me().login && name !== 'settings') return renderLogin();
     var f = { home: renderHome, map: renderMap, all: renderAll, card: renderCard, visit: renderVisit, bind: renderBind, villages: renderVillages,
-      list: function () { S.focusSearch = true; location.replace('#all'); }, queue: renderQueue, settings: renderSettings, me: renderMe, login: renderLogin, plan: renderPlan, sectors: renderSectors, report: renderReport }[name] || renderHome;
+      list: function () { S.focusSearch = true; location.replace('#all'); }, profile: renderProfile, queue: renderQueue, settings: renderSettings, me: renderMe, login: renderLogin, plan: renderPlan, sectors: renderSectors, report: renderReport }[name] || renderHome;
     f(arg);
     window.scrollTo(0, 0);
   }
@@ -574,6 +574,36 @@
     if (n.split(' ').length < 2) { toast('Впишіть прізвище та ім\'я'); return $('#lg-n').focus(); }
     doLogin({ id: personId(n, t), name: n, tab: t });
   }
+  /* редагування даних контролера. Якщо змінився табельний номер (а отже ID) — усі записи переводяться на новий ID,
+     а відповідність старий→новий передається колегам під час обміну, щоб і в них записи лишились за тією ж людиною */
+  function renderProfile() {
+    var u = me();
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Дані контролера</h1></div>' +
+      '<div class="card" style="gap:12px"><div class="field"><label for="pf-n">Прізвище та ім\'я</label><input id="pf-n" class="input" value="' + esc(u.name) + '"></div>' +
+      '<div class="field"><label for="pf-t">Табельний номер</label><input id="pf-t" class="input" inputmode="numeric" value="' + esc(u.tab || '') + '"></div>' +
+      '<div class="field"><label for="pf-d">Дільниця</label><input id="pf-d" class="input" value="' + esc(u.district || 'Здолбунівська') + '"></div>' +
+      '<div class="small mute" style="line-height:1.5">Ваш ID: ' + esc(u.id) + '. Якщо змінити табельний номер, ID зміниться, а всі ваші відмітки й точки автоматично перейдуть на новий. Колеги отримають цю зміну під час обміну даними.</div>' +
+      '<button class="btn" data-act="profileSave">Зберегти</button></div></div>';
+  }
+  function profileSave() {
+    var u = me(), n = ($('#pf-n').value || '').trim().replace(/\s+/g, ' '), t = ($('#pf-t').value || '').replace(/\D/g, ''), d = ($('#pf-d').value || '').trim();
+    if (n.split(' ').length < 2) { toast('Впишіть прізвище та ім\'я'); return $('#pf-n').focus(); }
+    var nid = u.tab || t ? (t ? 't' + t : personId(n, '')) : u.id;
+    if (!t && !u.tab) nid = u.id; /* без табельного ID лишається тим самим, навіть якщо виправили ім'я */
+    var next = Object.assign({}, u, { name: n, tab: t, district: d, id: nid });
+    var jobs = [];
+    if (nid !== u.id) {
+      if (!confirm('Табельний номер змінено. Ваш ID стане ' + nid + ', усі ваші записи перейдуть на нього. Продовжити?')) return;
+      var tx = db.transaction(['points', 'visits'], 'readwrite');
+      S.visits.forEach(function (v) { if (v.by === u.id) { v.by = nid; if (v.id != null) tx.objectStore('visits').put(v); } });
+      S.points.forEach(function (p) { var ch = false; if (p.by === u.id) { p.by = nid; ch = true; } if (p.createdBy === u.id) { p.createdBy = nid; ch = true; } if (ch) tx.objectStore('points').put(p); });
+      jobs.push(new Promise(function (ok) { tx.oncomplete = ok; tx.onerror = ok; }));
+      var al = Object.assign({}, S.meta.idAlias || {}); al[u.id] = nid; jobs.push(setMeta('idAlias', al));
+    }
+    var users = (S.meta.users || []).filter(function (x) { return x.id !== u.id && x.id !== nid; }); users.unshift({ id: nid, name: n, tab: t });
+    jobs.push(setMeta('me', next), setMeta('users', users));
+    Promise.all(jobs).then(function () { invalidate(); toast('Дані збережено'); location.hash = '#me'; });
+  }
   function renderMe() {
     var u = me(), id = u.id, mk = monthKey();
     var vis = S.visits.filter(function (v) { return v.by === id; }), visM = vis.filter(function (v) { return monthKey(new Date(v.ts)) === mk; });
@@ -584,8 +614,9 @@
     app.innerHTML = '<div class="screen">' +
       '<div class="card big dark" style="gap:14px"><div class="row" style="gap:14px"><span style="width:56px;height:56px;border-radius:28px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0">' + esc(ini) + '</span>' +
         '<div class="col" style="gap:2px;min-width:0;flex-grow:1"><b style="font-size:20px">' + esc(u.name) + '</b><span class="small mute">' + (u.tab ? 'Табельний № ' + esc(u.tab) : 'Без табельного номера') + ' · ID ' + esc(id) + '</span></div>' +
+        '<a class="iconbtn" href="#profile" aria-label="Редагувати дані контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('edit', 18) + '</a>' +
         '<button class="iconbtn" data-act="logout" aria-label="Змінити контролера" title="Змінити контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('sync', 20) + '</button></div>' +
-        '<div class="small mute">Здолбунівська дільниця · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
+        '<div class="small mute">' + esc((u.district || 'Здолбунівська') + ' дільниця') + ' · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
       routeCardHtml() +
       '<div class="card"><div class="h2" style="font-size:15px">Мої дані · ' + monthName().toLowerCase() + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' +
@@ -717,7 +748,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      extraVillages: S.meta.extraVillages || [], merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
+      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -746,16 +777,22 @@
         P.put(q); S.points.set(q.id, q); R.newPts++; }
       else if ((q.updated || 0) > (p.updated || 0)) { P.put(q); S.points.set(q.id, q); R.updPts++; }
     });
+    /* перейменування ID колег (змінили табельний): старі записи переводимо на новий ID */
+    var al = Object.assign({}, S.meta.idAlias || {}, d.idAlias || {}), fix = function (id) { var g = 0; while (id && al[id] && g++ < 5) id = al[id]; return id; };
+    (d.visits || []).forEach(function (v) { v.by = fix(v.by); });
     (d.visits || []).forEach(function (v) {
       if (!v.uid || have[v.uid]) return; have[v.uid] = 1;
       var c = Object.assign({}, v); delete c.id; Vs.put(c); R.vis++;
     });
+    if (d.idAlias) S.visits.forEach(function (v) { var nb = fix(v.by); if (nb !== v.by) { v.by = nb; if (v.id != null) Vs.put(v); } });
+    if (d.idAlias) S.points.forEach(function (p) { var a1 = fix(p.by), a2 = fix(p.createdBy); if (a1 !== p.by || a2 !== p.createdBy) { p.by = a1; p.createdBy = a2; P.put(p); } });
     tx.oncomplete = function () {
       var peers = Object.assign({}, S.meta.peers || {});
+      Object.keys(al).forEach(function (o) { if (peers[o] && !peers[al[o]]) peers[al[o]] = peers[o]; delete peers[o]; });
       Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from && d.from.id !== me().id) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
       var exv = (S.meta.extraVillages || []).slice(); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0) exv.push(v); });
-      var jobs = [setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
+      var jobs = [setMeta('idAlias', al), setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () {
         toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : '') + (R.newPts ? ', нових на карті ' + R.newPts : '') + (R.dups ? ', можливих дублів ' + R.dups + ' — у «Уточнити в полі»' : ''));
@@ -2289,6 +2326,7 @@
       case 'quick': if (el.getAttribute('data-v') === 'ok') { S.quickOk = id; renderSheet(); } else quickVisit(id, el.getAttribute('data-v')); break;
       case 'quickSave': quickVisit(id, 'ok'); break;
       case 'quickCancel': S.quickOk = null; renderSheet(); break;
+      case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
