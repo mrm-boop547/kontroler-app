@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.2';
+  var VERSION = '0.14.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1478,12 +1478,25 @@
     map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#FFFFFF', 'line-width': 7 } });
     map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#111111', 'line-width': 3.5 } });
     map.addLayer({ id: 'pts', type: 'circle', source: 'pts', paint: {
-      'circle-radius': ['case', ['==', ['get', 'sel'], true], 14, ['>', ['get', 'num'], 0], 10, 6],
-      /* відвідані цього місяця: зчитано — чорна точка з кольоровим обідком доступу; без показника (нема доступу, записка) — кольорова з чорним обідком */
-      'circle-color': ['case', ['has', 'col'], ['get', 'col'], ['==', ['get', 'vr'], 'ok'], '#111111', ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF']],
-      'circle-stroke-color': ['case', ['==', ['get', 'sel'], true], '#111111', ['==', ['get', 'vr'], 'ok'], ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#A1A1AA'], ['==', ['get', 'vr'], 'v'], '#111111', ['==', ['get', 'st'], 'n'], '#A1A1AA', '#FFFFFF'],
-      'circle-stroke-width': ['case', ['==', ['get', 'sel'], true], 3, ['has', 'vr'], 3, 2],
+      'circle-radius': ['case', ['==', ['get', 'sel'], true], 14, ['>', ['get', 'num'], 0], 10, ['has', 'vr'], 9, 6],
+      /* відвідані цього місяця сірі зі значком: ✓ зчитано (темно-сіра), – без показника (світло-сіра). Кольорові — ще не був */
+      'circle-color': ['case', ['has', 'col'], ['get', 'col'], ['==', ['get', 'vr'], 'ok'], '#52525B', ['==', ['get', 'vr'], 'v'], '#A1A1AA', ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF']],
+      'circle-stroke-color': ['case', ['==', ['get', 'sel'], true], '#111111', ['has', 'vr'], '#FFFFFF', ['==', ['get', 'st'], 'n'], '#A1A1AA', '#FFFFFF'],
+      'circle-stroke-width': ['case', ['==', ['get', 'sel'], true], 3, 2],
       'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
+    /* значки відвіданих: малюємо самі (canvas), щоб не залежати від шрифтів карти без інтернету */
+    var mk = function (name, draw) {
+      if (map.hasImage(name)) return;
+      var c = document.createElement('canvas'); c.width = c.height = 36; var g = c.getContext('2d');
+      g.strokeStyle = '#FFFFFF'; g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); draw(g); g.stroke();
+      map.addImage(name, g.getImageData(0, 0, 36, 36), { pixelRatio: 3 });
+    };
+    mk('v-ok', function (g) { g.moveTo(9, 19); g.lineTo(15, 25); g.lineTo(27, 11); });
+    mk('v-no', function (g) { g.moveTo(10, 18); g.lineTo(26, 18); });
+    map.addLayer({ id: 'pts-v', type: 'symbol', source: 'pts', filter: ['has', 'vr'], layout: {
+      'icon-image': ['match', ['get', 'vr'], 'ok', 'v-ok', 'v-no'], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.5, 1],
+      'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
     /* підписи адрес — окреме джерело: якщо шрифти не завантажились без інтернету, точки все одно видно */
     map.addLayer({ id: 'lbl', type: 'symbol', source: 'lbl', minzoom: 16, layout: {
       'text-field': ['step', ['zoom'], ['get', 'h'], 17.6, ['get', 'a']], 'text-font': ['Noto Sans Bold'], 'text-size': 11,
@@ -1533,7 +1546,8 @@
       var num = order[p.id] || 0;
       var dim = p.id === S.sel ? false : mapMode === 'route' ? (S.filter ? p.status !== S.filter : (r && r.off ? false : !num)) : mapMode === 'all' ? false : true;
       var g = { type: 'Point', coordinates: [p.lon, p.lat] };
-      var cvv = cm[p.id], pr = { id: p.id, st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
+      var cvv = cm[p.id]; if (cvv && mapMode === 'route' && !S.filter) dim = false; /* відвідані не гасимо: видно, де вже був */
+      var pr = { id: p.id, st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
       if (cvv) pr.vr = cvv.result === 'ok' ? 'ok' : 'v';
       feats.push({ type: 'Feature', geometry: g, properties: pr });
       if (!dim || mapMode === 'route') lbl.push({ type: 'Feature', geometry: g, properties: { h: p.house || '', a: addr(p) } });
@@ -1629,8 +1643,8 @@
   function doneChip(full) {
     var cm = cycleMap(), ok = 0, v = 0;
     villagePoints().forEach(function (p) { var x = cm[p.id]; if (!x) return; if (x.result === 'ok') ok++; else v++; });
-    return '<button class="tb-item' + (S.meta.hideDone ? ' on' : '') + '" data-act="hideDone" aria-label="Приглушити відвідані"><span class="dot" style="background:#111;box-shadow:0 0 0 2px #16A34A"></span><b>' + ok + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">зчитано</span>' : '') +
-      '<span class="dot" style="background:#F59E0B;box-shadow:0 0 0 2px #111;margin-left:8px"></span><b>' + v + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">без показника</span>' : '') + '</button>';
+    return '<button class="tb-item' + (S.meta.hideDone ? ' on' : '') + '" data-act="hideDone" aria-label="Приглушити відвідані"><span class="vdot ok">' + icon('check', 10, 4) + '</span><b>' + ok + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">зчитано</span>' : '') +
+      '<span class="vdot" style="margin-left:8px">–</span><b>' + v + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">без показника</span>' : '') + '</button>';
   }
   function quickHtml(p, idx) {
     var cv = cycleMap()[p.id];

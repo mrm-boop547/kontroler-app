@@ -226,3 +226,5 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .vdone{display:flex;align-items:center;gap:8px;background:#F6F6F7;border-radius:14px;padding:8px 10px;font-size:14px}
 .vdone.ok{background:#DCFCE7;color:#166534}
 .vdone span{flex:1;min-width:0}
+.vdot{width:16px;height:16px;border-radius:8px;background:#A1A1AA;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;line-height:1;flex-shrink:0}
+.vdot.ok{background:#52525B}
