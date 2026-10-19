@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.5.2';
+  var VERSION = '0.5.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -902,7 +902,7 @@
           var val = f[o[0]] || '', inp;
           if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + (last.fromList ? ' · з маршрутного листа' : ' · ' + dt(last.ts)) : 'Блок «Показники» вище') + '</div>';
           else if (o[2] === 'select') inp = pickBtn(o[0], val, 'Вибрати');
-          else if (o[2] === 'textarea') inp = '<textarea class="input" data-f="' + o[0] + '" placeholder="Номер пломби: статус">' + esc(val) + '</textarea>';
+          else if (o[2] === 'textarea') inp = '<div id="seals" class="seals"></div>';
           else if (o[2] === 'tel') inp = '<div class="row" style="gap:8px"><input class="input" data-f="phone" id="f-phone" type="tel" inputmode="tel" value="' + esc(val) + '" placeholder="Номер телефону">' +
             '<button type="button" class="iconbtn" data-act="callPhone" aria-label="Подзвонити" style="width:52px;height:52px;border-radius:16px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 20) + '</button></div>';
           else inp = '<input class="input" data-f="' + o[0] + '" type="text" value="' + esc(val) + '">';
@@ -912,7 +912,7 @@
       '</div>' +
       '<button class="btn sec" data-act="deletePoint" data-id="' + p.id + '" style="color:#B91C1C">Видалити точку (дубль)</button>' +
       '</div>';
-    loadPhotos(p.id); bindPhotoInputs(p.id);
+    loadPhotos(p.id); bindPhotoInputs(p.id); renderSeals(p.id);
   }
   function loadPhotos(pid) {
     var box = $('#photos'); if (!box) return;
@@ -953,6 +953,48 @@
       closeSheet();
     });
     document.body.appendChild(ov);
+  }
+  /* ---------- статуси пломб: список пломб, у кожної місце і статус ---------- */
+  var SEAL_PLACES = ['ЛІЧИЛЬНИК', 'КОРПУС ЛІЧИЛЬНИКА', 'КЛЕМНА КРИШКА', 'ВВІДНИЙ АВТОМАТ', 'ШАФА ОБЛІКУ', 'ТРАНСФОРМАТОР СТРУМУ', 'ІНШЕ'];
+  var SEAL_ST = ['Наявна', 'Відсутня', 'Пошкоджена', 'В шафі обліку', 'Немає доступу'];
+  function sealList(p) {
+    var f = p.fields || {};
+    if (f.sealList) return f.sealList;
+    /* перенесення старого текстового формату «НОМЕР: місце» */
+    return String(f.sealStatuses || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) {
+      var m = l.split(':'); return { n: m[0].trim(), place: (m[1] || 'ЛІЧИЛЬНИК').trim().toUpperCase(), st: '' };
+    });
+  }
+  function saveSeals(pid, list) {
+    var p = S.points.get(pid); p.fields = Object.assign({}, p.fields || {}, { sealList: list }); p.updated = Date.now();
+    return put('points', p);
+  }
+  function renderSeals(pid) {
+    var box = $('#seals'); if (!box) return;
+    var p = S.points.get(pid), L = sealList(p);
+    var done = L.filter(function (x) { return x.st; }).length;
+    box.innerHTML = (L.length ? '<div class="small mute" style="padding:0 2px">Відмічено ' + done + ' з ' + L.length + '</div>' : '') +
+      L.map(function (x, i) {
+        var bad = x.st === 'Відсутня' || x.st === 'Пошкоджена';
+        return '<div class="seal' + (bad ? ' bad' : '') + '"><div class="col" style="min-width:0;flex-grow:1"><b style="font-size:15px">' + esc(x.n) + '</b><span class="small mute">' + esc(x.place) + '</span></div>' +
+          '<button class="seal-st' + (x.st ? ' on' : '') + '" data-act="sealSt" data-i="' + i + '" data-id="' + pid + '">' + esc(x.st || 'Статус') + icon('down', 14, 2.6) + '</button>' +
+          '<button class="seal-x" data-act="sealDel" data-i="' + i + '" data-id="' + pid + '" aria-label="Видалити пломбу">' + icon('close', 14, 2.4) + '</button></div>';
+      }).join('') +
+      '<div class="seal add"><input id="seal-n" class="input" placeholder="Номер пломби" style="height:44px;font-size:15px;flex-grow:1;min-width:0">' +
+      '<button class="seal-st" data-act="sealPlace" id="seal-p" data-v="ЛІЧИЛЬНИК">ЛІЧИЛЬНИК' + icon('down', 14, 2.6) + '</button>' +
+      '<button class="seal-x" data-act="sealAdd" data-id="' + pid + '" aria-label="Додати пломбу" style="background:#111;color:#fff">' + icon('plus', 16, 2.6) + '</button></div>';
+  }
+  function sealAction(a, el) {
+    var pid = el.getAttribute('data-id'), i = +el.getAttribute('data-i');
+    if (a === 'sealPlace') return openSheet('Місце пломби', SEAL_PLACES, el.getAttribute('data-v'), function (v) { el.setAttribute('data-v', v); el.firstChild.textContent = v; });
+    var L = sealList(S.points.get(pid)).map(function (x) { return Object.assign({}, x); });
+    if (a === 'sealSt') return openSheet('Пломба ' + L[i].n, SEAL_ST, L[i].st, function (v) { L[i].st = v; saveSeals(pid, L).then(function () { renderSeals(pid); }); });
+    if (a === 'sealDel') { if (!confirm('Видалити пломбу ' + L[i].n + '?')) return; L.splice(i, 1); return saveSeals(pid, L).then(function () { renderSeals(pid); }); }
+    if (a === 'sealAdd') {
+      var n = ($('#seal-n').value || '').trim().toUpperCase(); if (!n) { toast('Введіть номер пломби'); return $('#seal-n').focus(); }
+      L.push({ n: n, place: $('#seal-p').getAttribute('data-v'), st: '' });
+      return saveSeals(pid, L).then(function () { renderSeals(pid); toast('Пломбу додано'); });
+    }
   }
   function saveCard(id) {
     var p = S.points.get(id); if (!p) return;
@@ -1181,6 +1223,7 @@
         break;
       case 'callPhone': var num = ($('#f-phone').value || '').replace(/[^\d+]/g, ''); if (num.length < 5) { toast('Введіть номер телефону'); $('#f-phone').focus(); } else location.href = 'tel:' + num; break;
       case 'viewPhoto': viewPhoto(el); break;
+      case 'sealSt': case 'sealDel': case 'sealAdd': case 'sealPlace': sealAction(a, el); break;
       case 'addCancel': cancelAdd(); break;
       case 'addSt': S.adding.st = el.getAttribute('data-v'); renderSheet(); break;
       case 'addSave': saveAdd(); break;
