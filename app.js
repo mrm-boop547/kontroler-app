@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.3';
+  var VERSION = '0.14.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1478,23 +1478,27 @@
     map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#FFFFFF', 'line-width': 7 } });
     map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#111111', 'line-width': 3.5 } });
     map.addLayer({ id: 'pts', type: 'circle', source: 'pts', paint: {
-      'circle-radius': ['case', ['==', ['get', 'sel'], true], 14, ['>', ['get', 'num'], 0], 10, ['has', 'vr'], 9, 6],
-      /* відвідані цього місяця сірі зі значком: ✓ зчитано (темно-сіра), – без показника (світло-сіра). Кольорові — ще не був */
-      'circle-color': ['case', ['has', 'col'], ['get', 'col'], ['==', ['get', 'vr'], 'ok'], '#52525B', ['==', ['get', 'vr'], 'v'], '#A1A1AA', ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF']],
+      'circle-radius': ['case', ['has', 'vr'], 0, ['==', ['get', 'sel'], true], 14, ['>', ['get', 'num'], 0], 10, 6],
+      /* коло — ще не був; відвідані малює шар pts-v квадратами, коло під ними ховаємо */
+      'circle-color': ['case', ['has', 'col'], ['get', 'col'], ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF']],
       'circle-stroke-color': ['case', ['==', ['get', 'sel'], true], '#111111', ['has', 'vr'], '#FFFFFF', ['==', ['get', 'st'], 'n'], '#A1A1AA', '#FFFFFF'],
       'circle-stroke-width': ['case', ['==', ['get', 'sel'], true], 3, 2],
       'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
-    /* значки відвіданих: малюємо самі (canvas), щоб не залежати від шрифтів карти без інтернету */
-    var mk = function (name, draw) {
+    /* відвідані цього місяця — квадрат замість кола: синій з ✓ — показник знято; білий із синьою рамкою — був без показника.
+       Малюємо самі (canvas), щоб не залежати від шрифтів карти без інтернету */
+    var mk = function (name, fill, border, check) {
       if (map.hasImage(name)) return;
-      var c = document.createElement('canvas'); c.width = c.height = 36; var g = c.getContext('2d');
-      g.strokeStyle = '#FFFFFF'; g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); draw(g); g.stroke();
-      map.addImage(name, g.getImageData(0, 0, 36, 36), { pixelRatio: 3 });
+      var n = 60, c = document.createElement('canvas'); c.width = c.height = n; var g = c.getContext('2d');
+      var rr = function (x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+      rr(4, 4, n - 8, n - 8, 12); g.fillStyle = '#FFFFFF'; g.fill();
+      rr(9, 9, n - 18, n - 18, 8); g.fillStyle = fill; g.fill(); g.lineWidth = 6; g.strokeStyle = border; g.stroke();
+      if (check) { g.strokeStyle = '#FFFFFF'; g.lineWidth = 7; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(19, 31); g.lineTo(27, 39); g.lineTo(42, 22); g.stroke(); }
+      map.addImage(name, g.getImageData(0, 0, n, n), { pixelRatio: 3 });
     };
-    mk('v-ok', function (g) { g.moveTo(9, 19); g.lineTo(15, 25); g.lineTo(27, 11); });
-    mk('v-no', function (g) { g.moveTo(10, 18); g.lineTo(26, 18); });
+    mk('v-ok', '#2563EB', '#2563EB', true);
+    mk('v-no', '#FFFFFF', '#2563EB', false);
     map.addLayer({ id: 'pts-v', type: 'symbol', source: 'pts', filter: ['has', 'vr'], layout: {
-      'icon-image': ['match', ['get', 'vr'], 'ok', 'v-ok', 'v-no'], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.5, 1],
+      'icon-image': ['match', ['get', 'vr'], 'ok', 'v-ok', 'v-no'], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.25],
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
     /* підписи адрес — окреме джерело: якщо шрифти не завантажились без інтернету, точки все одно видно */
@@ -1643,8 +1647,8 @@
   function doneChip(full) {
     var cm = cycleMap(), ok = 0, v = 0;
     villagePoints().forEach(function (p) { var x = cm[p.id]; if (!x) return; if (x.result === 'ok') ok++; else v++; });
-    return '<button class="tb-item' + (S.meta.hideDone ? ' on' : '') + '" data-act="hideDone" aria-label="Приглушити відвідані"><span class="vdot ok">' + icon('check', 10, 4) + '</span><b>' + ok + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">зчитано</span>' : '') +
-      '<span class="vdot" style="margin-left:8px">–</span><b>' + v + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">без показника</span>' : '') + '</button>';
+    return '<button class="tb-item' + (S.meta.hideDone ? ' on' : '') + '" data-act="hideDone" aria-label="Приглушити відвідані"><span class="vsq ok">' + icon('check', 11, 4) + '</span><b>' + ok + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">зчитано</span>' : '') +
+      '<span class="vsq" style="margin-left:8px"></span><b>' + v + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">без показника</span>' : '') + '</button>';
   }
   function quickHtml(p, idx) {
     var cv = cycleMap()[p.id];
