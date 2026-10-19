@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.12';
+  var VERSION = '0.11.13';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1066,7 +1066,8 @@
     var vs = villages().filter(function (v) { return v.name !== 'Без села'; }), rn = S.meta.routeNo || {};
     var left = function (v) { var a = 0, d = 0; villagePoints(v).forEach(function (q) { if (q.status === 'n') return; a++; if (doneThisCycle(q)) d++; }); return { a: a, d: d }; };
     var st = planStats();
-    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">Маршрутні листи</div><h1 class="h1" style="font-size:24px">План на ' + monthName().toLowerCase() + '</h1></div></div>' +
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">Маршрутні листи</div><h1 class="h1" style="font-size:24px">План на ' + monthName().toLowerCase() + '</h1></div>' +
+      (p.villages.length ? '<button class="pill-btn" data-act="planReset" style="margin-left:auto">' + icon('close', 16, 2.4) + 'Скинути</button>' : '') + '</div>' +
       '<div class="small mute" style="line-height:1.5;padding:0 4px">Відмітьте села, які дали на цей місяць. Денний маршрут, вибір села і темп рахуються лише по них. Після будь-якого візиту цього місяця адреса виходить з планового обходу; хто не зчитаний понад ' + NORM() + ' днів, іде в «Список ' + NORM() + '» на друге коло.</div>' +
       (st ? '<div class="card dark" style="gap:8px"><div class="between"><span class="small mute">Разом по плану</span><b>' + pct(st.done, st.act) + '%</b></div>' +
         '<div style="font-size:22px;font-weight:800">' + fmt(st.left) + ' адрес залишилось</div>' +
@@ -1081,6 +1082,13 @@
     document.querySelectorAll('[data-rno]').forEach(function (el) {
       el.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[el.getAttribute('data-rno')] = el.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
     });
+  }
+  /* скидання плану: перший тап питає, другий (протягом 3 с) скидає села і номери маршрутів цього місяця */
+  function planReset(el) {
+    if (!el.classList.contains('warn')) { el.classList.add('warn'); el.lastChild.textContent = 'Точно?'; clearTimeout(planReset._t); planReset._t = setTimeout(function () { if (el.isConnected) { el.classList.remove('warn'); el.lastChild.textContent = 'Скинути'; } }, 3000); return; }
+    var old = (S.meta.plan && S.meta.plan.villages) || [], rn = Object.assign({}, S.meta.routeNo || {});
+    old.forEach(function (v) { delete rn[v]; });
+    Promise.all([setMeta('plan', { month: monthKey(), villages: [], updated: Date.now() }), setMeta('routeNo', rn)]).then(function () { S.route = null; renderPlan(); toast('План скинуто'); });
   }
   function planToggle(v) {
     var p = S.meta.plan && S.meta.plan.month === monthKey() ? Object.assign({}, S.meta.plan) : { month: monthKey(), villages: [] };
@@ -2350,6 +2358,7 @@
       case 'quickCancel': S.quickOk = null; renderSheet(); break;
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
+      case 'planReset': planReset(el); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
       case 'bindLayer': setLayer(el.getAttribute('data-l')); renderBindUi(); break;
