@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.9';
+  var VERSION = '0.11.10';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1009,10 +1009,20 @@
     var eta = null; if (days != null) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
     return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, byV: byV };
   }
+  /* «Уточнити в полі» — згорнутий рядок усередині блоку локацій: видно лише кількість, деталі по тапу */
+  function queueFold() {
+    var qp = queuePoints(), c = {};
+    qp.forEach(function (p) { p.flags.forEach(function (f) { if (QUEUE_FLAGS.indexOf(f) >= 0) c[f] = (c[f] || 0) + 1; }); });
+    return '<details class="fold"><summary><span class="row" style="gap:8px">' + icon('pin', 16) + '<b>Уточнити в полі</b></span><span class="row" style="gap:8px"><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(qp.length) + '</span>' + icon('down', 16, 2.4) + '</span></summary>' +
+      '<div class="col" style="gap:6px;padding-top:8px">' + QUEUE_FLAGS.filter(function (f) { return c[f]; }).map(function (f) {
+        return '<div class="between small"><span class="mute">' + FLAGNAME[f] + '</span><b>' + fmt(c[f]) + '</b></div>';
+      }).join('') + '<a class="btn sec" href="#queue" style="height:44px;margin-top:4px">Відкрити список, найближчі першими</a></div></details>';
+  }
   function coverageCard(full) {
     var c = coverage(), P = pct(c.placed, c.total);
     var eta = c.eta ? MONTHS[c.eta.getMonth()].toLowerCase() + ' ' + c.eta.getFullYear() : '—';
-    return '<a href="#villages" class="card" style="gap:10px">' +
+    var tag = full ? 'div' : 'a';
+    return '<' + tag + (full ? '' : ' href="#villages"') + ' class="card" style="gap:10px">' +
       '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Локації абонентів на карті</span>' +
       '<b style="font-size:22px">' + fmt(c.placed) + ' <span class="mute" style="font-size:15px">з ' + fmt(c.total) + '</span></b></div><b style="font-size:22px">' + P + '%</b></div>' +
       '<div class="bar" style="height:8px"><span style="flex:' + c.exact + ' 1 0;background:#111"></span><span style="flex:' + Math.max(0, c.placed - c.exact) + ' 1 0;background:#71717A"></span><span style="flex:' + c.left + ' 1 0;background:#E4E4E7"></span></div>' +
@@ -1026,7 +1036,7 @@
         (Object.keys(c.byA).length ? '<div class="col" style="gap:4px"><span class="small mute">Хто вносив за 30 днів</span><div class="tags">' + Object.keys(c.byA).sort(function (a, b) { return c.byA[b] - c.byA[a]; }).map(function (k) {
           return '<span class="chip">' + esc(k === 'MAPS.ME' ? 'MAPS.ME' : k === '?' ? 'невідомо' : peerName(k) === 'я' ? (me().name || 'я') : peerName(k)) + ' <b>' + c.byA[k] + '</b></span>'; }).join('') + '</div></div>' : '') +
         '<div class="small mute">Підтверджено = прив\'язано в застосунку за GPS або вручну. З даними абонента (ПІБ або серійний): ' + fmt(c.data) + '</div>'
-        : '<div class="small mute">+' + fmt(c.wk) + ' за тиждень · прогноз: ' + eta + '</div>') + '</a>';
+        : '<div class="small mute">+' + fmt(c.wk) + ' за тиждень · прогноз: ' + eta + '</div>') + (full ? queueFold() + '</div>' : '</a>');
   }
 
   /* ---------- План на місяць ---------- */
@@ -2179,7 +2189,6 @@
       districtCard() +
       coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
 
-      '<a href="#queue" class="card big dark"><div class="between"><span style="font-size:17px;font-weight:800">Уточнити в полі</span><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(q) + '</span></div><span class="small mute">Без вулиці чи номера, без села, можливі дублі</span></a>' +
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
