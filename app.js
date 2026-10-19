@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.3';
+  var VERSION = '0.11.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -585,6 +585,7 @@
       '<div class="card big dark" style="gap:14px"><div class="row" style="gap:14px"><span style="width:56px;height:56px;border-radius:28px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0">' + esc(ini) + '</span>' +
         '<div class="col" style="gap:2px;min-width:0"><b style="font-size:20px">' + esc(u.name) + '</b><span class="small mute">' + (u.tab ? 'Табельний № ' + esc(u.tab) : 'Без табельного номера') + ' · ID ' + esc(id) + '</span></div></div>' +
         '<div class="small mute">Здолбунівська дільниця · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
+      routeCardHtml() +
       '<div class="card"><div class="h2" style="font-size:15px">Мої дані · ' + monthName().toLowerCase() + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' +
         '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
@@ -2198,6 +2199,12 @@
 
   /* ---------- Налаштування ---------- */
   /* «Я»: спершу те, чим користуються щодня (мої дані, обмін), далі налаштування обходу, внизу — рідкісне (таблиці, офлайн-карта, копія) */
+  function routeCardHtml() {
+    var nd = NORM();
+    return '<div class="card"><div class="h2">Обхід</div>' + sliderHtml('dl', routeCfg().limit) +
+      '<div class="small mute" style="padding-top:4px">Норма зчитування: хто не зчитаний довше, іде в «Список ' + nd + '»</div>' +
+      '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div></div>';
+  }
   function settingsBody(inMe) {
     var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
     var mine = S.visits.filter(function (v) { return v.by === me().id || !v.by; }).length;
@@ -2210,9 +2217,7 @@
         (Object.keys(peers).length ? '<div class="col" style="gap:0">' + Object.keys(peers).map(function (k) { var x = peers[k];
           return '<div class="list-row" style="border-top-color:#2A2A2E">' + icon('user', 18) + '<div class="col" style="flex-grow:1"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.local ? 'теж працює на цьому телефоні' : x.last ? fmt(x.visits || 0) + ' відміток · отримано ' + dt(x.last) : 'відомий через ' + esc(x.via || 'колегу')) + '</span></div></div>'; }).join('') + '</div>' : '') +
         '<div class="small mute" style="line-height:1.5">Повторний імпорт нічого не дублює: відмітки лише додаються, з двох версій точки лишається новіша.</div></div>';
-    var route = '<div class="card"><div class="h2">Обхід</div>' + sliderHtml('dl', routeCfg().limit) +
-        '<div class="small mute" style="padding-top:4px">Норма зчитування: хто не зчитаний довше, іде в «Список ' + nd + '»</div>' +
-        '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div></div>';
+    var route = routeCardHtml();
     var tables = '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
         '<button class="btn sec" data-act="csvVisits">Журнал відміток</button>' +
@@ -2224,7 +2229,7 @@
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
-    return exchange + sec('Налаштування') + route + sec('Дані') + tables + offline + backup +
+    return exchange + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
       '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
   }
   function bindSettings() {
