@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.5.1';
+  var VERSION = '0.5.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -466,8 +466,9 @@
       '<div class="between" style="padding:0 4px"><div class="h2">' + esc(title) + '</div><button class="iconbtn" data-pk="close" aria-label="Закрити" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
       '<div class="pk-list">' + opts.map(function (o, i) {
         var v = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? (o || 'Не вибрано') : o.l, sub = typeof o === 'string' ? '' : (o.sub || '');
-        var on = v === current;
-        return '<button class="pk-row' + (on ? ' on' : '') + '" data-pk="' + i + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
+        var on = v === current, hot = typeof o !== 'string' && o.hot;
+        var head = typeof o !== 'string' && o.head ? '<div class="small mute" style="padding:6px 4px 0">' + esc(o.head) + '</div>' : '';
+        return head + '<button class="pk-row' + (on ? ' on' : '') + (hot ? ' hot' : '') + '" data-pk="' + i + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
           (on ? '<span class="pk-check">' + icon('check', 16, 3) + '</span>' : '<span class="pk-radio"></span>') + '</button>';
       }).join('') + '</div></div>';
     ov.addEventListener('click', function (e) {
@@ -484,6 +485,10 @@
   }
   var PICK_OPTS = { vm: [{ v: 'зчитано', l: 'Зчитано з лічильника' }, { v: 'зі слів споживача', l: 'Зі слів споживача' }, { v: 'по телефону', l: 'Повідомили по телефону' }, { v: 'сусіди', l: 'Повідомили сусіди' }] };
   OFFICIAL.forEach(function (o) { if (o[2] === 'select') PICK_OPTS[o[0]] = o[3]; });
+  /* найчастіші примітки (≈80% випадків) — нагорі й контрастно */
+  var HOT_NOTES = ['Показник зі слів споживача', 'Показник повідомили по телефону', 'Показники повідомили сусіди'];
+  PICK_OPTS.noteSel = HOT_NOTES.map(function (n, i) { return { v: n, l: n, hot: true, head: i === 0 ? 'Часті' : '' }; })
+    .concat(NOTES.filter(function (n) { return HOT_NOTES.indexOf(n) < 0; }).map(function (n, i) { return { v: n, l: n || 'Без примітки', head: i === 0 ? 'Усі примітки' : '' }; }));
   var PICK_TITLE = { vm: 'Як отримано показник' };
   OFFICIAL.forEach(function (o) { PICK_TITLE[o[0]] = o[1]; });
   function doPick(el) {
