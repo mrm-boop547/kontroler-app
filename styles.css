@@ -170,3 +170,5 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .qbtn{height:52px;border-radius:16px;border:1.5px solid var(--line);background:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 4px;color:var(--ink)}
 .qbtn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
 .qbtn:active{transform:scale(.97)}
+.tool.dark{background:var(--ink);color:#fff}
+.tool.dark span{color:#B4B4BA}

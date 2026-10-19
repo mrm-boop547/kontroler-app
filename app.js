@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.1';
+  var VERSION = '0.11.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2137,8 +2137,8 @@
     var q = queuePoints().length;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Огляд</h1></div>' +
-      '<div class="grid2 tools"><a href="#plan" class="tool">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
-        '<a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
+      '<div class="grid2 tools"><a href="#plan" class="tool dark">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
+        '<a href="#report" class="tool dark">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
       districtCard() +
       coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
       statusList() +
