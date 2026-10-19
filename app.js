@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.10.0';
+  var VERSION = '0.11.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -500,7 +500,9 @@
   var app;
   function go(h) { if (location.hash === h) render(); else location.hash = h; }
   function render() {
-    var h = (location.hash || '#home').slice(1).split('/');
+    var full = location.hash || '#home', st = S.nav = S.nav || [];
+    if (st[st.length - 1] !== full) { if (st[st.length - 2] === full) st.pop(); else { st.push(full); if (st.length > 30) st.shift(); } }
+    var h = full.slice(1).split('/');
     var name = h[0] || 'home', arg = h[1] ? decodeURIComponent(h[1]) : null;
     offGps();
     if (name !== 'bind' && S.layerBeforeBind) { var lb = S.layerBeforeBind; S.layerBeforeBind = null; if (map) setLayer(lb); else setMeta('layer', lb); }
@@ -510,10 +512,12 @@
     /* без входу контролера працювати не можна: кожен візит і кожна точка записуються на когось */
     if (!me().login && name !== 'settings') return renderLogin();
     var f = { home: renderHome, map: renderMap, all: renderAll, card: renderCard, visit: renderVisit, bind: renderBind, villages: renderVillages,
-      list: renderList, queue: renderQueue, settings: renderSettings, me: renderMe, login: renderLogin, plan: renderPlan, sectors: renderSectors, report: renderReport }[name] || renderHome;
+      list: function () { S.focusSearch = true; location.replace('#all'); }, queue: renderQueue, settings: renderSettings, me: renderMe, login: renderLogin, plan: renderPlan, sectors: renderSectors, report: renderReport }[name] || renderHome;
     f(arg);
     window.scrollTo(0, 0);
   }
+  /* «Назад» — туди, звідки прийшли в застосунку (власна історія), а не вихід із застосунку */
+  function goBack() { var st = S.nav || []; st.pop(); var prev = st[st.length - 1] || '#home'; if (prev === location.hash) prev = '#home'; location.hash = prev; }
   function tabs(active) {
     var t = [['home', 'Головна', 'home'], ['villages', 'Огляд', 'chart'], ['map', 'Обхід', 'map'], ['all', 'Мітки', 'pin'], ['me', 'Я', 'user']];
     return '<nav class="tabs">' + t.map(function (x) {
@@ -588,10 +592,11 @@
         '<div class="between"><span class="mute">Точок внесено мною</span><b>' + fmt(added) + '</b></div>' +
         '<div class="between"><span class="mute">Точок прив\'язано мною (GPS / вручну)</span><b>' + fmt(bound) + '</b></div></div>' +
       '<button class="btn sec" data-act="myPoints">' + icon('pin', 18) + 'Мої точки на карті</button>' +
-      '<a class="btn sec" href="#settings">' + icon('gear', 18) + 'Дані й налаштування</a>' +
+      settingsBody(true) +
       '<button class="btn sec" data-act="logout">' + icon('user', 18) + 'Змінити контролера</button>' +
       '<div class="small mute" style="line-height:1.5">Ідентифікатор будується з табельного номера, тому на новому телефоні після входу й обміну даними ваші записи знову будуть вашими. Пароля немає: це підпис, а не захист.</div>' +
       '</div>' + tabs('me');
+    bindSettings();
   }
 
   /* ---------- порожній стан / імпорт ---------- */
@@ -721,7 +726,7 @@
     var d = syncPackage(), txt = JSON.stringify(d);
     var name = 'kontroler-sync-' + me().name.replace(/[^\wА-Яа-яІіЇїЄєҐґ]+/g, '_') + '-' + today() + '.json';
     var file = typeof File === 'function' ? new File([txt], name, { type: 'application/json' }) : null;
-    var done = function () { setMeta('lastSyncOut', Date.now()); toast('Пакет змін: ' + fmt(d.visits.length) + ' візитів, ' + fmt(d.points.length) + ' точок'); if (location.hash === '#settings') renderSettings(); };
+    var done = function () { setMeta('lastSyncOut', Date.now()); toast('Пакет змін: ' + fmt(d.visits.length) + ' візитів, ' + fmt(d.points.length) + ' точок'); if (location.hash === '#me' || location.hash === '#settings') { var y0 = window.scrollY; render(); window.scrollTo(0, y0); } };
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: 'Карта контролера — дані ' + me().name }).then(done).catch(function () { download(name, txt, 'application/json'); done(); });
     } else { download(name, txt, 'application/json'); done(); }
@@ -756,7 +761,7 @@
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () {
         toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : '') + (R.newPts ? ', нових на карті ' + R.newPts : '') + (R.dups ? ', можливих дублів ' + R.dups + ' — у «Уточнити в полі»' : ''));
-        go('#settings');
+        go('#me');
       });
     };
     tx.onerror = function () { toast('Не вдалося об\'єднати дані'); };
@@ -807,7 +812,7 @@
       S.offBusy = false;
       setMeta('offline', { ts: Date.now(), tiles: ok, fail: fail, mb: +(bytes / 1048576).toFixed(1) });
       toast(fail ? 'Збережено ' + ok + ' з ' + r.total + ', повторіть для решти' : 'Карту дільниці збережено офлайн');
-      if (location.hash === '#settings') renderSettings();
+      if (location.hash === '#me' || location.hash === '#settings') { var y0 = window.scrollY; render(); window.scrollTo(0, y0); }
     }).catch(function () { S.offBusy = false; set('Помилка завантаження, спробуйте ще раз'); });
   }
 
@@ -929,7 +934,7 @@
     var km = r ? fdist(r.meters) : '—', hrs = r ? Math.max(1, Math.round((r.meters / 1.25 / 60 + r.ids.length * 3) / 60)) : 0;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     app.innerHTML = '<div class="screen">' +
-      '<div class="between">' + villageSelect('vsel') + '<div class="row"><a class="iconbtn" href="#list" aria-label="Пошук">' + icon('search') + '</a><a class="iconbtn" href="#settings" aria-label="Налаштування">' + icon('gear') + '</a></div></div>' +
+      '<div class="between">' + villageSelect('vsel') + '<button class="iconbtn" data-act="search" aria-label="Пошук адреси">' + icon('search') + '</button></div>' +
       '<div class="col" style="gap:2px;padding:4px 2px 0"><div class="small mute" style="font-size:13px">' + monthName() + ' · сьогодні</div><h1 class="h1">' + left + ' адрес чекають</h1></div>' +
       '<div class="seg segw" style="background:#fff;box-shadow:none;height:48px"><button data-act="round" data-v="plan" class="' + (r180 ? '' : 'on') + '" style="height:40px">Плановий · ' + leftPlan + '</button>' +
         '<button data-act="round" data-v="180" class="' + (r180 ? 'on' : '') + '" style="height:40px">Коло ' + NORM() + ' · ' + left180 + '</button></div>' +
@@ -939,9 +944,8 @@
         '<span style="width:52px;height:52px;border-radius:26px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + icon('go', 22, 2.4) + '</span></div>' +
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
-      planCard() +
-      districtCard() +
       streetsCard() +
+      planCard() +
       '</div>' + tabs('home');
     bindVillageSelect('vsel');
     startGps();
@@ -1003,7 +1007,7 @@
     var vs = villages().filter(function (v) { return v.name !== 'Без села'; }), rn = S.meta.routeNo || {};
     var left = function (v) { var a = 0, d = 0; villagePoints(v).forEach(function (q) { if (q.status === 'n') return; a++; if (doneThisCycle(q)) d++; }); return { a: a, d: d }; };
     var st = planStats();
-    app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><div class="col"><div class="small mute">Маршрутні листи</div><h1 class="h1" style="font-size:24px">План на ' + monthName().toLowerCase() + '</h1></div></div>' +
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">Маршрутні листи</div><h1 class="h1" style="font-size:24px">План на ' + monthName().toLowerCase() + '</h1></div></div>' +
       '<div class="small mute" style="line-height:1.5;padding:0 4px">Відмітьте села, які дали на цей місяць. Денний маршрут, вибір села і темп рахуються лише по них. Після будь-якого візиту цього місяця адреса виходить з планового обходу; хто не зчитаний понад ' + NORM() + ' днів, іде в «Список ' + NORM() + '» на друге коло.</div>' +
       (st ? '<div class="card dark" style="gap:8px"><div class="between"><span class="small mute">Разом по плану</span><b>' + pct(st.done, st.act) + '%</b></div>' +
         '<div style="font-size:22px;font-weight:800">' + fmt(st.left) + ' адрес залишилось</div>' +
@@ -1169,7 +1173,7 @@
         : { v: v, crew: crewSuggest().slice(0, 3), assign: null, mode: 'auto', saved: false, focus: null };
       while (SP.crew.length < 2) SP.crew.push('Контролер ' + (SP.crew.length + 1));
     }
-    app.innerHTML = '<div class="mapui" style="top:18px"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a>' + villageSelect() + '</div></div>' +
+    app.innerHTML = '<div class="mapui" style="top:18px"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button>' + villageSelect() + '</div></div>' +
       '<div class="sheet sec-sheet" id="sec-ui"></div>';
     if (!v || v === ALL) { $('#sec-ui').innerHTML = '<div class="h2">Оберіть село</div><div class="small mute">Вулиці діляться в межах одного села, куди вас привезли.</div>'; fitSectors(); return; }
     if (!SP.assign) SP.assign = autoSplit(v, SP.crew.length) || {};
@@ -1321,7 +1325,7 @@
       var a = 0, dn = 0; villagePoints(v).forEach(function (q) { if (q.status === 'n') return; a++; if (readThisCycle(q)) dn++; });
       return '<div class="list-row"><b style="flex-grow:1">' + esc(v) + '</b><span class="small mute">' + dn + ' з ' + a + '</span><span style="width:60px;height:6px;border-radius:3px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(dn, a) + '%;background:#111"></span></span><b style="width:42px;text-align:right">' + pct(dn, a) + '%</b></div>';
     });
-    app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Звіт</h1></div>' +
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Звіт</h1></div>' +
       '<div class="seg" style="align-self:flex-start">' + [['day', 'Сьогодні'], ['week', 'Тиждень'], ['month', 'Місяць'], ['cycle', 'Цикл']].map(function (x) { return '<button data-act="rp" data-v="' + x[0] + '" class="' + (RP === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<div class="card dark" style="gap:12px"><div class="small mute">' + ({ day: 'Сьогодні', week: 'Цей тиждень', month: monthName(), cycle: 'Останні ' + NORM() + ' днів' })[RP] + ' · днів з обходом: ' + R.days + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:28px">' + fmt(R.total) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:28px">' + fmt(R.ok) + '</b><span class="small mute">зчитано · ' + pct(R.ok, R.total) + '%</span></div>' +
@@ -1511,7 +1515,7 @@
     if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; villagePoints().forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
     var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
-      '<div class="row">' + villageSelect('vsel') + '<a class="pill" href="#list" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</a></div>' +
+      '<div class="row">' + villageSelect('vsel') + '<button class="pill" data-act="search" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</button></div>' +
       (S.meta.tilesMin
         ? '<div class="pill tilebar" style="padding:0 4px 0 8px;gap:2px;align-self:flex-start">' + ST_ORDER.map(function (s) {
             return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
@@ -1545,6 +1549,32 @@
       else if (dy < -40 && S.meta.sheetMin) { setMeta('sheetMin', false); renderSheet(); }
     });
   }
+  /* швидкий результат прямо з карти — без відкриття картки; «Інше…» відкриває повний екран */
+  function quickHtml(p, idx) {
+    var cv = cycleMap()[p.id];
+    if (S.quickOk === p.id) return '<div class="row" style="gap:8px"><input id="q-r" class="input" inputmode="numeric" placeholder="Показник (можна пропустити)" style="height:52px;min-width:0">' +
+      '<button class="btn" data-act="quickSave" data-id="' + p.id + '" style="width:auto;padding:0 18px;height:52px;flex-shrink:0">' + icon('check', 18, 2.6) + '</button>' +
+      '<button class="iconbtn" data-act="quickCancel" aria-label="Скасувати" style="width:52px;height:52px;background:#F1F1F3;box-shadow:none;flex-shrink:0">' + icon('close', 18, 2.4) + '</button></div>';
+    var b = function (v, l, dark) { return '<button class="qbtn' + (dark ? ' dark' : '') + '" data-act="quick" data-v="' + v + '" data-id="' + p.id + '">' + l + '</button>'; };
+    return (cv ? '<div class="small" style="font-weight:700">' + monthName() + ': ' + esc(RESNAME[cv.result].toLowerCase()) + ' ' + dt(cv.ts) + '</div>' : '') +
+      '<div class="qgrid">' + b('ok', 'Зчитано', true) + b('none', 'Не застав') + b('note', 'Записка') + '<a class="qbtn" href="#visit/' + p.id + '">Інше…</a></div>';
+  }
+  function quickVisit(id, res) {
+    var p = S.points.get(id); if (!p) return;
+    var reading = res === 'ok' && $('#q-r') ? $('#q-r').value.replace(/\s/g, '') : '';
+    if (reading && !/^\d+(\.\d+)?$/.test(reading)) return toast('Показник: лише цифри');
+    var v = newVisit({ pointId: id, result: res, prof: p.status, reading: reading || null, method: reading ? 'зчитано' : null, note: null,
+      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
+    S.quickOk = null;
+    put('visits', v).then(function (k) {
+      v.id = k; S.visits.push(v); invalidate();
+      S.route = computeRoute(); var nx = S.route && S.route.ids[0]; S.sel = nx || null;
+      updateMap(); renderSheet();
+      var np = nx && S.points.get(nx);
+      toast(RESNAME[res] + (reading ? ' · ' + fmt(reading) : '') + (np ? ' → далі: ' + addr(np) : ''));
+      if (np && map) map.easeTo({ center: [np.lon, np.lat], zoom: Math.max(map.getZoom(), 16.5) });
+    });
+  }
   function renderSheet() {
     renderSheetInner(); sheetSwipe($('#sheet') || document.createElement('div'));
   }
@@ -1552,7 +1582,8 @@
     var el = $('#sheet'); if (!el) return;
     if (S.adding) return renderAddSheet(el);
     var r = mapMode === 'route' ? S.route : null, p = S.points.get(S.sel);
-    if (!p && mapMode === 'all') { el.innerHTML = '<div class="sheet mini"><div class="small mute" style="padding:6px 4px">Торкніться точки, щоб відкрити її, або порожнього місця, щоб додати нову</div></div>'; return; }
+    if (!p && mapMode === 'all') { el.innerHTML = '<div class="sheet mini"><div class="between" style="gap:10px"><div class="small mute" style="padding:4px">Торкніться точки, щоб відкрити, або порожнього місця, щоб додати нову</div>' +
+      '<a class="btn" href="#bind/new" style="width:auto;flex-shrink:0;height:44px;padding:0 14px;font-size:13px">' + icon('pin', 16) + 'За GPS</a></div></div>'; return; }
     if (!p) {
       var nv = r && !r.ids.length && village() !== ALL ? nextPlanVillage(village()) : null;
       el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">' + (routeCfg().round === '180' ? 'Список ' + NORM() + ' тут порожній.' : 'Планові адреси пройдено. Далі — друге коло по «Списку ' + NORM() + '».') + '</div>' + (routeCfg().round !== '180' && villagePoints().some(in180) ? '<button class="btn out" data-act="round" data-v="180">Почати коло ' + NORM() + ' · ' + villagePoints().filter(in180).length + ' адрес</button>' : '') +
@@ -1575,8 +1606,10 @@
       '<div class="row" style="font-size:18px;font-weight:800">' + (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : '') + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span></div>' +
       '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
       '</div>' + dotHtml(p.status) + '</div>' +
-      '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:54px;font-size:15px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
-      (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:54px;height:54px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
+      quickHtml(p, idx) +
+      '<div class="row"><a class="btn sec" href="#card/' + p.id + '" style="flex-grow:1;height:46px;font-size:14px">Відкрити картку ' + icon('arrow', 16, 2.4) + '</a>' +
+      (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
+    var qr = $('#q-r'); if (qr) { qr.focus(); qr.onkeydown = function (e) { if (e.key === 'Enter') quickVisit(p.id, 'ok'); }; }
     var rno = $('#rno');
     if (rno) rno.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[rkey] = rno.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
   }
@@ -1689,6 +1722,33 @@
     });
     return out;
   }
+  /* пошук прямо на карті «Мітки»: адреса, ПІБ, серійний, номер прилада, телефон; найближчі — першими */
+  var AQ = '';
+  function searchPoints(q, max) {
+    q = q.toLowerCase(); var res = [];
+    S.points.forEach(function (p) {
+      var f = p.fields || {};
+      var hay = [p.village, p.street, p.house, p.orig, p.note, f.fio, f.serial, f.devicePlace, f.phone, f.account].join(' ').toLowerCase();
+      if (q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; })) res.push(p);
+    });
+    var ref = S.pos || centroid(villagePoints().length ? villagePoints() : res.length ? res : [{ lat: 50.4, lon: 26.2 }]);
+    /* точний збіг номера будинку — першим: «Шосова 4» ставить буд. 4 вище за 40 і 48 */
+    var words = q.split(/\s+/), exact = function (p) { return words.indexOf(String(p.house || '').toLowerCase()) >= 0 ? 0 : 1; };
+    res.sort(function (a, b) { return exact(a) - exact(b) || dist(ref, a) - dist(ref, b); });
+    return { list: res.slice(0, max || 8), total: res.length, ref: ref };
+  }
+  function drawAq() {
+    var box = $('#aqres'); if (!box) return;
+    var sh = $('#sheet'); if (sh) sh.style.display = AQ ? 'none' : '';
+    var ap = $('#apanel'); if (ap) ap.style.display = AQ ? 'none' : 'flex';
+    if (!AQ) { box.innerHTML = ''; return; }
+    var r = searchPoints(AQ, 8);
+    box.innerHTML = '<div class="card" style="padding:6px 14px;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.08);max-height:46vh;overflow-y:auto">' +
+      (r.list.length ? r.list.map(function (p) {
+        return '<button class="list-row" data-act="aqPick" data-id="' + p.id + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div><span class="small">' + fdist(dist(r.ref, p)) + '</span></button>';
+      }).join('') + (r.total > 8 ? '<div class="small mute" style="padding:8px 0">Ще ' + (r.total - 8) + ' — уточніть запит</div>' : '')
+        : '<div class="small mute" style="padding:12px 0">Нічого не знайдено. Торкніться карти там, де лічильник, щоб додати точку.</div>') + '</div>';
+  }
   function renderAll() {
     mapMode = 'all';
     var F = allF(), shown = allFiltered(), cs = { g: 0, y: 0, r: 0, n: 0 }, cc = { ok: 0, miss: 0, todo: 0 };
@@ -1697,7 +1757,7 @@
       var on = F[grp].indexOf(v) >= 0;
       return '<button class="chip fchip' + (on ? ' on' : '') + '" data-act="allF" data-g="' + grp + '" data-v="' + v + '">' + (dot ? dotHtml(v) : '') + label + ' <span style="opacity:.6">' + fmt(n) + '</span></button>';
     };
-    var panel = S.meta.allMin
+    var panel = S.meta.allMin !== false
       ? '<button class="pill tilebar" data-act="toggleAll" style="align-self:flex-start">' + icon('grid', 16) + 'Фільтри' + (F.st.length + F.cy.length + (F.mine || F.who ? 1 : 0) ? ' · ' + (F.st.length + F.cy.length) : '') + ' · ' + fmt(shown.length) + icon('down', 16, 2.6) + '</button>'
       : '<div class="card" style="padding:12px;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' +
         '<div class="small mute">Доступ</div><div class="tags">' + ST_ORDER.map(function (s) { return chip('st', s, ST[s].short, cs[s], true); }).join('') + '</div>' +
@@ -1710,15 +1770,20 @@
         '<button class="chip" data-act="toggleAll" aria-label="Згорнути фільтри"><span style="transform:rotate(180deg);display:flex">' + icon('down', 16, 2.6) + '</span></button></span></div></div>';
     var lay = S.meta.layer || 'scheme';
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
-      '<a class="pill" href="#list" style="color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук адреси</a>' + panel +
+      '<div class="row"><label class="pill" for="aq" style="flex-grow:1;box-shadow:0 6px 20px rgba(0,0,0,.06);min-width:0">' + icon('search', 18) + '<input id="aq" autocomplete="off" placeholder="Адреса, ПІБ, серійний номер" value="' + esc(AQ) + '" style="border:0;outline:0;background:transparent;width:100%;font-weight:600;min-width:0"></label>' +
+        (AQ ? '<button class="iconbtn" data-act="aqClear" aria-label="Очистити пошук">' + icon('close', 18, 2.4) + '</button>' : '') + '</div><div id="aqres"></div><div id="apanel" style="display:flex;flex-direction:column;gap:10px' + (AQ ? ';display:none' : '') + '">' + panel +
       '<div class="between"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
-      '<div class="seg"><button data-act="layer" data-l="scheme" class="' + (lay === 'scheme' ? 'on' : '') + '">Схема</button><button data-act="layer" data-l="sat" class="' + (lay === 'sat' ? 'on' : '') + '">Супутник</button></div></div>' +
+      '<button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button></div></div>' +
       '</div><div id="sheet"></div>' + tabs('all');
     if (S.sel && shown.indexOf(S.points.get(S.sel)) < 0) S.sel = null;
     renderSheet();
     var fit = function () { updateMap(); if (renderAll.fitNext !== false) fitTo(shown.length ? shown : Array.from(S.points.values())); renderAll.fitNext = true; };
     if (mapReady) fit(); else S.pendingFit = fit;
     startGps(); onGps(function () { updateMe(); });
+    var aq = $('#aq');
+    aq.oninput = function () { clearTimeout(aq._t); aq._t = setTimeout(function () { AQ = aq.value.trim(); drawAq(); }, 150); };
+    drawAq();
+    if (S.focusSearch) { S.focusSearch = false; aq.focus(); }
   }
 
   /* ---------- Картка ---------- */
@@ -1733,14 +1798,17 @@
     var flags = (p.flags || []).filter(function (x) { return FLAGNAME[x]; });
     var phone = (f.phone || '').replace(/[^\d+]/g, '');
     var navUrl = 'https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=' + p.lat + ',' + p.lon;
+    /* після записки картка відкривається одразу на «Показниках»: чекаємо показник по телефону */
+    if (S.cardId !== id) { S.cardTab = cv && cv.result === 'note' ? 'read' : 'find'; S.cardId = id; }
+    var tab = S.cardTab || 'find';
     app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
-      '<div class="row"><a class="iconbtn" href="#map" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><div class="small mute" style="font-size:13px">' + esc(p.village || 'Без села') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + '</div></div>' +
+      '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="small mute" style="font-size:13px">' + esc(p.village || 'Без села') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + '</div></div>' +
       '<div class="card big" style="gap:14px">' +
         '<h1 class="h1" style="font-size:26px">' + esc(addr(p)) + '</h1>' +
         (p.orig && p.orig.replace(/\s/g, '').toLowerCase() !== addr(p).replace(/\s/g, '').toLowerCase() ? '<div class="small mute" style="margin-top:-8px">У MAPS.ME: ' + esc(p.orig) + '</div>' : '') +
         '<div class="tags"><span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') + '<span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
           (splitIdx(p) != null ? '<span class="chip mute"><span class="dot" style="background:' + SEC_COL[splitIdx(p) % SEC_COL.length] + '"></span>' + esc(sectorName(splitIdx(p), splitOf(p.village))) + '</span>' : '') + '</div>' +
-        (cv && cv.result === 'note' ? '<div class="small" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;font-weight:700;line-height:1.4">Записку залишено ' + dt(cv.ts) + '. Коли передадуть показник, внесіть його в «Показники» нижче: він зарахується як «по телефону».</div>' : '') +
+        (cv && cv.result === 'note' ? '<div class="small" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;font-weight:700;line-height:1.4">Записку залишено ' + dt(cv.ts) + '. Коли передадуть показник, внесіть його у вкладці «Показники»: він зарахується як «по телефону».</div>' : '') +
         (flags.length ? '<div class="tags">' + flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' : '') +
         '<a class="btn" href="#visit/' + p.id + '">' + icon('check', 20, 2.6) + 'Відмітити результат</a>' +
         '<div class="row" style="gap:8px"><button class="btn sec" data-act="showOnMap" data-id="' + p.id + '" style="flex:1">' + icon('map', 18) + 'На карті</button>' +
@@ -1748,12 +1816,22 @@
         (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:48px;height:48px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
       '</div>' +
       dupBox(p) +
+      '<div class="seg segw ctabs" style="background:#fff;box-shadow:none;height:48px">' + [['find', 'Як знайти'], ['read', 'Показники'], ['data', 'Дані абонента']].map(function (t) { return '<button data-act="ctab" data-v="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '" style="height:40px">' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="cpane col" data-pane="find" style="gap:20px' + (tab === 'find' ? '' : ';display:none') + '">' +
       '<div class="card"><div class="h2" style="font-size:15px">Як знайти</div>' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div id="photos" class="photos"></div>' +
         '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
         '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
         '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
+      '<div class="card"><div class="between"><div class="h2">Адреса на карті</div><span class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</span></div>' +
+        '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
+        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
+        '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
+      '</div>' +
+      '<button class="btn" data-act="saveCard" data-id="' + p.id + '">Зберегти</button>' +
+      '</div>' +
+      '<div class="cpane col" data-pane="read" style="gap:20px' + (tab === 'read' ? '' : ';display:none') + '">' +
       '<div class="card"><div class="h2">Показники</div>' +
         '<div class="grid2" style="gap:8px"><div class="card dark" style="padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">Останній</span><span style="font-size:24px;font-weight:800">' + (last ? fmt(last.reading) : '—') + '</span><span class="small mute">' + (last ? (last.fromList ? 'з маршрутного листа' : dt(last.ts) + ' · ' + tm(last.ts)) : 'ще немає') + '</span></div>' +
         '<div class="card" style="background:#F6F6F7;padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">З попереднього</span><span style="font-size:24px;font-weight:800">' + (delta != null ? (delta >= 0 ? '+' : '') + fmt(delta) : '—') + '</span><span class="small mute">кВт·год</span></div></div>' +
@@ -1765,15 +1843,13 @@
             return '<div class="list-row" style="justify-content:space-between"><div class="col"><b>' + dt(v.ts) + '</b><span class="small mute">' + tm(v.ts) + (v.method ? ' · ' + esc(v.method) : '') + '</span></div><div class="col" style="align-items:flex-end"><b style="font-size:16px">' + fmt(v.reading) + '</b><span class="small mute">' + (dd != null ? (dd >= 0 ? '+' : '') + fmt(dd) : '—') + '</span></div></div>';
           }).join('') + '</div>' : '') +
       '</div>' +
-      '<div class="card"><div class="between"><div class="h2">Адреса на карті</div><span class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</span></div>' +
-        '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
-        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
-        '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
+      visitsCard(p) +
       '</div>' +
+      '<div class="cpane col" data-pane="data" style="gap:20px' + (tab === 'data' ? '' : ';display:none') + '">' +
       '<div class="card"><div class="col" style="gap:2px"><div class="h2">Дані абонента</div><div class="small mute">Усі поля офіційного застосунку, в тому ж порядку</div></div>' +
         OFFICIAL.map(function (o, i) {
           var val = f[o[0]] || '', inp;
-          if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + (last.fromList ? ' · з маршрутного листа' : ' · ' + dt(last.ts)) : 'Блок «Показники» вище') + '</div>';
+          if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + (last.fromList ? ' · з маршрутного листа' : ' · ' + dt(last.ts)) : 'Вкладка «Показники»') + '</div>';
           else if (o[2] === 'select') inp = pickBtn(o[0], val, 'Вибрати');
           else if (o[2] === 'textarea') inp = '<div id="seals" class="seals"></div>';
           else if (o[2] === 'tel') inp = '<div class="row" style="gap:8px"><input class="input" data-f="phone" id="f-phone" type="tel" inputmode="tel" value="' + esc(val) + '" placeholder="Номер телефону">' +
@@ -1784,8 +1860,16 @@
         '<button class="btn" data-act="saveCard" data-id="' + p.id + '">Зберегти</button>' +
       '</div>' +
       '<button class="btn sec" data-act="deletePoint" data-id="' + p.id + '" style="color:#B91C1C">Видалити точку (дубль)</button>' +
-      '</div>';
+      '</div></div>';
     loadPhotos(p.id); bindPhotoInputs(p.id); renderSeals(p.id);
+  }
+  /* усі відмітки по точці: хто, коли, що */
+  function visitsCard(p) {
+    var L = visitsOf(p.id);
+    return '<div class="card" style="gap:4px"><div class="h2" style="font-size:15px">Відмітки · ' + L.length + '</div>' +
+      (L.length ? L.slice(0, 30).map(function (v) {
+        return '<div class="list-row" style="justify-content:space-between"><div class="col" style="min-width:0"><b>' + esc(RESNAME[v.result] || v.result) + (v.reading ? ' · ' + fmt(v.reading) : '') + '</b><span class="small mute">' + dt(v.ts) + ' ' + tm(v.ts) + ' · ' + esc(whoName(v.by || me().id)) + (v.method && v.method !== 'зчитано' ? ' · ' + esc(v.method) : '') + '</span></div></div>';
+      }).join('') : '<div class="small mute" style="padding:6px 0">Ще не відмічали</div>') + '</div>';
   }
   function dupBox(p) {
     if ((p.flags || []).indexOf('dup') < 0) return '';
@@ -1912,7 +1996,7 @@
     if (V.id !== id) V = { id: id, res: null, prof: p.status, tags: (p.tags || []).slice() };
     var idx = routeIndex(id), next = S.route && S.route.ids[idx >= 0 ? idx + 1 : 0];
     app.innerHTML = '<div class="screen" style="padding-bottom:120px">' +
-      '<div class="row"><a class="iconbtn" href="#card/' + id + '" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><div class="col"><div class="small mute">' + (idx >= 0 ? '№' + (idx + 1) + ' · ' : '') + monthName().toLowerCase() + '</div><div style="font-size:18px;font-weight:800">' + esc(addr(p)) + '</div></div></div>' +
+      '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">' + (idx >= 0 ? '№' + (idx + 1) + ' · ' : '') + monthName().toLowerCase() + '</div><div style="font-size:18px;font-weight:800">' + esc(addr(p)) + '</div></div></div>' +
       '<div class="card"><div class="h2">1. Що сьогодні?</div><div class="grid2" style="gap:8px">' + RESULTS.map(function (r) {
         return '<button class="opt' + (V.res === r[0] ? ' on' : '') + '" data-act="res" data-v="' + r[0] + '"' + (r[0] === 'note' ? ' style="grid-column:1/-1"' : '') + '><b style="font-size:15px">' + r[1] + '</b><small>' + r[2] + '</small></button>';
       }).join('') + '</div>' +
@@ -1966,7 +2050,7 @@
     /* для ручного уточнення одразу вмикаємо супутник, після виходу повертаємо попередній шар */
     if (p && navigator.onLine && (S.meta.layer || 'scheme') !== 'sat') { S.layerBeforeBind = S.meta.layer || 'scheme'; if (map) setLayer('sat'); else S.meta.layer = 'sat'; }
     app.innerHTML = '<svg class="crosshair" width="40" height="52" viewBox="0 0 40 52" role="img" aria-label="Точка лічильника"><path d="M20 50s-17-15-17-29A17 17 0 0137 21c0 14-17 29-17 29z" fill="#111" stroke="#fff" stroke-width="3"/><circle cx="20" cy="21" r="7" fill="' + (p ? ST[p.status].color : '#F59E0B') + '"/></svg>' +
-      '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px"><div class="row"><a class="iconbtn" href="' + (p ? '#card/' + p.id : '#map') + '" aria-label="Скасувати">' + icon('close', 20, 2.4) + '</a>' +
+      '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px"><div class="row"><button class="iconbtn" data-act="back" aria-label="Скасувати">' + icon('close', 20, 2.4) + '</button>' +
       '<div class="pill" style="flex-grow:1;height:48px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.06);min-width:0"><span class="small mute" style="font-size:11px">' + (p ? 'Розташування точки' : 'Нова точка') + '</span><span style="font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">' + esc(p ? addr(p) : 'Стань біля лічильника') + '</span></div></div>' +
       '<div class="between"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button><div class="seg" id="bind-lay"></div></div></div>' +
       '<div class="sheet" style="bottom:calc(16px + var(--safe-b))" id="bind-sheet"></div>';
@@ -2053,6 +2137,7 @@
     app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Огляд</h1></div>' +
       '<div class="grid2 tools"><a href="#plan" class="tool">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
         '<a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
+      districtCard() +
       coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
       statusList() +
       (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
@@ -2078,7 +2163,7 @@
     var list = qp.filter(function (p) { return !QF || p.flags.indexOf(QF) >= 0; });
     var ref = S.pos || centroid(villagePoints().length ? villagePoints() : qp);
     list.sort(function (a, b) { return dist(ref, a) - dist(ref, b); });
-    app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#villages" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Уточнити в полі</h1></div>' +
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Уточнити в полі</h1></div>' +
       '<div class="tags"><button class="chip' + (!QF ? ' on' : '') + '" data-act="qf" data-v="">Усі · ' + qp.length + '</button>' + QUEUE_FLAGS.filter(function (f) { return c[f]; }).map(function (f) {
         return '<button class="chip' + (QF === f ? ' on' : '') + '" data-act="qf" data-v="' + f + '">' + FLAGNAME[f] + ' · ' + c[f] + '</button>';
       }).join('') + '</div><div class="small mute">Відсортовано за відстанню від вас</div>' +
@@ -2114,11 +2199,10 @@
   }
 
   /* ---------- Налаштування ---------- */
-  function renderSettings() {
+  function settingsBody(inMe) {
     var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
     var mine = S.visits.filter(function (v) { return v.by === me().id || !v.by; }).length;
-    app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Дані й налаштування</h1></div>' +
-      '<div class="card"><div class="between"><span class="mute">Точок</span><b>' + fmt(S.points.size) + '</b></div><div class="between"><span class="mute">Візитів</span><b>' + fmt(S.visits.length) + '</b></div>' +
+    return '<div class="card"><div class="between"><span class="mute">Точок</span><b>' + fmt(S.points.size) + '</b></div><div class="between"><span class="mute">Візитів</span><b>' + fmt(S.visits.length) + '</b></div>' +
       '<div class="between"><span class="mute">Остання копія</span><b>' + (S.meta.lastBackup ? dt(S.meta.lastBackup) : 'ніколи') + '</b></div><div class="between"><span class="mute">Захист від очищення</span><b>' + (persisted ? 'увімкнено' : 'ні') + '</b></div></div>' +
 
       '<div class="card"><div class="h2">Норма зчитування</div><div class="small mute">Абонент, не зчитаний довше за норму, потрапляє в «Список ' + nd + '» — друге коло після планового обходу.</div>' +
@@ -2126,7 +2210,7 @@
         sliderHtml('dl', routeCfg().limit) + '</div>' +
 
       '<div class="card"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Поки без сервера — файлом через Telegram чи Google Диск</div></div></div>' +
-        '<a class="list-row" href="#me" style="border:0;padding:0">' + icon('user', 18) + '<b style="flex-grow:1">' + esc(me().name) + (me().tab ? ' · таб. ' + esc(me().tab) : '') + '</b>' + icon('right', 16, 2.4) + '</a>' +
+        (inMe ? '' : '<a class="list-row" href="#me" style="border:0;padding:0">' + icon('user', 18) + '<b style="flex-grow:1">' + esc(me().name) + (me().tab ? ' · таб. ' + esc(me().tab) : '') + '</b>' + icon('right', 16, 2.4) + '</a>') +
         '<button class="btn" data-act="syncOut">' + icon('cloud', 18) + 'Надіслати мої дані колегам</button>' +
         '<label class="btn sec" for="imp3">Прийняти дані від колеги</label><input id="imp3" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute">Моїх візитів: ' + fmt(mine) + (S.meta.lastSyncOut ? ' · надіслано ' + dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '') + '</div>' +
@@ -2146,9 +2230,16 @@
       '<div class="card"><div class="h2">Резервна копія</div><button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">Усі дані зберігаються лише на цьому телефоні. Робіть копію хоча б раз на кілька днів.</div></div>' +
-      '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(me().id) + ' · карта © OpenStreetMap, супутник © Esri</div></div>';
-    $('#imp2').onchange = importFile; $('#imp3').onchange = importFile;
+      '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(me().id) + ' · карта © OpenStreetMap, супутник © Esri</div>';
+  }
+  function bindSettings() {
+    if ($('#imp2')) $('#imp2').onchange = importFile; if ($('#imp3')) $('#imp3').onchange = importFile;
     bindSlider('dl', function (n) { setLimit(n).then(function () { toast('Маршрут: ' + limLabel(n) + ' адрес'); }); });
+  }
+  function renderSettings() {
+    if (S.points.size && me().login) return location.replace('#me');
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Дані й налаштування</h1></div>' + settingsBody(false) + '</div>';
+    bindSettings();
   }
 
   /* ---------- події ---------- */
@@ -2188,6 +2279,16 @@
       case 'addVillage': pickVillageFor(S.adding.village, function (v) { S.adding.village = v || null; S.adding.vSet = true; renderSheet(); }); break;
       case 'bindVillage': pickVillageFor(bindVillage().v, function (v) { B.village = v || null; B.vSet = true; renderBindUi(); }); break;
       case 'newVillage': addVillage(function () { render(); }); break;
+      case 'ctab': S.cardTab = el.getAttribute('data-v');
+        document.querySelectorAll('.cpane').forEach(function (x) { x.style.display = x.getAttribute('data-pane') === S.cardTab ? '' : 'none'; });
+        document.querySelectorAll('.ctabs button').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-v') === S.cardTab); }); break;
+      case 'back': goBack(); break;
+      case 'aqPick': var ap = S.points.get(id); AQ = ''; setMeta('allF', { st: [], cy: [] }); setMeta('allMin', true); S.sel = id; renderAll.fitNext = false; render(); if (ap) fitTo([ap]); break;
+      case 'aqClear': AQ = ''; render(); break;
+      case 'search': S.focusSearch = true; go('#all'); break;
+      case 'quick': if (el.getAttribute('data-v') === 'ok') { S.quickOk = id; renderSheet(); } else quickVisit(id, el.getAttribute('data-v')); break;
+      case 'quickSave': quickVisit(id, 'ok'); break;
+      case 'quickCancel': S.quickOk = null; renderSheet(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
@@ -2196,7 +2297,7 @@
       case 'csvVisits': exportCsv('visits'); break;
       case 'syncOut': exportSync(); break;
       case 'offline': downloadOffline(el); break;
-      case 'cycle': setMeta('normDays', +el.getAttribute('data-v')).then(function () { invalidate(); S.route = null; renderSettings(); }); break;
+      case 'cycle': setMeta('normDays', +el.getAttribute('data-v')).then(function () { invalidate(); S.route = null; var y1 = window.scrollY; render(); window.scrollTo(0, y1); }); break;
       case 'secPick': SP.focus = SP.focus === +el.getAttribute('data-v') ? null : +el.getAttribute('data-v'); renderSectorsUi(); fitSectors(); break;
       case 'secSave': saveSectors(); break;
       case 'secMine': setMine(+el.getAttribute('data-v')); break;
@@ -2232,7 +2333,7 @@
         F[g] = F[g].indexOf(vv) >= 0 ? F[g].filter(function (x) { return x !== vv; }) : F[g].concat([vv]);
         setMeta('allF', F); render(); break;
       case 'allReset': setMeta('allF', { st: [], cy: [] }); render(); break;
-      case 'toggleAll': setMeta('allMin', !S.meta.allMin); renderAll.fitNext = false; render(); break;
+      case 'toggleAll': setMeta('allMin', !(S.meta.allMin !== false)); renderAll.fitNext = false; render(); break;
       case 'toggleSheet': setMeta('sheetMin', !S.meta.sheetMin); renderSheet(); break;
       case 'toggleTiles': setMeta('tilesMin', !S.meta.tilesMin); renderMap.fitNext = false; render(); break;
       case 'pickVillageSheet': pickVillage(); break;
