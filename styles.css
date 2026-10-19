@@ -174,9 +174,12 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .tool.dark span{color:#B4B4BA}
 .stgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .sttile{background:var(--row);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
-.fold{border-top:1px solid var(--bg);padding-top:10px}
+.fold{border-top:1px solid var(--bg);padding-top:12px}
 .fold summary{list-style:none;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:14px}
 .fold summary::-webkit-details-marker{display:none}
 .fold[open] summary svg:last-child{transform:rotate(180deg)}
 .upd{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 10px);z-index:9999;display:flex;align-items:center;gap:10px;padding:12px 14px;border:0;border-radius:14px;background:#111;color:#fff;font:inherit;font-size:15px;box-shadow:0 6px 24px rgba(0,0,0,.25);text-align:left}
 .upd span{flex-grow:1}.upd b{background:#fff;color:#111;border-radius:10px;padding:6px 12px}
+.cv{gap:14px}
+.cv-sec{border-top:1px solid var(--bg);padding-top:14px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#71717A}
+.fold-row{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;border-top:1px solid var(--bg);background:none;padding:12px 0 0;font:inherit;font-size:14px;color:inherit;cursor:pointer}

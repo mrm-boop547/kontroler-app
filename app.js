@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.11';
+  var VERSION = '0.11.12';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1001,42 +1001,53 @@
       placed++;
       if (/GPS|вручну/.test(p.src || '')) exact++;
       var f = p.fields || {}; if (f.fio || f.serial) data++;
-      if (p.created && p.created >= t30) { m30++; var au = p.createdBy || (p.src === 'MAPS.ME' ? 'MAPS.ME' : '?'); byA[au] = (byA[au] || 0) + 1; }
-      if (p.created && p.created >= t7) wk++;
       var k = p.village || 'Без села'; byV[k] = (byV[k] || 0) + 1;
+      /* темп рахуємо лише по точках, внесених контролерами в полі; імпорт з MAPS.ME — разове завантаження, не темп */
+      if (p.src === 'MAPS.ME' || !p.created) return;
+      if (p.created >= t30) { m30++; var au = p.createdBy || '?'; byA[au] = (byA[au] || 0) + 1; }
+      if (p.created >= t7) wk++;
     });
     var perDay = m30 / 22, left = Math.max(0, total - placed), days = perDay > 0 ? Math.ceil(left / perDay) : null;
-    var eta = null; if (days != null) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
-    return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, byV: byV };
+    var eta = null; if (days != null && days < 22 * 12 * 5) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
+    var need = Math.ceil(left / (21 * 12));
+    return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, days: days, need: need, byV: byV };
   }
   /* «Уточнити в полі» — згорнутий рядок усередині блоку локацій: видно лише кількість, деталі по тапу */
   function queueFold() {
     var qp = queuePoints(), c = {};
     qp.forEach(function (p) { p.flags.forEach(function (f) { if (QUEUE_FLAGS.indexOf(f) >= 0) c[f] = (c[f] || 0) + 1; }); });
     return '<details class="fold"><summary><span class="row" style="gap:8px">' + icon('pin', 16) + '<b>Уточнити в полі</b></span><span class="row" style="gap:8px"><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(qp.length) + '</span>' + icon('down', 16, 2.4) + '</span></summary>' +
-      '<div class="col" style="gap:6px;padding-top:8px">' + QUEUE_FLAGS.filter(function (f) { return c[f]; }).map(function (f) {
-        return '<div class="between small"><span class="mute">' + FLAGNAME[f] + '</span><b>' + fmt(c[f]) + '</b></div>';
+      '<div class="col" style="gap:8px;padding-top:12px">' + QUEUE_FLAGS.filter(function (f) { return c[f]; }).map(function (f) {
+        return '<div class="between" style="font-size:14px"><span class="mute">' + FLAGNAME[f] + '</span><b>' + fmt(c[f]) + '</b></div>';
       }).join('') + '<a class="btn sec" href="#queue" style="height:44px;margin-top:4px">Відкрити список, найближчі першими</a></div></details>';
   }
   function coverageCard(full) {
-    var c = coverage(), P = pct(c.placed, c.total);
-    var eta = c.eta ? MONTHS[c.eta.getMonth()].toLowerCase() + ' ' + c.eta.getFullYear() : '—';
-    var tag = full ? 'div' : 'a';
-    return '<' + tag + (full ? '' : ' href="#villages"') + ' class="card" style="gap:10px">' +
-      '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Локації абонентів на карті</span>' +
-      '<b style="font-size:22px">' + fmt(c.placed) + ' <span class="mute" style="font-size:15px">з ' + fmt(c.total) + '</span></b></div><b style="font-size:22px">' + P + '%</b></div>' +
-      '<div class="bar" style="height:8px"><span style="flex:' + c.exact + ' 1 0;background:#111"></span><span style="flex:' + Math.max(0, c.placed - c.exact) + ' 1 0;background:#71717A"></span><span style="flex:' + c.left + ' 1 0;background:#E4E4E7"></span></div>' +
-      '<div class="row small" style="gap:12px;flex-wrap:wrap;color:#3F3F46"><span class="row" style="gap:5px"><span class="dot" style="background:#111"></span>Підтверджено ' + fmt(c.exact) + '</span>' +
-      '<span class="row" style="gap:5px"><span class="dot" style="background:#71717A"></span>З MAPS.ME ' + fmt(c.placed - c.exact) + '</span>' +
-      '<span class="row" style="gap:5px"><span class="dot" style="background:#E4E4E7"></span>Не внесено ' + fmt(c.left) + '</span></div>' +
-      (full ? '<div class="grid3" style="margin-top:4px"><div class="col"><span class="small mute">За 7 днів</span><b style="font-size:18px">+' + fmt(c.wk) + '</b></div>' +
-        '<div class="col"><span class="small mute">Темп</span><b style="font-size:18px">' + (c.perDay ? c.perDay.toFixed(1).replace('.', ',') : '0') + '</b><span class="small mute">на роб. день</span></div>' +
-        '<div class="col"><span class="small mute">Прогноз</span><b style="font-size:18px">' + eta + '</b></div></div>' +
-        (c.perDay ? '<div class="small" style="line-height:1.45;font-weight:600">Якщо вносять усі ' + crew() + ' контролерів у тому ж темпі — ≈' + Math.ceil(c.left / (c.perDay * crew()) / 21) + ' міс.</div>' : '') +
-        (Object.keys(c.byA).length ? '<div class="col" style="gap:4px"><span class="small mute">Хто вносив за 30 днів</span><div class="tags">' + Object.keys(c.byA).sort(function (a, b) { return c.byA[b] - c.byA[a]; }).map(function (k) {
-          return '<span class="chip">' + esc(k === 'MAPS.ME' ? 'MAPS.ME' : k === '?' ? 'невідомо' : peerName(k) === 'я' ? (me().name || 'я') : peerName(k)) + ' <b>' + c.byA[k] + '</b></span>'; }).join('') + '</div></div>' : '') +
-        '<div class="small mute">Підтверджено = прив\'язано в застосунку за GPS або вручну. З даними абонента (ПІБ або серійний): ' + fmt(c.data) + '</div>'
-        : '<div class="small mute">+' + fmt(c.wk) + ' за тиждень · прогноз: ' + eta + '</div>') + (full ? queueFold() + '</div>' : '</a>');
+    var c = coverage(), P = pct(c.placed, c.total), imp = Math.max(0, c.placed - c.exact);
+    var etaTxt = c.eta ? MONTHS[c.eta.getMonth()].toLowerCase() + ' ' + c.eta.getFullYear() : c.days ? 'понад 5 років' : 'ще немає даних';
+    var leg = function (col, label, n) { return '<div class="between"><span class="row" style="gap:8px"><span class="dot" style="background:' + col + '"></span>' + label + '</span><b>' + fmt(n) + '</b></div>'; };
+    var head = '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Локації абонентів на карті</span>' +
+      '<b style="font-size:24px">' + fmt(c.placed) + ' <span class="mute" style="font-size:15px;font-weight:600">з ' + fmt(c.total) + '</span></b></div><b style="font-size:24px">' + P + '%</b></div>' +
+      '<div class="bar" style="height:10px"><span style="flex:' + c.exact + ' 1 0;background:#111;min-width:' + (c.exact ? 4 : 0) + 'px"></span><span style="flex:' + imp + ' 1 0;background:#A1A1AA"></span><span style="flex:' + c.left + ' 1 0;background:#E4E4E7"></span></div>';
+    if (!full) return '<a href="#villages" class="card" style="gap:10px">' + head + '<div class="small mute">+' + fmt(c.wk) + ' за тиждень · прогноз: ' + etaTxt + '</div></a>';
+    var who = Object.keys(c.byA).sort(function (a, b) { return c.byA[b] - c.byA[a]; });
+    var sec = function (t) { return '<div class="cv-sec">' + t + '</div>'; };
+    return '<div class="card cv">' + head +
+      '<div class="col" style="gap:8px;font-size:14px">' + leg('#111', 'Підтверджено в полі', c.exact) + leg('#A1A1AA', 'З MAPS.ME, не перевірено', imp) + leg('#E4E4E7', 'Ще не на карті', c.left) + '</div>' +
+
+      sec('Темп внесення в полі') +
+      '<div class="stgrid"><div class="sttile"><span class="small mute">За 7 днів</span><b style="font-size:22px">+' + fmt(c.wk) + '</b></div>' +
+        '<div class="sttile"><span class="small mute">На робочий день</span><b style="font-size:22px">' + c.perDay.toFixed(1).replace('.', ',') + '</b></div></div>' +
+      '<div class="col" style="gap:8px;font-size:14px">' +
+        '<div class="between"><span class="mute">Прогноз при такому темпі</span><b>' + etaTxt + '</b></div>' +
+        '<div class="between"><span class="mute">Щоб закрити за 12 міс.</span><b>≈' + fmt(c.need) + ' на день</b></div>' +
+        '<div class="between"><span class="mute">Це на кожного з ' + crew() + ' контролерів</span><b>≈' + fmt(Math.ceil(c.need / crew())) + ' на день</b></div></div>' +
+
+      (who.length ? sec('Хто вносив за 30 днів') + '<div class="col" style="gap:8px;font-size:14px">' + who.map(function (k) {
+        var nm = k === '?' ? 'невідомо' : peerName(k) === 'я' ? (me().name || 'я') : peerName(k);
+        return '<div class="between"><span class="row" style="gap:8px">' + icon('user', 16) + esc(nm) + '</span><b>' + fmt(c.byA[k]) + '</b></div>'; }).join('') + '</div>' : '') +
+
+      queueFold() +
+      '<button class="fold-row" data-act="vEdit"><span class="row" style="gap:8px">' + icon('edit', 16) + '<b>Кількість абонентів по селах</b></span>' + icon('right', 16, 2.4) + '</button></div>';
   }
 
   /* ---------- План на місяць ---------- */
@@ -2187,7 +2198,7 @@
       '<div class="grid2 tools"><a href="#plan" class="tool dark">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
         '<a href="#report" class="tool dark">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
       districtCard() +
-      coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
+      coverageCard(true) +
 
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
