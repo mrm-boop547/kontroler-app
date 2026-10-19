@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.3';
+  var VERSION = '0.9.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1563,6 +1563,24 @@
     });
     return best;
   }
+  /* село для нової точки: більшість серед 7 найближчих точок у радіусі 1,5 км; поруч нікого — вибране зараз село */
+  function guessVillage(pos) {
+    var near = [];
+    S.points.forEach(function (q) { if (!q.village) return; var d = dist(pos, q); if (d < 1500) near.push({ v: q.village, d: d }); });
+    near.sort(function (a, b) { return a.d - b.d; }); near = near.slice(0, 7);
+    if (!near.length) return { v: newVillage(), how: newVillage() ? 'вибране село' : 'поруч немає точок' };
+    var c = {}; near.forEach(function (x) { c[x.v] = (c[x.v] || 0) + 1; });
+    var v = Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
+    return { v: v, how: 'за сусідніми точками, найближча ' + Math.round(near[0].d) + ' м' };
+  }
+  function villageRow(cur, how, act) {
+    return '<button type="button" class="input selbtn" data-act="' + act + '" style="height:56px"><span class="col" style="gap:1px;align-items:flex-start;min-width:0"><span class="small mute" style="font-size:11px">Село' + (how ? ' · ' + esc(how) : '') + '</span>' +
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">' + esc(cur || 'Без села') + '</span></span>' + icon('down', 18, 2.4) + '</button>';
+  }
+  function pickVillageFor(cur, cb) {
+    var vs = villages().filter(function (x) { return x.name !== 'Без села'; });
+    openSheet('У яке село', vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }).concat([{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', cb);
+  }
   function startAdd(ll, pt) {
     var street = '', house = '';
     try {
@@ -1572,12 +1590,13 @@
       var sn = map.getLayer('street-name') ? map.queryRenderedFeatures([[pt.x - 160, pt.y - 160], [pt.x + 160, pt.y + 160]], { layers: ['street-name'] }) : [];
       var ns = nearestFeature(sn, pt); if (ns) street = cleanStreet(ns.properties.name);
     } catch (x) { /* карта без даних — поля порожні */ }
-    S.adding = { lat: ll.lat, lon: ll.lng, street: street, house: house, st: 'y', auto: !!(street || house) };
+    var gv = guessVillage({ lat: ll.lat, lon: ll.lng });
+    S.adding = { lat: ll.lat, lon: ll.lng, street: street, house: house, st: 'y', auto: !!(street || house), village: gv.v, how: gv.how, vSet: false };
     if (!addMarker) {
       var el = document.createElement('div'); el.className = 'addpin';
       el.innerHTML = '<svg width="34" height="44" viewBox="0 0 40 52" aria-hidden="true"><path d="M20 50s-17-15-17-29A17 17 0 0137 21c0 14-17 29-17 29z" fill="#111" stroke="#fff" stroke-width="3"/><circle cx="20" cy="21" r="7" fill="#fff"/></svg>';
       addMarker = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: true }).setLngLat(ll).addTo(map);
-      addMarker.on('dragend', function () { var c = addMarker.getLngLat(); if (S.adding) { S.adding.lat = c.lat; S.adding.lon = c.lng; } });
+      addMarker.on('dragend', function () { var c = addMarker.getLngLat(); if (S.adding) { S.adding.lat = c.lat; S.adding.lon = c.lng; if (!S.adding.vSet) { var g = guessVillage({ lat: c.lat, lon: c.lng }); S.adding.village = g.v; S.adding.how = g.how; renderSheet(); } } });
     } else addMarker.setLngLat(ll);
     if (S.meta.sheetMin) setMeta('sheetMin', false);
     renderSheet();
@@ -1590,6 +1609,7 @@
       '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (a.st === s ? ' on' : '') + '" data-act="addSt" data-v="' + s + '" style="min-height:44px;align-items:center;padding:6px 4px">' + dotHtml(s) + '<small style="opacity:1;font-weight:700">' + ST[s].short + '</small></button>';
       }).join('') + '</div>' +
+      villageRow(a.village, a.vSet ? 'вибрано вручну' : a.how, 'addVillage') +
       '<div class="small mute">' + (a.auto ? 'Адресу підставлено з карти, перевірте. ' : '') + 'Мітку можна перетягнути.</div>' +
       '<button class="btn" data-act="addSave">' + icon('pin') + 'Зберегти точку</button></div>';
     $('#ad-s').oninput = function () { a.street = this.value; };
@@ -1599,12 +1619,12 @@
     var a = S.adding; if (!a) return;
     var s = a.street.trim(), h = a.house.trim(), near = null, bd = Infinity;
     S.points.forEach(function (q) { var d = dist(a, q); if (d < bd && q.village) { bd = d; near = q; } });
-    var p = { id: newPid(), lat: +a.lat.toFixed(6), lon: +a.lon.toFixed(6), village: near && bd < 1500 ? near.village : newVillage(),
+    var p = { id: newPid(), lat: +a.lat.toFixed(6), lon: +a.lon.toFixed(6), village: a.village || null,
       street: s, house: h, status: a.st, tags: [], note: '', src: 'вручну (карта)', created: today(), createdBy: me().id,
       flags: [].concat(s ? [] : ['no_street'], h ? [] : ['no_house']) };
     if (!dupGuard(p)) { cancelAdd(true); return; }
     S.points.set(p.id, p); S.route = null; cancelAdd(true); S.sel = p.id;
-    savePoint(p).then(function () { toast('Точку додано: ' + addr(p)); updateMap(); renderSheet(); });
+    savePoint(p).then(function () { toast('Точку додано: ' + addr(p) + ' · ' + (p.village || 'без села')); updateMap(); renderSheet(); });
   }
 
   /* ---------- Усі мітки з фільтрами ---------- */
@@ -1920,10 +1940,12 @@
           '<div class="small mute">Стань біля лічильника. Кнопка активна при ±15 м</div></div></div>'
         : '<div class="small" style="line-height:1.5;font-weight:600">Посуньте карту так, щоб чорна мітка стала на будинок або місце лічильника. На супутнику видно дахи й хвіртки.' +
           (p && p.src ? '<br><span class="mute">Зараз: ' + esc(p.src === 'MAPS.ME' ? 'мітка з MAPS.ME' : p.src) + (p.acc ? ' ±' + Math.round(p.acc) + ' м' : '') + '</span>' : '') + '</div>') +
+      (p ? '' : villageRow(bindVillage().v, B.vSet ? 'вибрано вручну' : bindVillage().how, 'bindVillage')) +
       (p ? '' : '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="nb-s" class="input" placeholder="Вулиця" value="' + esc(keep.s) + '"><input id="nb-h" class="input" placeholder="Будинок" value="' + esc(keep.h) + '"></div>') +
       '<button class="btn" id="bindBtn" data-act="doBind">' + icon('pin') + (B.mode === 'gps' ? 'Прив\'язати за GPS' : 'Зберегти тут') + '</button>';
     renderBindAcc();
   }
+  function bindVillage() { if (B.vSet) return { v: B.village, how: 'вибрано вручну' }; var c = map ? map.getCenter() : null, pos = B.mode === 'gps' && S.pos ? S.pos : c ? { lat: c.lat, lon: c.lng } : S.pos; return pos ? guessVillage(pos) : { v: newVillage(), how: '' }; }
   function renderBindAcc() {
     var btn = $('#bindBtn'); if (!btn) return;
     if (B.mode !== 'gps') { btn.disabled = false; return; }
@@ -1941,8 +1963,8 @@
     var p = B.p;
     if (!p) {
       var s = $('#nb-s').value.trim(), h = $('#nb-h').value.trim();
-      var near = null, bd = Infinity; S.points.forEach(function (q) { var d = dist({ lat: lat, lon: lon }, q); if (d < bd && q.village) { bd = d; near = q; } });
-      p = { id: newPid(), createdBy: me().id, village: near && bd < 1500 ? near.village : newVillage(), street: s, house: h, status: 'y', tags: [], note: '',
+      var bv = B.vSet ? { v: B.village } : guessVillage({ lat: lat, lon: lon });
+      p = { id: newPid(), createdBy: me().id, village: bv.v || null, street: s, house: h, status: 'y', tags: [], note: '',
         created: today(), flags: [].concat(s ? [] : ['no_street'], h ? [] : ['no_house']) };
       p.lat = lat; p.lon = lon;
       if (!dupGuard(p)) return;
@@ -2102,6 +2124,8 @@
       case 'allWho': var nf = Object.assign({ st: [], cy: [] }, S.meta.allF || {}); nf.mine = false; nf.who = el.getAttribute('data-v') || null; setMeta('allF', nf); renderAll.fitNext = true; render(); break;
       case 'whoMap': setMeta('allF', { st: [], cy: [], who: el.getAttribute('data-v') }).then(function () { setMeta('allMin', true); renderAll.fitNext = true; go('#all'); }); break;
       case 'allMine': setMeta('allF', Object.assign({ st: [], cy: [] }, S.meta.allF || {}, { mine: !(S.meta.allF || {}).mine })); render(); break;
+      case 'addVillage': pickVillageFor(S.adding.village, function (v) { S.adding.village = v || null; S.adding.vSet = true; renderSheet(); }); break;
+      case 'bindVillage': pickVillageFor(bindVillage().v, function (v) { B.village = v || null; B.vSet = true; renderBindUi(); }); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
