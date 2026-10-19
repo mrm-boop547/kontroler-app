@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.6';
+  var VERSION = '0.9.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -512,7 +512,7 @@
     window.scrollTo(0, 0);
   }
   function tabs(active) {
-    var t = [['home', 'Головна', 'home'], ['map', 'Обхід', 'map'], ['all', 'Мітки', 'pin'], ['villages', 'Села', 'village'], ['me', 'Я', 'user']];
+    var t = [['home', 'Головна', 'home'], ['map', 'Обхід', 'map'], ['all', 'Мітки', 'pin'], ['villages', 'Огляд', 'chart'], ['me', 'Я', 'user']];
     return '<nav class="tabs">' + t.map(function (x) {
       var on = x[0] === active;
       return '<a href="#' + x[0] + '" class="' + (on ? 'on' : '') + '">' + icon(x[2], on ? 18 : 20) + x[1] + '</a>';
@@ -893,6 +893,26 @@
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#fff;border:2px solid #A1A1AA"></span>Немає даних</span><b style="font-size:20px">' + pct(Math.max(left, 0), act) + '%</b><span class="small mute">' + fmt(Math.max(left, 0)) + '</span></div>' +
       '</div></a>';
   }
+  function statusList() {
+    var ps = villagePoints(), c = counts(ps);
+    return '<div class="stlist"><div class="small mute" style="padding:0 4px 2px">Статуси доступу · ' + esc(vLabel()) + '</div>' + ST_ORDER.map(function (s) {
+        return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + ' strow-dot"></span>' +
+          '<span class="col" style="gap:0;min-width:0"><b class="strow-n">' + fmt(c[s]) + '</b>' +
+          '<span class="strow-l">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '%</span></span></a>';
+      }).join('') + '</div>';
+  }
+  /* на головній: хто якою вулицею в обраному селі */
+  function streetsCard() {
+    var v = village();
+    if (!v || v === ALL) return '<a href="#sectors" class="card" style="gap:6px"><div class="between"><b style="font-size:17px">Хто якою вулицею</b>' + icon('right', 18, 2.4) + '</div><span class="small mute">Оберіть село вгорі, щоб розділити вулиці між контролерами</span></a>';
+    var sv = splitOf(v), mi = myIdx(sv);
+    if (!sv) return '<a href="#sectors" class="card" style="gap:10px"><div class="between"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Вулиці · ' + esc(v) + '</span><b style="font-size:17px">Ще не розподілено</b></div>' +
+      '<span style="width:44px;height:44px;border-radius:22px;background:#111;color:#fff;display:flex;align-items:center;justify-content:center">' + icon('grid', 20) + '</span></div><span class="small mute">Розділити вулиці між тими, хто сьогодні в селі, або сканувати QR колеги</span></a>';
+    var st = splitStats(v, sv.crew.length, sv.assign);
+    return '<a href="#sectors" class="card" style="gap:10px"><div class="between"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Вулиці · ' + esc(v) + ' · ' + sv.crew.length + ' контролери</span>' +
+      '<b style="font-size:17px">' + (mi != null ? 'Ваші вулиці: ' + st[mi].streets + ' · ' + st[mi].left + ' адрес чекають' : 'Розподілено, оберіть «Це я»') + '</b></div>' + icon('right', 18, 2.4) + '</div>' +
+      '<div class="tags">' + sv.crew.map(function (n, i) { return '<span class="chip" style="background:#fff;border:1.5px solid ' + SEC_COL[i % SEC_COL.length] + '"><span class="dot" style="background:' + SEC_COL[i % SEC_COL.length] + '"></span>' + esc(n) + (i === mi ? ' · я' : '') + ' <span style="opacity:.6">' + st[i].left + '</span></span>'; }).join('') + '</div></a>';
+  }
   function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
   function renderHome() {
     var ps = villagePoints(), c = counts(ps);
@@ -917,16 +937,7 @@
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
       planCard() +
       districtCard() +
-      coverageCard(false) +
-      '<div class="stlist"><div class="small mute" style="padding:0 4px 2px">Статуси доступу · ' + esc(vLabel()) + '</div>' + ST_ORDER.map(function (s) {
-        return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + ' strow-dot"></span>' +
-          '<span class="col" style="gap:0;min-width:0"><b class="strow-n">' + fmt(c[s]) + '</b>' +
-          '<span class="strow-l">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '%</span></span></a>';
-      }).join('') + '</div>' +
-      (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
-      '<div class="grid3 tools"><a href="#plan" class="tool">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
-        '<a href="#sectors" class="tool">' + icon('grid', 22) + '<b>Вулиці</b><span>хто куди йде</span></a>' +
-        '<a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span>день, місяць</span></a></div>' +
+      streetsCard() +
       '</div>' + tabs('home');
     bindVillageSelect('vsel');
     startGps();
@@ -1861,6 +1872,13 @@
   }
   function saveCard(id) {
     var p = S.points.get(id); if (!p) return;
+    /* показник, вписаний у поле, але не збережений окремою кнопкою — зберігаємо разом з карткою, щоб не загубився */
+    var pend = ($('#rdg') && $('#rdg').value || '').replace(/\s/g, '');
+    if (pend) { if (!/^\d+(\.\d+)?$/.test(pend)) return toast('Показник: лише цифри'); var keep = {}; document.querySelectorAll('[data-f]').forEach(function (el) { keep[el.getAttribute('data-f')] = el.tagName === 'BUTTON' ? el.getAttribute('data-val') : el.value; }); var nt = $('#note').value, av = [$('#a-v').value, $('#a-s').value, $('#a-h').value];
+      return saveReading(id).then(function () {
+        document.querySelectorAll('[data-f]').forEach(function (el) { var k = el.getAttribute('data-f'); if (keep[k] == null) return; if (el.tagName === 'BUTTON') el.setAttribute('data-val', keep[k]); else el.value = keep[k]; });
+        $('#note').value = nt; $('#a-v').value = av[0]; $('#a-s').value = av[1]; $('#a-h').value = av[2]; return saveCard(id);
+      }); }
     var f = Object.assign({}, p.fields || {});
     document.querySelectorAll('[data-f]').forEach(function (el) { f[el.getAttribute('data-f')] = (el.tagName === 'BUTTON' ? el.getAttribute('data-val') : el.value).trim(); });
     p.fields = f; p.note = $('#note').value.trim();
@@ -1913,9 +1931,11 @@
     if (V.res === 'empty') V.prof = 'n';
     p.status = V.prof; p.tags = V.tags.slice();
     if (note) p.note = p.note ? p.note + '; ' + note : note;
+    var inRoute = routeIndex(id) >= 0;
     put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); return savePoint(p); }).then(function () {
-      V = {}; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true;
-      toast('Збережено: ' + RESNAME[v.result]); go('#map');
+      V = {}; S.route = computeRoute(); toast('Збережено: ' + RESNAME[v.result]);
+      /* з маршруту — далі до наступної адреси; відкрито окремо (пошук, мітки) — повертаємось у картку */
+      if (inRoute) { S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; go('#map'); } else go('#card/' + id);
     });
   }
   function saveReading(id) {
@@ -1923,7 +1943,7 @@
     if (!/^\d+(\.\d+)?$/.test(val)) return toast('Введіть показник цифрами');
     var v = newVisit({ pointId: id, result: 'ok', prof: S.points.get(id).status, reading: val, method: 'зчитано', note: null,
       pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
-    put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); S.route = null; toast('Показник збережено'); renderCard(id); });
+    return put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); S.route = null; toast('Показник збережено: ' + fmt(val)); var y = window.scrollY; renderCard(id); window.scrollTo(0, y); });
   }
 
   /* ---------- Прив'язка: GPS або вручну по карті/супутнику ----------
@@ -2020,10 +2040,16 @@
         '<div class="row small" style="gap:10px;font-size:11px;color:#3F3F46">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:4px">' + dotHtml(s) + pct(c[s], ps.length) + '%</span>'; }).join('') + '</div></button>';
     });
     var q = queuePoints().length;
-    app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Села</h1></div>' +
+    var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
+    app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Огляд</h1></div>' +
+      '<div class="grid2 tools"><a href="#plan" class="tool">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
+        '<a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
       coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
+      statusList() +
+      (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
 
       '<a href="#queue" class="card big dark"><div class="between"><span style="font-size:17px;font-weight:800">Уточнити в полі</span><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(q) + '</span></div><span class="small mute">Без вулиці чи номера, без села, можливі дублі</span></a>' +
+      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
   function renderVillageTotals(vs, vt) {
