@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.5.0';
+  var VERSION = '0.5.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -397,6 +397,13 @@
     rd.onload = function () {
       var data; try { data = JSON.parse(rd.result); } catch (x) { return toast('Файл пошкоджений'); }
       var pts = data.points || [], vis = data.visits || [], meta = data.meta || [];
+      if (data.merge) {
+        var tx2 = db.transaction(['points', 'visits'], 'readwrite');
+        pts.forEach(function (p) { tx2.objectStore('points').put(p); });
+        vis.forEach(function (v) { delete v.id; tx2.objectStore('visits').put(v); });
+        tx2.oncomplete = function () { load().then(function () { toast('Додано точок: ' + pts.length); if (pts[0]) go('#card/' + pts[0].id); }); };
+        return;
+      }
       if (!pts.length) return toast('У файлі немає точок');
       if (S.points.size && !confirm('Замінити всі дані на телефоні даними з файлу? (' + pts.length + ' точок)')) {
         if (!confirm('Тоді лише оновити назви з MAPS.ME, не чіпаючи ваших змін і візитів?')) return;
@@ -845,6 +852,8 @@
     var p = S.points.get(id); if (!p) return go('#home');
     var idx = routeIndex(p.id), cv = cycleMap()[p.id], rd = lastReading(p.id), f = p.fields || {};
     var last = rd[0], prev = rd[1];
+    var prevIdx = (p.fields || {}).prevIndex;
+    if (!last && prevIdx) last = { reading: prevIdx, ts: null, fromList: true };
     var delta = last && prev ? Number(last.reading) - Number(prev.reading) : null;
     var flags = (p.flags || []).filter(function (x) { return FLAGNAME[x]; });
     var phone = (f.phone || '').replace(/[^\d+]/g, '');
@@ -868,7 +877,7 @@
         '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
         '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
       '<div class="card"><div class="h2">Показники</div>' +
-        '<div class="grid2" style="gap:8px"><div class="card dark" style="padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">Останній</span><span style="font-size:24px;font-weight:800">' + (last ? fmt(last.reading) : '—') + '</span><span class="small mute">' + (last ? dt(last.ts) + ' · ' + tm(last.ts) : 'ще немає') + '</span></div>' +
+        '<div class="grid2" style="gap:8px"><div class="card dark" style="padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">Останній</span><span style="font-size:24px;font-weight:800">' + (last ? fmt(last.reading) : '—') + '</span><span class="small mute">' + (last ? (last.fromList ? 'з маршрутного листа' : dt(last.ts) + ' · ' + tm(last.ts)) : 'ще немає') + '</span></div>' +
         '<div class="card" style="background:#F6F6F7;padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">З попереднього</span><span style="font-size:24px;font-weight:800">' + (delta != null ? (delta >= 0 ? '+' : '') + fmt(delta) : '—') + '</span><span class="small mute">кВт·год</span></div></div>' +
         '<div class="field"><label for="rdg">Загальний' + (last ? ' (попередній: ' + fmt(last.reading) + ')' : '') + '</label><input id="rdg" class="input" inputmode="numeric" placeholder="Новий показник"></div>' +
         '<button class="btn out" data-act="saveReading" data-id="' + p.id + '">Зберегти показник</button>' +
@@ -886,7 +895,7 @@
       '<div class="card"><div class="col" style="gap:2px"><div class="h2">Дані абонента</div><div class="small mute">Усі поля офіційного застосунку, в тому ж порядку</div></div>' +
         OFFICIAL.map(function (o, i) {
           var val = f[o[0]] || '', inp;
-          if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + ' · ' + dt(last.ts) : 'Блок «Показники» вище') + '</div>';
+          if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + (last.fromList ? ' · з маршрутного листа' : ' · ' + dt(last.ts)) : 'Блок «Показники» вище') + '</div>';
           else if (o[2] === 'select') inp = pickBtn(o[0], val, 'Вибрати');
           else if (o[2] === 'textarea') inp = '<textarea class="input" data-f="' + o[0] + '" placeholder="Номер пломби: статус">' + esc(val) + '</textarea>';
           else if (o[2] === 'tel') inp = '<div class="row" style="gap:8px"><input class="input" data-f="phone" id="f-phone" type="tel" inputmode="tel" value="' + esc(val) + '" placeholder="Номер телефону">' +
