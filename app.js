@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.8';
+  var VERSION = '0.4.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -537,8 +537,9 @@
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
       districtCard() +
       '<div class="stlist"><div class="small mute" style="padding:0 4px 2px">Статуси доступу · ' + esc(village() || 'Без села') + '</div>' + ST_ORDER.map(function (s) {
-        return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + '" style="width:14px;height:14px"></span>' +
-          '<span class="strow-l">' + ST[s].label + '</span><b class="strow-n">' + c[s] + '</b><span class="mute" style="font-size:13px;min-width:38px;text-align:right">' + pct(c[s], ps.length) + '%</span>' + icon('right', 16, 2.4) + '</a>';
+        return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + ' strow-dot"></span>' +
+          '<span class="col" style="gap:2px;min-width:0"><span class="small mute">' + ST[s].label + '</span>' +
+          '<span class="strow-main"><b>' + fmt(c[s]) + '</b> адрес · ' + pct(c[s], ps.length) + '% села</span></span></a>';
       }).join('') + '</div>' +
       (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
       '<button class="btn sec" disabled style="border-style:dashed">' + icon('grid') + 'Сектори між контролерами · скоро</button>' +
