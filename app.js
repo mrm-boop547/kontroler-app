@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.8';
+  var VERSION = '0.9.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -512,7 +512,7 @@
     window.scrollTo(0, 0);
   }
   function tabs(active) {
-    var t = [['home', 'Головна', 'home'], ['map', 'Обхід', 'map'], ['all', 'Мітки', 'pin'], ['villages', 'Огляд', 'chart'], ['me', 'Я', 'user']];
+    var t = [['home', 'Головна', 'home'], ['villages', 'Огляд', 'chart'], ['map', 'Обхід', 'map'], ['all', 'Мітки', 'pin'], ['me', 'Я', 'user']];
     return '<nav class="tabs">' + t.map(function (x) {
       var on = x[0] === active;
       return '<a href="#' + x[0] + '" class="' + (on ? 'on' : '') + '">' + icon(x[2], on ? 18 : 20) + x[1] + '</a>';
