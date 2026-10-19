@@ -311,7 +311,7 @@
         setMeta('lastWalk', { key: r.key, coords: coords, meters: meters });
         if (location.hash === '#map') { updateMap(); renderSheet(); }
       });
-    }).catch(function () { if (!S.walkWarned) { S.walkWarned = 1; toast('Пішохідний маршрут недоступний, показано напряму'); } });
+    }).catch(function () { if (!S.walkWarned && location.hash === '#map') { S.walkWarned = 1; toast('Пішохідний маршрут недоступний, показано напряму'); } });
   }
   function routeCfgSheet() {
     var c = routeCfg(), v = village(), T = { auto: c.auto, limit: c.limit, types: c.types.slice(), streets: (c.streets[v] || []).slice() };
