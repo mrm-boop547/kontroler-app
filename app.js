@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.4';
+  var VERSION = '0.11.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -583,7 +583,8 @@
     var ini = u.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
     app.innerHTML = '<div class="screen">' +
       '<div class="card big dark" style="gap:14px"><div class="row" style="gap:14px"><span style="width:56px;height:56px;border-radius:28px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0">' + esc(ini) + '</span>' +
-        '<div class="col" style="gap:2px;min-width:0"><b style="font-size:20px">' + esc(u.name) + '</b><span class="small mute">' + (u.tab ? 'Табельний № ' + esc(u.tab) : 'Без табельного номера') + ' · ID ' + esc(id) + '</span></div></div>' +
+        '<div class="col" style="gap:2px;min-width:0;flex-grow:1"><b style="font-size:20px">' + esc(u.name) + '</b><span class="small mute">' + (u.tab ? 'Табельний № ' + esc(u.tab) : 'Без табельного номера') + ' · ID ' + esc(id) + '</span></div>' +
+        '<button class="iconbtn" data-act="logout" aria-label="Змінити контролера" title="Змінити контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('sync', 20) + '</button></div>' +
         '<div class="small mute">Здолбунівська дільниця · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
       routeCardHtml() +
       '<div class="card"><div class="h2" style="font-size:15px">Мої дані · ' + monthName().toLowerCase() + '</div>' +
@@ -591,7 +592,6 @@
         '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
         '<button class="btn sec" data-act="myPoints" style="height:46px">' + icon('pin', 18) + 'Мої точки на карті</button></div>' +
       settingsBody(true) +
-      '<button class="btn sec" data-act="logout">' + icon('user', 18) + 'Змінити контролера</button>' +
       '<div class="small mute" style="line-height:1.5">Ідентифікатор будується з табельного номера, тому на новому телефоні після входу й обміну даними ваші записи знову будуть вашими. Пароля немає: це підпис, а не захист.</div>' +
       '</div>' + tabs('me');
     bindSettings();
