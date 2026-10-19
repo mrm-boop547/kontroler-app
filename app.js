@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.7';
+  var VERSION = '0.11.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -981,6 +981,7 @@
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
       streetsCard() +
       planCard() +
+      statusList() +
       (needBackup ? '<button class="btn sec" data-act="backup">' + icon('cloud', 18) + 'Зробити резервну копію даних</button>' : '') +
       '</div>' + tabs('home');
     bindVillageSelect('vsel');
@@ -2176,7 +2177,6 @@
         '<a href="#report" class="tool dark">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
       districtCard() +
       coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
-      statusList() +
 
       '<a href="#queue" class="card big dark"><div class="between"><span style="font-size:17px;font-weight:800">Уточнити в полі</span><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(q) + '</span></div><span class="small mute">Без вулиці чи номера, без села, можливі дублі</span></a>' +
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · зчитано за ' + NORM() + ' днів</div>' +
