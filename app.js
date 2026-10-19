@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.0';
+  var VERSION = '0.9.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -96,7 +96,8 @@
       grid: '<path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="4"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
       chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', sync: '<path d="M20 12a8 8 0 01-14 5.3M4 12a8 8 0 0114-5.3"/><path d="M18 3v4h-4M6 21v-4h4"/>',
       table: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M9 10v10"/>', cloud: '<path d="M7 18a5 5 0 01-.6-10A6 6 0 0118 9a4.5 4.5 0 01-.5 9z"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5"/>',
-      user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>'
+      user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>',
+      globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>'
     };
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || '') + '</svg>';
   }
@@ -1472,7 +1473,7 @@
       '<div class="between"><div class="row"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
       '<button class="pill" data-act="routeCfg" style="height:48px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('gear', 18) + (routeCfg().auto ? 'Маршрут' : 'Маршрут вимк.') + '</button>' +
       (S.meta.tilesMin ? '' : '<button class="iconbtn" data-act="toggleTiles" aria-label="Згорнути статуси">' + '<span style="transform:rotate(180deg);display:flex">' + icon('down', 20, 2.6) + '</span></button>') + '</div>' +
-      '<div class="seg"><button data-act="layer" data-l="scheme" class="' + (lay === 'scheme' ? 'on' : '') + '">Схема</button><button data-act="layer" data-l="sat" class="' + (lay === 'sat' ? 'on' : '') + '">Супутник</button></div></div>' +
+      '<button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button></div>' +
       '</div><div id="sheet"></div>' + tabs('map');
     bindVillageSelect('vsel');
     renderSheet();
@@ -2152,7 +2153,7 @@
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (ok) { S.meta._persist = ok; });
       render();
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
-    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js');
   }
   window.__app = { S: S, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; } };
   boot();
