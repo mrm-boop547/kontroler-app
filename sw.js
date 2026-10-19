@@ -1,5 +1,5 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.11.10';
+var SHELL = 'shell-v0.11.11';
 var OFFLINE = 'offline-v1'; /* карта дільниці, збережена кнопкою «Зберегти карту офлайн» — не чиститься автоматично */
 var TILES = 'tiles-v1';
 var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
@@ -54,6 +54,7 @@ self.addEventListener('fetch', function (e) {
     }));
     return;
   }
+  if (/version\.json/.test(url)) return; /* завжди напряму з мережі */
   if (new URL(url).origin === self.location.origin) {
     /* спершу мережа (оминаючи кеш браузера), без мережі — збережена копія */
     e.respondWith(fetch(req, { cache: 'no-cache' }).then(function (res) {

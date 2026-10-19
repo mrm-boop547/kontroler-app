@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.10';
+  var VERSION = '0.11.11';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2277,6 +2277,7 @@
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
     return exchange + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
+      '<button class="btn sec" data-act="chkUpd">' + icon('sync', 18) + 'Перевірити оновлення · v' + VERSION + '</button>' +
       '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
   }
   function bindSettings() {
@@ -2387,6 +2388,7 @@
       case 'pickVillageSheet': pickVillage(); break;
       case 'qf': QF = el.getAttribute('data-v') || null; render(); break;
       case 'backup': exportBackup(); break;
+      case 'chkUpd': checkUpdate(true); break;
       case 'kml': exportKml(); break;
     }
   }
@@ -2416,7 +2418,33 @@
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (ok) { S.meta._persist = ok; });
       render();
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
-    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js');
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
+    checkUpdate();
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') checkUpdate(); });
+    setInterval(checkUpdate, 10 * 60 * 1000);
+  }
+  /* оновлення: version.json завжди з мережі, без кешу; якщо там новіша версія — плашка «Оновити» */
+  var swReg = null;
+  function verNum(v) { return String(v || '0').split('.').reduce(function (a, x) { return a * 1000 + (+x || 0); }, 0); }
+  function checkUpdate(manual) {
+    if (!navigator.onLine) { if (manual) toast('Немає інтернету'); return Promise.resolve(); }
+    return fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (verNum(j.v) > verNum(VERSION)) showUpdate(j.v);
+      else if (manual) toast('У вас остання версія ' + VERSION);
+    }).catch(function () { if (manual) toast('Не вдалося перевірити'); });
+  }
+  function showUpdate(v) {
+    var b = $('#upd');
+    if (!b) { b = document.createElement('button'); b.id = 'upd'; b.className = 'upd'; document.body.appendChild(b); b.addEventListener('click', applyUpdate); }
+    b.innerHTML = icon('sync', 18) + '<span>Є нова версія ' + esc(v) + '</span><b>Оновити</b>';
+  }
+  function applyUpdate() {
+    var b = $('#upd'); if (b) b.querySelector('b').textContent = '…';
+    var go = function () { location.replace(location.pathname + '?u=' + Date.now() + location.hash); };
+    var jobs = [];
+    if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return /^shell-/.test(k); }).map(function (k) { return caches.delete(k); })); }));
+    if (swReg) jobs.push(swReg.update().catch(function () {}));
+    Promise.all(jobs).then(go, go); setTimeout(go, 4000);
   }
   window.__app = { S: S, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; } };
   boot();
