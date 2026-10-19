@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.3';
+  var VERSION = '0.4.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -510,10 +510,10 @@
       '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Дільниця · знято за ' + monthName().toLowerCase() + '</span>' +
       '<span style="font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1">' + P + '%</span></div>' +
       '<span class="small mute" style="font-size:13px;text-align:right">' + fmt(rd) + ' з ' + fmt(act) + icon('right', 14, 2.4) + '</span></div>' +
-      '<div class="bar" style="height:10px"><span style="flex:' + rd + ' 1 0;background:#111"></span><span style="flex:' + miss + ' 1 0;background:#A1A1AA"></span><span style="flex:' + Math.max(left, 0) + ' 1 0;background:#E4E4E7"></span></div>' +
-      '<div class="row small" style="gap:14px;color:#3F3F46"><span class="row" style="gap:5px"><span class="dot" style="background:#111"></span>Знято ' + fmt(rd) + '</span>' +
-      '<span class="row" style="gap:5px"><span class="dot" style="background:#A1A1AA"></span>Не потрапив ' + fmt(miss) + '</span>' +
-      '<span class="row" style="gap:5px"><span class="dot" style="background:#E4E4E7"></span>Не був ' + fmt(Math.max(left, 0)) + '</span></div></a>';
+      '<div class="bar" style="height:10px"><span style="flex:' + rd + ' 1 0;background:#16A34A"></span><span style="flex:' + miss + ' 1 0;background:#F59E0B"></span><span style="flex:' + Math.max(left, 0) + ' 1 0;background:#E4E4E7"></span></div>' +
+      '<div class="row small" style="gap:14px;color:#3F3F46"><span class="row" style="gap:5px"><span class="dot" style="background:#16A34A"></span>Знято ' + fmt(rd) + '</span>' +
+      '<span class="row" style="gap:5px"><span class="dot" style="background:#F59E0B"></span>Не потрапив ' + fmt(miss) + '</span>' +
+      '<span class="row" style="gap:5px"><span class="dot" style="background:#fff;border:2px solid #A1A1AA"></span>Не був ' + fmt(Math.max(left, 0)) + '</span></div></a>';
   }
   function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
   function renderHome() {
