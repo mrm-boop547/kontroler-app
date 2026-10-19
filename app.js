@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.5';
+  var VERSION = '0.4.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -489,7 +489,7 @@
   }
   function villageSelect() {
     var v = village();
-    return '<button type="button" class="pill" data-act="pickVillageSheet" style="max-width:60%;box-shadow:0 6px 20px rgba(0,0,0,.06)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v || 'Без села') + '</span>' + icon('down', 16, 2.6) + '</button>';
+    return '<button type="button" class="vsel" data-act="pickVillageSheet" aria-label="Вибрати населений пункт"><span class="vsel-ic">' + icon('village', 18, 2.2) + '</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v || 'Без села') + '</span>' + icon('down', 18, 2.6) + '</button>';
   }
   function pickVillage() {
     openSheet('Населений пункт', villages().map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }), village() || 'Без села', function (v) {
