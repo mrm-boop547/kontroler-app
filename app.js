@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.1';
+  var VERSION = '0.4.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -327,8 +327,7 @@
         '<div class="pk-list" style="gap:14px">' +
         '<button class="pk-row' + (T.auto ? ' on' : '') + '" data-rc="auto"><span>Будувати маршрут автоматично</span><span class="sw' + (T.auto ? ' on' : '') + '"></span></button>' +
         '<div class="col" style="gap:8px"><div class="small mute">Кого обходимо</div><div class="tags">' +
-          chip('preset', 'g', 'Швидко · лише зелені', same(T.types, ['g'])) + chip('preset', 'y', 'Точно · жовті', same(T.types, ['y'])) + chip('preset', 'g,y,r', 'Усі доступні', same(T.types, ['g', 'y', 'r'])) + '</div>' +
-          '<div class="tags">' + ['g', 'y', 'r'].map(function (s) { return '<button class="chip fchip' + (T.types.indexOf(s) >= 0 ? ' on' : '') + '" data-rc="type" data-v="' + s + '">' + dotHtml(s) + ST[s].short + '</button>'; }).join('') + '</div></div>' +
+          ['g', 'y', 'r'].map(function (s) { return '<button class="chip fchip' + (T.types.indexOf(s) >= 0 ? ' on' : '') + '" data-rc="type" data-v="' + s + '">' + dotHtml(s) + ST[s].short + '</button>'; }).join('') + '</div></div>' +
         sliderHtml('rc-lim', T.limit) +
         '<div class="col" style="gap:8px"><div class="small mute">Вулиці (сектор)</div><div class="tags">' + chip('street', '', 'Усі вулиці', !T.streets.length) +
           names.map(function (n) { return chip('street', n, esc(n) + ' <span style="opacity:.6">' + streets[n] + '</span>', T.streets.indexOf(n) >= 0); }).join('') + '</div></div>' +
