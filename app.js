@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.7.1';
+  var VERSION = '0.8.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -232,6 +232,53 @@
   function me() { return S.meta.me || { id: 'local', name: '' }; }
   function peerName(id) { if (!id || id === me().id) return 'я'; var p = (S.meta.peers || {})[id]; return p && p.name ? p.name : 'колега'; }
   /* кожна зміна точки ставить час і автора — так злиття від кількох контролерів знає, яка версія новіша */
+  /* id нової точки містить код пристрою — дві точки з різних телефонів ніколи не отримають однаковий id */
+  function newPid() { return 'n' + me().id + Date.now().toString(36); }
+  function normHouse(h) { return String(h || '').toLowerCase().replace(/[\s\-–]/g, '').replace(/[\\]/g, '/'); }
+  function normStreet(st) { return String(st || '').toLowerCase().replace(/^(вул\.?|вулиця|пров\.?|провулок)\s+/, '').replace(/\s+/g, ' ').trim(); }
+  /* можливий дубль: та сама адреса в тому ж селі, або точка ближче 10 м з тим самим номером чи без номера */
+  function findDup(q) {
+    var best = null, bd = Infinity, sh = normHouse(q.house), ss = normStreet(q.street);
+    S.points.forEach(function (p) {
+      if (p.id === q.id || p.status === 'n' && q.status !== 'n' || (q.notDup || []).indexOf(p.id) >= 0 || (p.notDup || []).indexOf(q.id) >= 0) return;
+      var d = dist(p, q), same = sh && ss && p.village === q.village && normHouse(p.house) === sh && normStreet(p.street) === ss;
+      var close = d < 10 && (!sh || !p.house || normHouse(p.house) === sh);
+      if ((same || close) && d < bd) { bd = d; best = p; }
+    });
+    return best ? { p: best, d: bd } : null;
+  }
+  /* перед додаванням нової точки: якщо така вже є — пропонуємо відкрити наявну замість дубля */
+  function dupGuard(p) {
+    var d = findDup(p); if (!d) return true;
+    if (confirm('Схоже, ця точка вже є: ' + addr(d.p) + ' (' + Math.round(d.d) + ' м' + (d.p.createdBy && d.p.createdBy !== me().id ? ', вніс ' + peerName(d.p.createdBy) : '') + ').\n\nВсе одно додати нову?')) return true;
+    go('#card/' + d.p.id); return false;
+  }
+  function authorOf(p) { return p.createdBy ? peerName(p.createdBy) === 'я' ? 'ви' : peerName(p.createdBy) : p.src === 'MAPS.ME' ? 'імпорт з MAPS.ME' : '—'; }
+  /* об'єднати дубль: лишаємо картку keep, з другої переносимо поля, мітки, нотатки, візити, фото; друга видаляється з «надгробком» */
+  function mergeDup(keepId, otherId) {
+    var k = S.points.get(keepId), o = S.points.get(otherId); if (!k || !o) return;
+    var f = Object.assign({}, o.fields || {}, k.fields || {});
+    Object.keys(o.fields || {}).forEach(function (x) { if (!f[x]) f[x] = o.fields[x]; });
+    k.fields = f; k.tags = (k.tags || []).concat((o.tags || []).filter(function (t) { return (k.tags || []).indexOf(t) < 0; }));
+    if (o.note && (k.note || '').indexOf(o.note) < 0) k.note = k.note ? k.note + '; ' + o.note : o.note;
+    if (!k.street && o.street) k.street = o.street; if (!k.house && o.house) k.house = o.house;
+    if (/GPS|вручну/.test(o.src || '') && !/GPS|вручну/.test(k.src || '')) { k.lat = o.lat; k.lon = o.lon; k.src = o.src; k.acc = o.acc; }
+    k.flags = (k.flags || []).filter(function (x) { return x !== 'dup'; }); delete k.dupOf;
+    var mg = Object.assign({}, S.meta.merged || {}); mg[otherId] = keepId;
+    Object.keys(mg).forEach(function (x) { if (mg[x] === otherId) mg[x] = keepId; });
+    var tb = Object.assign({}, S.meta.deleted || {}); tb[otherId] = Date.now();
+    S.visits.forEach(function (v) { if (v.pointId === otherId) v.pointId = keepId; });
+    photosOf(otherId).then(function (ph) { ph.forEach(function (x) { x.pointId = keepId; put('photos', x); }); });
+    S.points.delete(otherId); invalidate(); S.route = null;
+    Promise.all([setMeta('merged', mg), setMeta('deleted', tb), del('points', otherId), savePoint(k)]).then(function () { toast('Об\'єднано в одну точку'); renderCard(keepId); });
+  }
+  function notDup(id, otherId) {
+    [[id, otherId], [otherId, id]].forEach(function (pr) {
+      var p = S.points.get(pr[0]); if (!p) return;
+      p.flags = (p.flags || []).filter(function (x) { return x !== 'dup'; }); p.notDup = (p.notDup || []).concat([pr[1]]); delete p.dupOf; savePoint(p);
+    });
+    toast('Позначено як різні точки'); renderCard(id);
+  }
   function savePoint(p) { p.updated = Date.now(); p.by = me().id; return put('points', p); }
   function newVisit(o) { o.ts = o.ts || Date.now(); o.by = me().id; o.uid = me().id + '-' + o.ts.toString(36); return o; }
 
@@ -585,7 +632,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: me(), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      plan: S.meta.plan || null, splits: S.meta.splits || {} };
+      merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
   }
   function exportSync() {
     if (!me().name) { toast('Спершу впишіть своє ім\'я'); var el = $('#me-name'); if (el) el.focus(); return; }
@@ -610,7 +657,8 @@
     (d.points || []).forEach(function (q) {
       if (tomb[q.id] && tomb[q.id] >= (q.updated || 0)) return;
       var p = S.points.get(q.id);
-      if (!p) { P.put(q); S.points.set(q.id, q); R.newPts++; }
+      if (!p) { var dup = findDup(q); if (dup) { q.flags = (q.flags || []).filter(function (f) { return f !== 'dup'; }).concat(['dup']); q.dupOf = dup.p.id; R.dups = (R.dups || 0) + 1; }
+        P.put(q); S.points.set(q.id, q); R.newPts++; }
       else if ((q.updated || 0) > (p.updated || 0)) { P.put(q); S.points.set(q.id, q); R.updPts++; }
     });
     (d.visits || []).forEach(function (v) {
@@ -619,11 +667,12 @@
     });
     tx.oncomplete = function () {
       var peers = Object.assign({}, S.meta.peers || {});
+      Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
-      var jobs = [setMeta('peers', peers), setMeta('deleted', tomb)];
+      var jobs = [setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () {
-        toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : ''));
+        toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : '') + (R.newPts ? ', нових на карті ' + R.newPts : '') + (R.dups ? ', можливих дублів ' + R.dups + ' — у «Уточнити в полі»' : ''));
         go('#settings');
       });
     };
@@ -802,19 +851,19 @@
      Темп рахується за датою створення точок за останні 30 днів → прогноз, коли буде внесено всіх. */
   var TOTAL_DEFAULT = 23659;
   function coverage() {
-    var total = Number(S.meta.totalSubs) || TOTAL_DEFAULT, placed = 0, exact = 0, data = 0, m30 = 0, wk = 0, byV = {};
+    var byA = {}, total = Number(S.meta.totalSubs) || TOTAL_DEFAULT, placed = 0, exact = 0, data = 0, m30 = 0, wk = 0, byV = {};
     var t30 = dayKey(Date.now() - 30 * 864e5), t7 = dayKey(Date.now() - 7 * 864e5);
     S.points.forEach(function (p) {
       placed++;
       if (/GPS|вручну/.test(p.src || '')) exact++;
       var f = p.fields || {}; if (f.fio || f.serial) data++;
-      if (p.created && p.created >= t30) m30++;
+      if (p.created && p.created >= t30) { m30++; var au = p.createdBy || (p.src === 'MAPS.ME' ? 'MAPS.ME' : '?'); byA[au] = (byA[au] || 0) + 1; }
       if (p.created && p.created >= t7) wk++;
       var k = p.village || 'Без села'; byV[k] = (byV[k] || 0) + 1;
     });
     var perDay = m30 / 22, left = Math.max(0, total - placed), days = perDay > 0 ? Math.ceil(left / perDay) : null;
     var eta = null; if (days != null) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
-    return { total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, byV: byV };
+    return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, byV: byV };
   }
   function coverageCard(full) {
     var c = coverage(), P = pct(c.placed, c.total);
@@ -830,6 +879,8 @@
         '<div class="col"><span class="small mute">Темп</span><b style="font-size:18px">' + (c.perDay ? c.perDay.toFixed(1).replace('.', ',') : '0') + '</b><span class="small mute">на роб. день</span></div>' +
         '<div class="col"><span class="small mute">Прогноз</span><b style="font-size:18px">' + eta + '</b></div></div>' +
         (c.perDay ? '<div class="small" style="line-height:1.45;font-weight:600">Якщо вносять усі ' + crew() + ' контролерів у тому ж темпі — ≈' + Math.ceil(c.left / (c.perDay * crew()) / 21) + ' міс.</div>' : '') +
+        (Object.keys(c.byA).length ? '<div class="col" style="gap:4px"><span class="small mute">Хто вносив за 30 днів</span><div class="tags">' + Object.keys(c.byA).sort(function (a, b) { return c.byA[b] - c.byA[a]; }).map(function (k) {
+          return '<span class="chip">' + esc(k === 'MAPS.ME' ? 'MAPS.ME' : k === '?' ? 'невідомо' : peerName(k) === 'я' ? (me().name || 'я') : peerName(k)) + ' <b>' + c.byA[k] + '</b></span>'; }).join('') + '</div></div>' : '') +
         '<div class="small mute">Підтверджено = прив\'язано в застосунку за GPS або вручну. З даними абонента (ПІБ або серійний): ' + fmt(c.data) + '</div>'
         : '<div class="small mute">+' + fmt(c.wk) + ' за тиждень · прогноз: ' + eta + '</div>') + '</a>';
   }
@@ -1454,9 +1505,10 @@
     var a = S.adding; if (!a) return;
     var s = a.street.trim(), h = a.house.trim(), near = null, bd = Infinity;
     S.points.forEach(function (q) { var d = dist(a, q); if (d < bd && q.village) { bd = d; near = q; } });
-    var p = { id: 'n' + Date.now().toString(36), lat: +a.lat.toFixed(6), lon: +a.lon.toFixed(6), village: near && bd < 1500 ? near.village : newVillage(),
-      street: s, house: h, status: a.st, tags: [], note: '', src: 'карта', created: new Date().toISOString().slice(0, 10),
+    var p = { id: newPid(), lat: +a.lat.toFixed(6), lon: +a.lon.toFixed(6), village: near && bd < 1500 ? near.village : newVillage(),
+      street: s, house: h, status: a.st, tags: [], note: '', src: 'вручну (карта)', created: today(), createdBy: me().id,
       flags: [].concat(s ? [] : ['no_street'], h ? [] : ['no_house']) };
+    if (!dupGuard(p)) { cancelAdd(true); return; }
     S.points.set(p.id, p); S.route = null; cancelAdd(true); S.sel = p.id;
     savePoint(p).then(function () { toast('Точку додано: ' + addr(p)); updateMap(); renderSheet(); });
   }
@@ -1528,6 +1580,7 @@
         '<a class="iconbtn" href="' + navUrl + '" target="_blank" rel="noopener" aria-label="Навігація в Google Maps" style="width:48px;height:48px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('nav', 18) + '</a>' +
         (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:48px;height:48px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
       '</div>' +
+      dupBox(p) +
       '<div class="card"><div class="h2" style="font-size:15px">Як знайти</div>' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div id="photos" class="photos"></div>' +
@@ -1545,7 +1598,7 @@
             return '<div class="list-row" style="justify-content:space-between"><div class="col"><b>' + dt(v.ts) + '</b><span class="small mute">' + tm(v.ts) + (v.method ? ' · ' + esc(v.method) : '') + '</span></div><div class="col" style="align-items:flex-end"><b style="font-size:16px">' + fmt(v.reading) + '</b><span class="small mute">' + (dd != null ? (dd >= 0 ? '+' : '') + fmt(dd) : '—') + '</span></div></div>';
           }).join('') + '</div>' : '') +
       '</div>' +
-      '<div class="card"><div class="h2">Адреса на карті</div>' +
+      '<div class="card"><div class="between"><div class="h2">Адреса на карті</div><span class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</span></div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
         '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
         '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
@@ -1566,6 +1619,15 @@
       '<button class="btn sec" data-act="deletePoint" data-id="' + p.id + '" style="color:#B91C1C">Видалити точку (дубль)</button>' +
       '</div>';
     loadPhotos(p.id); bindPhotoInputs(p.id); renderSeals(p.id);
+  }
+  function dupBox(p) {
+    if ((p.flags || []).indexOf('dup') < 0) return '';
+    var o = p.dupOf && S.points.get(p.dupOf) ? { p: S.points.get(p.dupOf), d: dist(p, S.points.get(p.dupOf)) } : findDup(p);
+    if (!o) return '';
+    return '<div class="card" style="background:#FEF3C7;gap:10px"><div class="h2" style="font-size:15px;color:#92400E">Можливий дубль</div>' +
+      '<a class="list-row" href="#card/' + o.p.id + '" style="border:0;padding:0">' + dotHtml(o.p.status) + '<div class="col" style="flex-grow:1"><b>' + esc(addr(o.p)) + '</b><span class="small mute">' + Math.round(o.d) + ' м · вніс: ' + esc(authorOf(o.p)) + '</span></div>' + icon('right', 16, 2.4) + '</a>' +
+      '<div class="row" style="gap:8px"><button class="btn" data-act="dupMerge" data-id="' + p.id + '" data-o="' + o.p.id + '" style="flex:1;height:46px;font-size:14px">Об\'єднати в цю</button>' +
+      '<button class="btn sec" data-act="dupNo" data-id="' + p.id + '" data-o="' + o.p.id + '" style="flex:1;height:46px">Це різні</button></div></div>';
   }
   function loadPhotos(pid) {
     var box = $('#photos'); if (!box) return;
@@ -1778,8 +1840,10 @@
     if (!p) {
       var s = $('#nb-s').value.trim(), h = $('#nb-h').value.trim();
       var near = null, bd = Infinity; S.points.forEach(function (q) { var d = dist({ lat: lat, lon: lon }, q); if (d < bd && q.village) { bd = d; near = q; } });
-      p = { id: 'n' + Date.now().toString(36), village: near && bd < 1500 ? near.village : newVillage(), street: s, house: h, status: 'y', tags: [], note: '',
+      p = { id: newPid(), createdBy: me().id, village: near && bd < 1500 ? near.village : newVillage(), street: s, house: h, status: 'y', tags: [], note: '',
         created: today(), flags: [].concat(s ? [] : ['no_street'], h ? [] : ['no_house']) };
+      p.lat = lat; p.lon = lon;
+      if (!dupGuard(p)) return;
       S.points.set(p.id, p);
     } else if (p.lat != null) {
       p.prevPos = { lat: p.lat, lon: p.lon, src: p.src || '', ts: p.bound || null };
@@ -1928,6 +1992,8 @@
       case 'vEditSave': var vt2 = {}; document.querySelectorAll('[data-vt]').forEach(function (x) { var n = parseInt(x.value, 10); if (n > 0) vt2[x.getAttribute('data-vt')] = n; });
         var tot = parseInt($('#tot').value, 10); Promise.all([setMeta('vTotals', vt2), setMeta('totalSubs', tot > 0 ? tot : TOTAL_DEFAULT)]).then(function () { S.vEdit = false; toast('Збережено'); render(); }); break;
       case 'round': var rc = Object.assign({}, S.meta.routeCfg || {}); rc.round = el.getAttribute('data-v'); setMeta('routeCfg', rc).then(function () { S.route = null; S.sel = null; renderMap.fitNext = true; render(); }); break;
+      case 'dupMerge': if (confirm('Об\'єднати дві точки в одну? Візити, фото й дані перейдуть у цю картку.')) mergeDup(id, el.getAttribute('data-o')); break;
+      case 'dupNo': notDup(id, el.getAttribute('data-o')); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
@@ -1994,6 +2060,7 @@
       S.visits = r[1]; S.meta = {}; r[2].forEach(function (m) { S.meta[m.k] = m.v; }); invalidate(); S.route = null;
       /* старі візити без коду: детермінований код, однаковий на всіх телефонах з тією ж копією */
       S.visits.forEach(function (v) { if (!v.uid) v.uid = 'x-' + v.pointId + '-' + v.ts; });
+      var mg = S.meta.merged || {}; S.visits.forEach(function (v) { if (mg[v.pointId]) v.pointId = mg[v.pointId]; });
       if (!S.meta.me) return setMeta('me', { id: Math.random().toString(36).slice(2, 8), name: '' });
     });
   }
