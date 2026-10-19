@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.8';
+  var VERSION = '0.11.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -940,9 +940,10 @@
   function statusList() {
     var ps = villagePoints(), c = counts(ps);
     return '<div class="card" style="gap:10px"><div class="between"><div class="h2" style="font-size:15px">Статуси доступу</div><span class="chip">' + icon('village', 14) + esc(vLabel()) + '</span></div>' +
-      '<div class="stgrid">' + ST_ORDER.map(function (s) {
-        return '<a class="sttile" href="#map" data-act="filter" data-st="' + s + '"><span class="row" style="gap:8px"><span class="dot ' + s + '" style="width:14px;height:14px"></span><b class="strow-n" style="font-size:24px">' + fmt(c[s]) + '</b></span>' +
-          '<span class="strow-l" style="font-size:12px">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '%</span></a>';
+      '<div class="stlist" style="padding:0">' + ST_ORDER.map(function (s) {
+        return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + ' strow-dot"></span>' +
+          '<span class="col" style="gap:0;min-width:0"><b class="strow-n">' + fmt(c[s]) + '</b>' +
+          '<span class="strow-l">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '%</span></span></a>';
       }).join('') + '</div></div>';
   }
   /* на головній: хто якою вулицею в обраному селі */
