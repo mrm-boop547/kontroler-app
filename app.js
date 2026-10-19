@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.13.0';
+  var VERSION = '0.14.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2079,12 +2079,18 @@
     var c = {}; L.forEach(function (x) { if (x.st && x.st !== 'Наявна') c[x.st] = (c[x.st] || 0) + 1; });
     return Object.keys(c).map(function (k) { return k.toLowerCase() + ' ' + c[k]; }).join(', ');
   }
+  /* підсумок «Пломби», як у старому застосунку: зі статусів кожної пломби, а якщо пломб у даних немає — вибір вручну */
+  function sealSum() {
+    if (!R.L.length) return R.sealsSel || null;
+    if (!R.L.every(function (x) { return x.st; })) return null;
+    return R.L.some(function (x) { return x.st === 'Відсутня'; }) ? 'Відсутня' : R.L.some(function (x) { return x.st === 'Пошкоджена'; }) ? 'Пошкоджена' : 'all';
+  }
   function readState(p) {
     var sys = sysReading(p), v = Number(R.val), has = R.val !== '' && /^\d+(\.\d+)?$/.test(R.val);
     var lower = has && sys && v < sys.v, big = has && sys && v - sys.v > 3000;
     var serialOk = R.serial === 'ok' || (R.serial === 'diff' && R.serialFact) || R.serial === 'skip';
-    var sealsOk = R.seals === 'all' || (R.seals === 'issue' && R.L.length && R.L.every(function (x) { return x.st; }) && R.L.some(function (x) { return x.st !== 'Наявна'; }));
-    var need = !serialOk ? 'Звірте серійний номер' : !has ? 'Внесіть показник' : lower && !R.photo ? 'Додайте фото лічильника' : !sealsOk ? 'Вкажіть стан пломб' : null;
+    var sealsOk = !!R.sealsSel && R.L.every(function (x) { return x.st; });
+    var need = !has ? 'Внесіть показник' : lower && !R.photo ? 'Зробіть фото лічильника' : !R.sealsSel ? 'Виберіть стан пломб' : !sealsOk ? 'Відмітьте статуси пломб' : null;
     return { sys: sys, has: has, lower: lower, big: big, serialOk: serialOk, sealsOk: sealsOk, need: need };
   }
   function stepHead(n, t, done, sub) {
@@ -2092,7 +2098,7 @@
   }
   var R_OPTS = {
     serial: [{ v: 'ok', l: 'Збігається' }, { v: 'diff', l: 'Інший номер' }, { v: 'skip', l: 'Не видно номера' }],
-    seals: [{ v: 'all', l: 'Без зауважень' }, { v: 'Відсутня', l: 'Відсутня пломба' }, { v: 'Пошкоджена', l: 'Пошкоджена пломба' }, { v: 'other', l: 'Інше (в шафі обліку, немає доступу)' }]
+    seals: [{ v: 'all', l: 'Без зауважень' }, { v: 'Відсутня', l: 'Відсутня пломба' }, { v: 'Пошкоджена', l: 'Пошкоджена пломба' }]
   };
   function rSel(k, val, ph, id) {
     var lab = ''; R_OPTS[k].forEach(function (o) { if (o.v === val) lab = o.l; });
@@ -2119,61 +2125,44 @@
     var feederHtml = fm ? '<div class="feeder">' + esc(fm[1]) + '<input data-fd="1" inputmode="numeric" value="' + esc(fm[2]) + '" style="width:' + (fm[2].length + 1) + 'ch">' + esc(fm[3]) + '<input data-fd="2" inputmode="numeric" value="' + esc(fm[4]) + '" style="width:' + (fm[4].length + 1) + 'ch"></div>'
       : '<input class="input" data-fd="all" value="' + esc(F.feeder) + '" placeholder="R07-TS0000-R000-S1-K00-F00">';
     var isCard = location.hash.indexOf('#card/') === 0;
-    app.innerHTML = '<div class="screen" style="padding-bottom:120px">' +
-      (isCard ? cardTop(p) : '') +
-      '<div class="row"' + (isCard ? ' style="display:none"' : '') + '><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">Візит контролера' + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">' + esc(addr(p)) + '</div></div></div>' +
+    var fm = /^(.*TS)(\d+)(.*F)(\d+)$/.exec(F.feeder);
+    var feederHtml = fm ? '<div class="feeder">' + esc(fm[1]) + '<input data-fd="1" inputmode="numeric" value="' + esc(fm[2]) + '" style="width:' + (fm[2].length + 1) + 'ch">' + esc(fm[3]) + '<input data-fd="2" inputmode="numeric" value="' + esc(fm[4]) + '" style="width:' + (fm[4].length + 1) + 'ch"></div>'
+      : '<input class="input" data-fd="all" value="' + esc(F.feeder) + '" placeholder="R07-TS0000-R000-S1-K00-F00">';
+    var done = R.L.filter(function (x) { return x.st; }).length;
+    /* порядок і склад полів — точно як «Візит контролера» в старому застосунку */
+    app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
+      (isCard ? cardTop(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
+      '<div class="card visit">' +
+        '<div class="kvs">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
+          (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:700">' + esc(f.phone) + '</a></div>' : row('Телефон', '—')) +
+          row('Серійний номер', '<span class="mono">' + esc(serial || '—') + '</span>') + row('Тип', esc(f.mtype || '—')) + row('Статус установки', esc(f.instStatus || '—')) +
+          row('Розміщення', esc(f.placement || '—')) + row('Місце прилада', esc(f.devicePlace || '—')) +
+          '<div class="kv" style="align-items:center"><span>Сигнал тривоги на лічильнику</span>' + pickBtn('alarm', F.alarm) + '</div></div>' +
 
-      /* 1. Дані абонента — той самий порядок, що в старому застосунку */
-      '<div class="card" style="gap:10px">' + stepHead(1, 'Абонент і лічильник', st.serialOk, 'Звірте серійний номер і адресу') +
-        '<div class="kvs">' + row('Абонент', esc(f.fio || '')) + row('Адреса', esc(f.address || addr(p))) +
-          (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:800">' + esc(f.phone) + '</a></div>' : '') + '</div>' +
-        '<div class="small mute" style="margin-bottom:-4px">Серійний номер</div>' +
-        (serial ? '<div class="serial">' + esc(serial) + '</div>' +
-          fld('Номер на лічильнику', rSel('serial', R.serial, 'Звірте з лічильником', id)) +
-          (R.serial === 'diff' ? '<input id="r-sf" class="input" placeholder="Номер на лічильнику" value="' + esc(R.serialFact) + '" autocapitalize="characters">' : '')
-        : '<div class="small mute">Серійного номера немає в даних</div>' + fld('Номер на лічильнику', rSel('serial', R.serial, 'Виберіть', id).replace('data-k="serial"', 'data-k="serial" data-nodata="1"')) +
-          (R.serial === 'diff' ? '<input id="r-sf" class="input" placeholder="Серійний номер з лічильника" value="' + esc(R.serialFact) + '" autocapitalize="characters">' : '')) +
-        '<div class="kvs">' + row('Тип', esc(f.mtype || '')) + row('Статус установки', esc(f.instStatus || '')) + row('Розміщення', esc(f.placement || '')) + row('Місце прилада', esc(f.devicePlace || '')) + '</div>' +
-        fld('Сигнал тривоги на лічильнику', pickBtn('alarm', F.alarm)) +
-      '</div>' +
-
-      /* 2. Показники */
-      '<div class="card">' + stepHead(2, 'Показники', st.has && (!st.lower || R.photo), null) +
-        '<label for="r-val" class="small mute">Загальний' + (st.sys ? ' (попередній: <b style="color:#111">' + fmt(st.sys.v) + '</b>)' : '') + '</label>' +
-        '<div class="row" style="gap:8px"><input id="r-val" class="input" inputmode="decimal" placeholder="Показник" value="' + esc(R.val) + '" style="height:60px;font-size:24px;font-weight:800;min-width:0;flex:1">' +
-          '<label for="r-cam" class="photo-btn' + (R.photo ? ' done' : '') + '">' + icon('camera', 20) + '<span>' + (R.photo ? 'Фото є' : 'Фото') + '</span></label></div>' +
+        '<div class="v-sec">Показники</div>' +
+        '<label for="r-val" class="v-lab">Загальний (попередній: ' + (st.sys ? fmt(st.sys.v) : '—') + ')</label>' +
+        '<div class="row" style="gap:8px"><input id="r-val" class="input" inputmode="decimal" value="' + esc(R.val) + '" style="height:56px;font-size:22px;font-weight:800;min-width:0;flex:1">' +
+          '<label for="r-cam" class="photo-btn">' + icon('camera', 20) + '<span>Зробити фото</span></label></div>' +
         '<div id="r-cmp"></div><div id="r-ph"></div>' +
         '<input id="r-cam" type="file" accept="image/*" capture="environment" hidden>' +
-      '</div>' +
 
-      /* 3. Стан на місці: як у старому застосунку + пломби з перевіркою */
-      '<div class="card">' + stepHead(3, 'Стан обліку', st.sealsOk, 'Без стану пломб показник не зберігається') +
         fld('Розміщення', pickBtn('placement2', F.placement2)) +
         fld('Примітка', pickBtn('noteSel', F.noteSel, 'Виберіть примітку')) +
         fld('ЗКО', pickBtn('zko', F.zko)) +
-        fld('Пломби' + (nL ? ' · у даних ' + nL : ''), rSel('seals', R.sealsSel, 'Виберіть стан пломб', id)) +
-        (R.seals === 'issue' ? '<div class="col" style="gap:8px">' + R.L.map(function (x, i) {
-            var bad = x.st && x.st !== 'Наявна';
-            return '<div class="seal' + (bad ? ' bad' : '') + '"><div class="col" style="min-width:0;flex-grow:1"><b style="font-size:15px">' + esc(x.n || 'Пломба ' + (i + 1)) + '</b><span class="small mute">' + esc(x.place) + '</span></div>' +
-              '<button class="seal-st' + (x.st ? ' on' : '') + '" data-act="rSealSt" data-i="' + i + '" data-id="' + id + '">' + esc(x.st || 'Статус') + icon('down', 14, 2.6) + '</button>' +
-              (x.added ? '<button class="seal-x" data-act="rSealDel" data-i="' + i + '" data-id="' + id + '" aria-label="Прибрати">' + icon('close', 14, 2.4) + '</button>' : '') + '</div>';
-          }).join('') +
-          '<button class="btn sec" data-act="rSealAdd" data-id="' + id + '" style="height:46px">' + icon('plus', 16, 2.6) + (nL ? 'Ще пломба, якої немає в даних' : 'Додати пломбу') + '</button>' +
-          '<div class="small mute">Вкажіть, яка саме. Решта: «Наявна».</div></div>' : '') +
-        old('Номінал автомата (старе значення)', f.avOld) +
+        fld('Пломби', rSel('seals', R.sealsSel, 'Виберіть', id)) +
+        fld('Номінал автомата (старе значення)', '<div class="v-old">' + esc(f.avOld || '—') + '</div>') +
         fld('Номінал автомата', pickBtn('av', F.av, 'Вибрати')) +
-        old("Пофідерна прив'язка (старе значення)", f.feederOld) +
+        fld("Пофідерна прив'язка (старе значення)", '<div class="v-old">' + esc(f.feederOld || '—') + '</div>') +
         fld("Пофідерна прив'язка", feederHtml) +
-        '<textarea id="r-note" class="input" placeholder="Своя примітка (необов\'язково)">' + esc(R.note) + '</textarea>' +
       '</div>' +
-      '<button class="btn sec" data-act="quick" data-v="note" data-id="' + id + '" data-back="1">' + icon('edit', 18) + 'Повідомлення про візит (записка)</button>' +
-      '<div class="grid2" style="gap:8px"><button class="btn sec" data-act="quick" data-v="none" data-id="' + id + '">Нема доступу</button><button class="btn sec" data-act="quick" data-v="empty" data-id="' + id + '">Не живуть</button></div>' +
+      '<button class="btn note-btn" data-act="quick" data-v="note" data-id="' + id + '">Повідомлення про візит</button>' +
+      '<button id="r-save" class="btn" data-act="rSave" data-id="' + id + '" style="height:58px"></button>' +
+      '<button class="btn seals-btn' + (nL && done === nL ? ' done' : '') + '" data-act="rSealsOpen" data-id="' + id + '">Пломби' + (nL ? ' · ' + done + ' з ' + nL : '') + '</button>' +
       (isCard ? cardBottom(p) : '') +
-      '</div>' +
-      '<div style="position:fixed;left:16px;right:16px;bottom:calc(16px + var(--safe-b))"><button id="r-save" class="btn" data-act="rSave" data-id="' + id + '" style="height:58px"></button></div>';
+      '</div>';
     var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); readUi(); };
     $('#r-val').oninput = function () { R.val = this.value.replace(/\s/g, '').replace(',', '.'); readUi(); };
-    $('#r-note').oninput = function () { R.note = this.value; };
+    if ($('#r-note')) $('#r-note').oninput = function () { R.note = this.value; };
     $('#r-cam').onchange = function () {
       var file = this.files[0]; if (!file) return; toast('Обробляю фото…');
       compress(file).then(function (bl) { if (R.photoUrl) URL.revokeObjectURL(R.photoUrl); R.photo = bl; R.photoUrl = URL.createObjectURL(bl); readUi(); });
@@ -2254,11 +2243,11 @@
       : st.big ? '<div class="cmp warn"><b>+' + fmt(Math.round((v - st.sys.v) * 100) / 100) + ' від системи</b><span>Велика різниця. Перевірте цифри.</span></div>'
       : '<div class="cmp ok"><b>+' + fmt(Math.round((v - st.sys.v) * 100) / 100) + ' від системи</b></div>';
     var ph = $('#r-ph'); if (ph) ph.innerHTML = readPhotoHtml(st);
-    var pb = $('.photo-btn'); if (pb) { pb.classList.toggle('done', !!R.photo); pb.classList.toggle('need', !!st.lower && !R.photo); pb.lastChild.textContent = R.photo ? 'Фото є' : 'Фото'; }
+    var pb = $('.photo-btn'); if (pb) { pb.classList.toggle('done', !!R.photo); pb.classList.toggle('need', !!st.lower && !R.photo); pb.lastChild.textContent = R.photo ? 'Фото є' : 'Зробити фото'; }
     var s = $('#r-save'); if (!s) return;
     var next = S.route && routeIndex(R.id) >= 0;
     s.disabled = !!st.need;
-    s.innerHTML = st.need ? st.need : (next ? 'Зберегти · до наступної' : 'Зберегти') + icon('arrow', 20, 2.4);
+    s.innerHTML = st.need ? st.need : next ? 'Зберегти · до наступної' : 'Зберегти';
     /* галочки в заголовках кроків */
     var nums = document.querySelectorAll('.rnum');
     [st.serialOk, st.has && (!st.lower || !!R.photo), st.sealsOk].forEach(function (d, i) { if (nums[i]) { nums[i].classList.toggle('done', d); nums[i].innerHTML = d ? icon('check', 16, 3) : i + 1; } });
@@ -2267,53 +2256,70 @@
   function readAction(a, el) {
     var i = +el.getAttribute('data-i');
     if (a === 'rSerial') { var v = el.getAttribute('data-v'); R.serial = R.serial === v ? null : v; return readKeep(); }
-    if (a === 'rSeals') {
-      R.seals = el.getAttribute('data-v');
-      if (R.seals === 'all') R.L = R.L.filter(function (x) { return !x.added; }).map(function (x) { return Object.assign({}, x, { st: '' }); });
-      if (R.seals === 'issue' && !R.L.length) R.L.push({ n: '', place: 'ЛІЧИЛЬНИК', st: '', added: true });
-      return readKeep();
-    }
+    if (a === 'rSealsOpen') return openSealsScreen();
     if (a === 'rPick') {
       var k = el.getAttribute('data-k'), opts = R_OPTS[k];
       if (el.getAttribute('data-nodata')) opts = [{ v: 'diff', l: 'Переписати з лічильника' }, { v: 'skip', l: 'Не видно номера' }];
       readCollect();
       return openSheet(k === 'serial' ? 'Серійний номер' : 'Пломби', opts, k === 'serial' ? R.serial : R.sealsSel, function (v) {
         if (k === 'serial') { R.serial = v; return readKeep(); }
-        R.sealsSel = v; R.seals = v === 'all' ? 'all' : 'issue';
-        R.L = R.L.filter(function (x) { return !x.added; }).map(function (x) { return Object.assign({}, x, { st: '' }); });
-        /* одна пломба в даних — їй одразу цей статус; кілька — вибрати, яка саме */
-        if (R.seals === 'issue') {
-          if (!R.L.length) R.L.push({ n: '', place: 'ЛІЧИЛЬНИК', st: v === 'other' ? '' : v, added: true });
-          else if (R.L.length === 1 && v !== 'other') R.L[0].st = v;
-        }
-        readKeep();
+        R.sealsSel = v; readKeep();
       });
     }
-    if (a === 'rSealSt') return openSheet(R.L[i].n || 'Пломба ' + (i + 1), SEAL_ST, R.L[i].st, function (v) { R.L[i].st = v; readKeep(); });
-    if (a === 'rSealDel') { R.L.splice(i, 1); return readKeep(); }
-    if (a === 'rSealAdd') return openSheet('Де пломба', SEAL_PLACES, 'ЛІЧИЛЬНИК', function (pl) { R.L.push({ n: '', place: pl, st: '', added: true }); readKeep(); });
     if (a === 'rSave') return saveRead(R.id);
+  }
+  /* «Статуси пломб» — окремий екран, як у старому застосунку, плюс кнопка «Наявні всі» */
+  function openSealsScreen() {
+    readCollect();
+    var T = R.L.map(function (x) { return Object.assign({}, x); });
+    var ov = document.createElement('div'); ov.id = 'seals-ov'; ov.className = 'seals-ov';
+    var draw = function () {
+      var done = T.filter(function (x) { return x.st; }).length;
+      ov.innerHTML = '<div class="seals-head"><button class="iconbtn" data-so="close" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">Відмічено ' + done + ' з ' + T.length + '</div><div style="font-size:20px;font-weight:800">Статуси пломб</div></div></div>' +
+        '<div class="seals-body"><button class="btn" data-so="all" style="height:56px">' + icon('check', 20, 2.8) + 'Наявні всі</button>' +
+        T.map(function (x, i) {
+          var bad = x.st && x.st !== 'Наявна';
+          return '<div class="card seal-card' + (bad ? ' bad' : '') + '"><div class="between"><div class="col" style="gap:2px"><b style="font-size:17px">' + esc(x.n || 'Без номера') + '</b><span class="small mute">' + esc(x.place) + '</span></div>' +
+            (x.added ? '<button class="seal-x" data-so="del" data-i="' + i + '" aria-label="Прибрати">' + icon('close', 14, 2.4) + '</button>' : '') + '</div>' +
+            '<button type="button" class="input selbtn" data-so="st" data-i="' + i + '"><span class="' + (x.st ? '' : 'mute') + '">' + esc(x.st || 'Виберіть статус') + '</span>' + icon('down', 18, 2.4) + '</button></div>';
+        }).join('') +
+        '<button class="btn sec" data-so="add" style="height:46px">' + icon('plus', 16, 2.6) + 'Пломба, якої немає в списку</button></div>' +
+        '<div class="seals-foot"><button class="btn" data-so="save" style="height:58px">Зберегти</button></div>';
+    };
+    ov.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-so]'); if (!b) return;
+      var k = b.getAttribute('data-so'), i = +b.getAttribute('data-i');
+      if (k === 'close') return ov.remove();
+      if (k === 'all') { T.forEach(function (x) { x.st = 'Наявна'; }); return draw(); }
+      if (k === 'st') return openSheet(T[i].n || 'Пломба', SEAL_ST, T[i].st, function (v) { T[i].st = v; draw(); });
+      if (k === 'del') { T.splice(i, 1); return draw(); }
+      if (k === 'add') {
+        var n = (prompt('Номер пломби') || '').trim().toUpperCase(); if (!n) return;
+        return openSheet('Де пломба ' + n, SEAL_PLACES, 'ЛІЧИЛЬНИК', function (pl) { T.push({ n: n, place: pl, st: '', added: true }); draw(); });
+      }
+      if (k === 'save') { R.L = T; var sm = sealSum(); if (sm) R.sealsSel = sm; ov.remove(); var y = window.scrollY; renderRead(R.id); window.scrollTo(0, y); }
+    });
+    draw(); document.body.appendChild(ov);
   }
   function saveRead(id) {
     readCollect();
     var p = S.points.get(id), st = readState(p); if (st.need) return toast(st.need);
     var f = Object.assign({}, p.fields || {}), F = R.form;
     ['alarm', 'placement2', 'zko', 'av', 'feeder'].forEach(function (k) { if (F[k]) f[k] = F[k]; });
-    var L = R.seals === 'all' ? R.L.map(function (x) { return { n: x.n, place: x.place, st: 'Наявна' }; }) : R.L.map(function (x) { return { n: x.n, place: x.place, st: x.st }; });
-    var issues = R.seals === 'issue' ? sealsFlat(L) : '';
+    var L = R.L.map(function (x) { return { n: x.n, place: x.place, st: x.st }; }), sum = R.sealsSel;
+    var issues = sealsFlat(L) || (sum !== 'all' ? sum.toLowerCase() + ' пломба' : '');
     var notes = [];
     if (F.noteSel) notes.push(F.noteSel);
     if (R.photo) notes.push('Показ з фотофіксацією');
-    if (R.serial === 'diff' && f.serial) notes.push('Серійний на лічильнику: ' + R.serialFact + ' (у даних ' + f.serial + ')');
     if (issues) notes.push('Пломби: ' + issues);
     if (R.note.trim()) notes.push(R.note.trim());
     var v = newVisit({ pointId: id, result: 'ok', prof: p.status, reading: R.val, method: R.photo ? 'зчитано, фотофіксація' : 'зчитано', note: notes.join('; ') || null,
-      serial: R.serial === 'ok' ? 'збігається' : R.serial === 'skip' ? 'не видно' : f.serial ? 'інший: ' + R.serialFact : 'записано: ' + R.serialFact,
-      seals: R.seals === 'all' ? 'усі наявні' : 'зауваження', form: { alarm: F.alarm, placement: F.placement2, noteSel: F.noteSel, zko: F.zko, av: F.av, feeder: F.feeder }, sealList: L.filter(function (x) { return x.n || x.st; }), photo: !!R.photo, sysReading: st.sys ? st.sys.v : null,
+      serial: f.serial || '',
+      seals: sum === 'all' ? 'без зауважень' : sum.toLowerCase() + ' пломба', form: { alarm: F.alarm, placement: F.placement2, noteSel: F.noteSel, zko: F.zko, av: F.av, feeder: F.feeder }, sealList: L.filter(function (x) { return x.n || x.st; }), photo: !!R.photo, sysReading: st.sys ? st.sys.v : null,
       pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
     /* у картку: статуси пломб, підсумок «Пломби», серійний (якщо його не було) */
     if (L.some(function (x) { return x.n; })) f.sealList = L.filter(function (x) { return x.n; });
-    f.seals = L.some(function (x) { return x.st === 'Відсутня'; }) ? 'Відсутня пломба' : L.some(function (x) { return x.st === 'Пошкоджена'; }) ? 'Пошкоджена пломба' : R.seals === 'issue' ? f.seals || '' : 'Без зауважень';
+    f.seals = sum === 'all' ? 'Без зауважень' : sum + ' пломба';
     if (!f.serial && R.serialFact) f.serial = R.serialFact;
     p.fields = f;
     var inRoute = routeIndex(id) >= 0, ph = R.photo;
@@ -2630,7 +2636,7 @@
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
       case 'saveFind': saveFind(id); break;
-      case 'rSerial': case 'rSeals': case 'rPick': case 'rSealSt': case 'rSealDel': case 'rSealAdd': case 'rSave': readAction(a, el); break;
+      case 'rSerial': case 'rSealsOpen': case 'rPick': case 'rSealSt': case 'rSealDel': case 'rSealAdd': case 'rSave': readAction(a, el); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
       case 'bindLayer': setLayer(el.getAttribute('data-l')); renderBindUi(); break;
