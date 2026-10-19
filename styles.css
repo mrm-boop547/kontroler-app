@@ -185,3 +185,9 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .fold-row{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;border-top:1px solid var(--bg);background:none;padding:12px 0 0;font:inherit;font-size:14px;color:inherit;cursor:pointer}
 .pill-btn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border:1.5px solid #D4D4D8;border-radius:20px;background:#fff;color:#111;font:inherit;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
 .pill-btn.warn{background:#DC2626;border-color:#DC2626;color:#fff}
+.rstep{display:flex;align-items:center;gap:12px}
+.rnum{width:32px;height:32px;border-radius:16px;background:#F1F1F3;color:#71717A;font-weight:800;font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.rnum.done{background:#16A34A;color:#fff}
+.serial{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:28px;font-weight:800;letter-spacing:.06em;background:#F6F6F7;border-radius:16px;padding:14px 16px;word-break:break-all}
+.cmp{border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;font-size:14px;line-height:1.4}
+.cmp.ok{background:#DCFCE7;color:#166534}.cmp.warn{background:#FEF3C7;color:#92400E}.cmp.bad{background:#FEE2E2;color:#991B1B}
