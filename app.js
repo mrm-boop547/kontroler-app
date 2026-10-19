@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.2.3';
+  var VERSION = '0.2.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -399,14 +399,27 @@
       'text-field': ['step', ['zoom'], ['get', 'h'], 17.6, ['get', 'a']], 'text-font': ['Noto Sans Bold'], 'text-size': 11,
       'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 },
       paint: { 'text-color': '#111111', 'text-halo-color': '#FFFFFF', 'text-halo-width': 1.6 } });
-    map.addLayer({ id: 'me-halo', type: 'circle', source: 'me', paint: { 'circle-radius': 16, 'circle-color': 'rgba(17,17,17,0.12)' } });
-    map.addLayer({ id: 'me', type: 'circle', source: 'me', paint: { 'circle-radius': 7, 'circle-color': '#111111', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 3 } });
     updateMap();
     if (S.pendingFit) { var f = S.pendingFit; S.pendingFit = null; f(); }
   }
+  /* моя позиція — окрема HTML-мітка: видно на будь-якому шарі, з колом точності */
+  var meMarker = null;
   function updateMe() {
-    if (!map || !mapReady || !map.getSource('me')) return;
-    map.getSource('me').setData({ type: 'FeatureCollection', features: S.pos ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [S.pos.lon, S.pos.lat] }, properties: {} }] : [] });
+    if (!map) return;
+    if (!S.pos) { if (meMarker) { meMarker.remove(); meMarker = null; } return; }
+    if (!meMarker) {
+      var el = document.createElement('div'); el.className = 'me';
+      el.innerHTML = '<span class="me-acc"></span><span class="me-dot"></span>';
+      meMarker = new maplibregl.Marker({ element: el }).setLngLat([S.pos.lon, S.pos.lat]).addTo(map);
+      map.on('zoom', sizeAcc);
+    }
+    meMarker.setLngLat([S.pos.lon, S.pos.lat]); sizeAcc();
+  }
+  function sizeAcc() {
+    if (!meMarker || !S.pos) return;
+    var mpp = 156543.03 * Math.cos(S.pos.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+    var d = Math.max(28, Math.min(400, 2 * (S.pos.acc || 10) / mpp));
+    var a = meMarker.getElement().querySelector('.me-acc'); a.style.width = a.style.height = d + 'px';
   }
   function updateMap() {
     if (!map || !mapReady || !map.getSource('pts')) return;
@@ -441,7 +454,7 @@
       r.ids.forEach(function (id) { var p = S.points.get(id); line.push([p.lon, p.lat]); });
     }
     map.getSource('route').setData({ type: 'FeatureCollection', features: line.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: line }, properties: {} }] : [] });
-    map.getSource('me').setData({ type: 'FeatureCollection', features: S.pos ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [S.pos.lon, S.pos.lat] }, properties: {} }] : [] });
+    updateMe();
   }
   function fitTo(ps) {
     if (!map || !ps.length) return;
@@ -883,7 +896,7 @@
       case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; break;
       case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
         if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || p.status === S.filter; })); } break;
-      case 'locate': if (S.pos) map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: 17.5 }); else toast('Шукаю GPS…'); break;
+      case 'locate': if (S.pos) { updateMe(); map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); } else toast('Шукаю GPS… Перевірте, чи дозволено геолокацію'); break;
       case 'layer': setLayer(el.getAttribute('data-l')); render(); break;
       case 'skip': S.skipped[S.sel] = 1; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; updateMap(); renderSheet(); toast('Адресу пропущено до кінця дня'); break;
       case 'saveCard': saveCard(id); break;

@@ -102,3 +102,6 @@ nav.tabs a.on{height:52px;border-radius:26px;background:var(--ink);color:#fff;fl
 .tb-item{height:40px;border:0;background:transparent;border-radius:20px;padding:0 9px;display:flex;align-items:center;gap:5px;font-size:14px;color:#111}
 .tb-item.on{background:#111;color:#fff}
 .tb-item.off{opacity:.35}
+.me{width:0;height:0;position:relative;pointer-events:none}
+.me-acc{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(37,99,235,.14);border:1.5px solid rgba(37,99,235,.35)}
+.me-dot{position:absolute;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%);border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.3)}
