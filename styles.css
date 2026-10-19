@@ -223,3 +223,6 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .save-btn.wait{background:#52525B}
 .miss{background:#FEE2E2;color:#991B1B;border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.45}
 .miss ul{margin:4px 0 0;padding-left:18px}
+.vdone{display:flex;align-items:center;gap:8px;background:#F6F6F7;border-radius:14px;padding:8px 10px;font-size:14px}
+.vdone.ok{background:#DCFCE7;color:#166534}
+.vdone span{flex:1;min-width:0}
