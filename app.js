@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -170,34 +170,50 @@
   function offGps() { gpsListeners = []; }
 
   /* ---------- маршрут ---------- */
+  /* ---------- налаштування маршруту ---------- */
+  function routeCfg() {
+    var c = S.meta.routeCfg || {};
+    return { auto: c.auto !== false, limit: c.limit || Number(S.meta.dayLimit) || 40, types: c.types && c.types.length ? c.types : ['g', 'y', 'r'], streets: c.streets || {} };
+  }
+  /* «вартість» переходу: зміна вулиці дорожча — маршрут іде вздовж вулиці, а не зигзагом через квартал */
+  function cost(a, b) { var d = dist(a, b); return a.street && b.street && a.street !== b.street ? d * 1.6 + 40 : d; }
   function computeRoute() {
     var v = village(); if (!v) return null;
-    var cand = villagePoints(v).filter(function (p) { return p.status !== 'n' && !doneThisCycle(p) && !S.skipped[p.id]; });
-    if (!cand.length) return { village: v, ids: [], meters: 0 };
+    var cfg = routeCfg(), st = cfg.streets[v] || [];
+    var all = villagePoints(v).filter(function (p) { return p.status !== 'n' && !doneThisCycle(p); });
+    var cand = all.filter(function (p) { return !S.skipped[p.id] && cfg.types.indexOf(p.status) >= 0 && (!st.length || st.indexOf(p.street) >= 0); });
+    if (!cfg.auto) return { village: v, ids: [], meters: 0, total: cand.length, off: true };
+    if (!cand.length) return { village: v, ids: [], meters: 0, total: 0 };
     var start = S.pos && dist(S.pos, cand[0]) < 30000 ? S.pos : centroid(cand);
     var late = cand.filter(function (p) { return (p.tags || []).indexOf('eve') >= 0; });
     var early = cand.filter(function (p) { return (p.tags || []).indexOf('eve') < 0; });
-    var limit = Number(S.meta.dayLimit) || 40;
-    var order = nn(start, early);
+    var limit = cfg.limit >= 9999 ? cand.length : cfg.limit;
     var lateN = Math.min(late.length, Math.round(limit * 0.25));
-    order = twoOpt(start, order.slice(0, Math.max(1, limit - lateN)), 300);
+    var order = nn(start, early, cost).slice(0, Math.max(1, limit - lateN));
+    order = twoOpt(start, order, 300, cost);
     var last = order.length ? order[order.length - 1] : start;
-    order = order.concat(nn(last, late).slice(0, limit - order.length));
+    order = order.concat(nn(last, late, cost).slice(0, Math.max(0, limit - order.length)));
     var m = 0, prev = start;
     order.forEach(function (p) { m += dist(prev, p); prev = p; });
-    return { village: v, ids: order.map(function (p) { return p.id; }), meters: m, total: cand.length, fromGps: start === S.pos };
+    var r = { village: v, ids: order.map(function (p) { return p.id; }), meters: m, total: cand.length, fromGps: start === S.pos, start: { lat: start.lat, lon: start.lon } };
+    r.key = routeKey(r);
+    setTimeout(function () { improveRoute(r); }, 0);
+    return r;
   }
+  function routeKey(r) { return r.start.lat.toFixed(4) + ',' + r.start.lon.toFixed(4) + ':' + r.ids.join(','); }
   function centroid(ps) { var a = 0, b = 0; ps.forEach(function (p) { a += p.lat; b += p.lon; }); return { lat: a / ps.length, lon: b / ps.length }; }
-  function nn(start, pts) {
+  function nn(start, pts, cf) {
+    cf = cf || dist;
     var rest = pts.slice(), out = [], cur = start;
     while (rest.length) {
       var bi = 0, bd = Infinity;
-      for (var i = 0; i < rest.length; i++) { var d = dist(cur, rest[i]); if (d < bd) { bd = d; bi = i; } }
+      for (var i = 0; i < rest.length; i++) { var d = cf(cur, rest[i]); if (d < bd) { bd = d; bi = i; } }
       cur = rest.splice(bi, 1)[0]; out.push(cur);
     }
     return out;
   }
-  function twoOpt(start, r, ms) {
+  function twoOpt(start, r, ms, cf) {
+    cf = cf || dist;
     var t0 = Date.now(), n = r.length, improved = true;
     if (n < 4) return r;
     var P = [start].concat(r);
@@ -206,7 +222,7 @@
       for (var i = 1; i < P.length - 2; i++) {
         for (var k = i + 1; k < P.length - 1; k++) {
           var a = P[i - 1], b = P[i], c = P[k], d = P[k + 1];
-          if (dist(a, c) + dist(b, d) < dist(a, b) + dist(c, d) - 0.5) {
+          if (cf(a, c) + cf(b, d) < cf(a, b) + cf(c, d) - 0.5) {
             P = P.slice(0, i).concat(P.slice(i, k + 1).reverse(), P.slice(k + 1)); improved = true;
           }
         }
@@ -214,6 +230,109 @@
       }
     }
     return P.slice(1);
+  }
+
+  /* ---------- пішохідний маршрут по дорогах (Valhalla, OpenStreetMap) — лише з інтернетом ---------- */
+  var VALHALLA = 'https://valhalla1.openstreetmap.de';
+  function decode6(str) {
+    var idx = 0, lat = 0, lng = 0, out = [];
+    while (idx < str.length) {
+      var b, sh = 0, res = 0;
+      do { b = str.charCodeAt(idx++) - 63; res |= (b & 0x1f) << sh; sh += 5; } while (b >= 0x20);
+      lat += (res & 1) ? ~(res >> 1) : (res >> 1); sh = 0; res = 0;
+      do { b = str.charCodeAt(idx++) - 63; res |= (b & 0x1f) << sh; sh += 5; } while (b >= 0x20);
+      lng += (res & 1) ? ~(res >> 1) : (res >> 1);
+      out.push([lng / 1e6, lat / 1e6]);
+    }
+    return out;
+  }
+  function vpost(path, body) {
+    var ctl = new AbortController(); setTimeout(function () { ctl.abort(); }, 15000);
+    return fetch(VALHALLA + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); });
+  }
+  function improveRoute(r) {
+    if (!navigator.onLine || !r.ids.length || r.walkDone) return;
+    var pts = r.ids.map(function (id) { return S.points.get(id); });
+    var locs = [r.start].concat(pts).map(function (p) { return { lat: p.lat, lon: p.lon }; });
+    var step = locs.length <= 50
+      ? vpost('/sources_to_targets', { sources: locs, targets: locs, costing: 'pedestrian' }).then(function (j) {
+          var M = j.sources_to_targets;
+          var idx = locs.map(function (_, i) { return i; });
+          var mc = function (a, b) { var c = M[a][b]; return c && c.distance != null ? c.distance * 1000 : 1e9; };
+          var rest = idx.slice(1), order = [], cur = 0;
+          while (rest.length) { var bi = 0, bd = Infinity; rest.forEach(function (x, i) { var d = mc(cur, x); if (d < bd) { bd = d; bi = i; } }); cur = rest.splice(bi, 1)[0]; order.push(cur); }
+          var P = [0].concat(order), improved = true, t0 = Date.now();
+          while (improved && Date.now() - t0 < 400) { improved = false;
+            for (var i = 1; i < P.length - 2; i++) for (var k = i + 1; k < P.length - 1; k++) {
+              if (mc(P[i - 1], P[k]) + mc(P[i], P[k + 1]) < mc(P[i - 1], P[i]) + mc(P[k], P[k + 1]) - 1) { P = P.slice(0, i).concat(P.slice(i, k + 1).reverse(), P.slice(k + 1)); improved = true; }
+            } }
+          var late = r.ids.filter(function (id) { return (S.points.get(id).tags || []).indexOf('eve') >= 0; });
+          var ids = P.slice(1).map(function (i) { return r.ids[i - 1]; });
+          ids = ids.filter(function (id) { return late.indexOf(id) < 0; }).concat(ids.filter(function (id) { return late.indexOf(id) >= 0; }));
+          return ids;
+        }).catch(function () { return r.ids; })
+      : Promise.resolve(r.ids);
+    step.then(function (ids) {
+      if (S.route !== r) return;
+      var seq = [r.start].concat(ids.map(function (id) { return S.points.get(id); }));
+      var chunks = [], i = 0;
+      while (i < seq.length - 1) { chunks.push(seq.slice(i, Math.min(seq.length, i + 20))); i += 19; }
+      var res = [];
+      return chunks.reduce(function (pr, c) {
+        return pr.then(function () { return new Promise(function (ok) { setTimeout(ok, 1100); }); }).then(function () {
+          return vpost('/route', { locations: c.map(function (p) { return { lat: p.lat, lon: p.lon, type: 'break' }; }), costing: 'pedestrian', directions_type: 'none' }).then(function (j) { res.push(j); });
+        });
+      }, Promise.resolve()).then(function () {
+        if (S.route !== r) return;
+        var coords = [], meters = 0;
+        res.forEach(function (j) { (j.trip.legs || []).forEach(function (l) { coords = coords.concat(decode6(l.shape)); }); meters += (j.trip.summary.length || 0) * 1000; });
+        r.ids = ids; r.meters = meters; r.walk = coords; r.walkDone = true; r.key = routeKey(r);
+        setMeta('lastWalk', { key: r.key, coords: coords, meters: meters });
+        if (location.hash === '#map') { updateMap(); renderSheet(); }
+      });
+    }).catch(function () { if (!S.walkWarned) { S.walkWarned = 1; toast('Пішохідний маршрут недоступний, показано напряму'); } });
+  }
+  function routeCfgSheet() {
+    var c = routeCfg(), v = village(), T = { auto: c.auto, limit: c.limit, types: c.types.slice(), streets: (c.streets[v] || []).slice() };
+    var streets = {}; villagePoints(v).forEach(function (p) { if (p.status !== 'n' && p.street) streets[p.street] = (streets[p.street] || 0) + 1; });
+    var names = Object.keys(streets).sort(function (a, b) { return streets[b] - streets[a]; });
+    closeSheet();
+    var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov';
+    var draw = function () {
+      var same = function (a, b) { return a.slice().sort().join() === b.slice().sort().join(); };
+      var chip = function (act, val, label, on) { return '<button class="chip fchip' + (on ? ' on' : '') + '" data-rc="' + act + '" data-v="' + esc(val) + '">' + label + '</button>'; };
+      ov.innerHTML = '<div class="pk-sheet"><div class="pk-grip"></div>' +
+        '<div class="between" style="padding:0 4px"><div class="h2">Маршрут на сьогодні</div><button class="iconbtn" data-rc="close" aria-label="Закрити" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
+        '<div class="pk-list" style="gap:14px">' +
+        '<button class="pk-row' + (T.auto ? ' on' : '') + '" data-rc="auto"><span>Будувати маршрут автоматично</span><span class="sw' + (T.auto ? ' on' : '') + '"></span></button>' +
+        '<div class="col" style="gap:8px"><div class="small mute">Кого обходимо</div><div class="tags">' +
+          chip('preset', 'g', 'Швидко · лише зелені', same(T.types, ['g'])) + chip('preset', 'y', 'Точно · жовті', same(T.types, ['y'])) + chip('preset', 'g,y,r', 'Усі доступні', same(T.types, ['g', 'y', 'r'])) + '</div>' +
+          '<div class="tags">' + ['g', 'y', 'r'].map(function (s) { return '<button class="chip fchip' + (T.types.indexOf(s) >= 0 ? ' on' : '') + '" data-rc="type" data-v="' + s + '">' + dotHtml(s) + ST[s].short + '</button>'; }).join('') + '</div></div>' +
+        '<div class="col" style="gap:8px"><div class="small mute">Скільки адрес</div><div class="tags">' +
+          [20, 30, 40, 60, 100, 9999].map(function (n) { return chip('limit', n, n >= 9999 ? 'Усі' : n, T.limit === n); }).join('') + '</div></div>' +
+        '<div class="col" style="gap:8px"><div class="small mute">Вулиці (сектор)</div><div class="tags">' + chip('street', '', 'Усі вулиці', !T.streets.length) +
+          names.map(function (n) { return chip('street', n, esc(n) + ' <span style="opacity:.6">' + streets[n] + '</span>', T.streets.indexOf(n) >= 0); }).join('') + '</div></div>' +
+        '</div><button class="btn" data-rc="apply">Побудувати маршрут</button></div>';
+    };
+    ov.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-rc]'); if (e.target === ov) return closeSheet(); if (!b) return;
+      var a = b.getAttribute('data-rc'), val = b.getAttribute('data-v');
+      if (a === 'close') return closeSheet();
+      if (a === 'auto') T.auto = !T.auto;
+      if (a === 'preset') T.types = val.split(',');
+      if (a === 'type') { var i = T.types.indexOf(val); if (i >= 0) { if (T.types.length > 1) T.types.splice(i, 1); } else T.types.push(val); }
+      if (a === 'limit') T.limit = +val;
+      if (a === 'street') { if (!val) T.streets = []; else { var j = T.streets.indexOf(val); if (j >= 0) T.streets.splice(j, 1); else T.streets.push(val); } }
+      if (a === 'apply') {
+        var nc = Object.assign({}, S.meta.routeCfg || {}); nc.auto = T.auto; nc.limit = T.limit; nc.types = T.types;
+        nc.streets = Object.assign({}, nc.streets || {}); nc.streets[v] = T.streets;
+        setMeta('routeCfg', nc).then(function () { closeSheet(); S.route = computeRoute(); S.sel = S.route.ids[0] || S.sel; renderMap.fitNext = true; render(); });
+        return;
+      }
+      var y = ov.querySelector('.pk-list').scrollTop; draw(); ov.querySelector('.pk-list').scrollTop = y;
+    });
+    draw(); document.body.appendChild(ov); requestAnimationFrame(function () { ov.classList.add('show'); });
   }
   function ensureRoute(force) {
     if (force || !S.route || S.route.village !== village()) S.route = computeRoute();
@@ -470,7 +589,7 @@
     var list = mapMode === 'all' ? allFiltered() : villagePoints();
     list.forEach(function (p) {
       var num = order[p.id] || 0;
-      var dim = mapMode === 'route' ? (S.filter ? p.status !== S.filter : !num) : mapMode === 'all' ? false : true;
+      var dim = p.id === S.sel ? false : mapMode === 'route' ? (S.filter ? p.status !== S.filter : (r && r.off ? false : !num)) : mapMode === 'all' ? false : true;
       var g = { type: 'Point', coordinates: [p.lon, p.lat] };
       feats.push({ type: 'Feature', geometry: g, properties: { id: p.id, st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim } });
       if (!dim || mapMode === 'route') lbl.push({ type: 'Feature', geometry: g, properties: { h: p.house || '', a: addr(p) } });
@@ -490,9 +609,11 @@
       });
     }
     var line = [];
-    if (r && !S.filter && mapMode === 'route') {
-      if (S.pos) line.push([S.pos.lon, S.pos.lat]);
-      r.ids.forEach(function (id) { var p = S.points.get(id); line.push([p.lon, p.lat]); });
+    if (r && !S.filter && mapMode === 'route' && r.ids.length) {
+      var lw = S.meta.lastWalk;
+      if (r.walk) line = r.walk;
+      else if (lw && lw.key === r.key) { line = lw.coords; r.walk = lw.coords; r.meters = lw.meters; }
+      else { line.push([r.start.lon, r.start.lat]); r.ids.forEach(function (id) { var p = S.points.get(id); line.push([p.lon, p.lat]); }); }
     }
     map.getSource('route').setData({ type: 'FeatureCollection', features: line.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: line }, properties: {} }] : [] });
     updateMe();
@@ -513,6 +634,7 @@
     mapMode = 'route';
     var r = ensureRoute();
     if (!S.sel || routeIndex(S.sel) < 0 && !S.points.get(S.sel)) S.sel = r && r.ids[0];
+    if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; villagePoints().forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
     var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
       '<div class="row">' + villageSelect('vsel') + '<a class="pill" href="#list" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</a></div>' +
@@ -524,6 +646,7 @@
             return '<button class="ftile' + (S.filter === s ? ' on' : '') + '" data-act="filter" data-st="' + s + '">' + dotHtml(s) + '<b>' + c[s] + '</b><span>' + ST[s].short + '</span></button>';
           }).join('') + '</div>') +
       '<div class="between"><div class="row"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
+      '<button class="pill" data-act="routeCfg" style="height:48px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('gear', 18) + (routeCfg().auto ? 'Маршрут' : 'Маршрут вимк.') + '</button>' +
       (S.meta.tilesMin ? '' : '<button class="iconbtn" data-act="toggleTiles" aria-label="Згорнути статуси">' + '<span style="transform:rotate(180deg);display:flex">' + icon('down', 20, 2.6) + '</span></button>') + '</div>' +
       '<div class="seg"><button data-act="layer" data-l="scheme" class="' + (lay === 'scheme' ? 'on' : '') + '">Схема</button><button data-act="layer" data-l="sat" class="' + (lay === 'sat' ? 'on' : '') + '">Супутник</button></div></div>' +
       '</div><div id="sheet"></div>' + tabs('map');
@@ -570,7 +693,7 @@
     el.innerHTML = '<div class="sheet"><button class="grip" data-act="toggleSheet" aria-label="Згорнути панель"></button>' +
       '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px;min-width:0">' +
       '<div class="row small mute" style="flex-wrap:wrap"><label class="chip" style="height:26px;color:#111">Маршрут №<input id="rno" value="' + esc(rn) + '" placeholder="внести" style="width:84px;border:0;outline:0;background:transparent;font-weight:800"></label>' +
-      (r ? r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) : '') + '</div>' +
+      (r ? (r.off ? 'Авто-маршрут вимкнено' : r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) + (r.walk ? ' пішки' : '')) : '') + '</div>' +
       '<div class="row" style="font-size:18px;font-weight:800">' + (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : '') + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span></div>' +
       '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
       '</div>' + dotHtml(p.status) + '</div>' +
@@ -694,8 +817,9 @@
         '<div class="tags"><span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span><span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() : 'не відвідано') + '</span></div>' +
         (flags.length ? '<div class="tags">' + flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' : '') +
         '<a class="btn" href="#visit/' + p.id + '">' + icon('check', 20, 2.6) + 'Відмітити візит</a>' +
-        '<div class="grid2" style="gap:8px"><a class="btn sec" href="' + navUrl + '" target="_blank" rel="noopener">' + icon('nav', 18) + 'Навігація</a>' +
-        (phone ? '<a class="btn sec" href="tel:' + esc(phone) + '">' + icon('phone', 18) + 'Дзвінок</a>' : '<button class="btn sec" disabled>' + icon('phone', 18) + 'Дзвінок</button>') + '</div>' +
+        '<div class="row" style="gap:8px"><button class="btn sec" data-act="showOnMap" data-id="' + p.id + '" style="flex:1">' + icon('map', 18) + 'На карті</button>' +
+        '<a class="iconbtn" href="' + navUrl + '" target="_blank" rel="noopener" aria-label="Навігація в Google Maps" style="width:48px;height:48px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('nav', 18) + '</a>' +
+        (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:48px;height:48px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
       '</div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Як знайти</div>' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
@@ -997,6 +1121,11 @@
       case 'doBind': doBind(); break;
       case 'pickVillage': var v = el.getAttribute('data-v'); setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.sel = null; S.filter = null; go('#home'); }); break;
       case 'pick': doPick(el); break;
+      case 'routeCfg': routeCfgSheet(); break;
+      case 'showOnMap': var sp = S.points.get(id); if (!sp) break;
+        var goMap = function () { S.sel = id; S.filter = null; renderMap.fitNext = true; go('#map'); };
+        if (sp.village && sp.village !== village()) setMeta('village', sp.village).then(function () { S.route = null; goMap(); }); else goMap();
+        break;
       case 'callPhone': var num = ($('#f-phone').value || '').replace(/[^\d+]/g, ''); if (num.length < 5) { toast('Введіть номер телефону'); $('#f-phone').focus(); } else location.href = 'tel:' + num; break;
       case 'viewPhoto': viewPhoto(el); break;
       case 'addCancel': cancelAdd(); break;

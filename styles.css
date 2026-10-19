@@ -112,3 +112,6 @@ nav.tabs a.on{height:52px;border-radius:26px;background:var(--ink);color:#fff;fl
 .ph-view{background:rgba(0,0,0,.92)!important;flex-direction:column;justify-content:center;align-items:center;padding:16px;gap:14px}
 .ph-view img{max-width:100%;max-height:78vh;border-radius:16px}
 .ph-bar{display:flex;gap:8px;align-items:center;color:#fff;font-weight:700;font-size:13px;flex-wrap:wrap;justify-content:center}
+.sw{width:46px;height:28px;border-radius:14px;background:#D4D4D8;position:relative;flex-shrink:0;transition:.2s}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:#16A34A}.sw.on::after{left:21px}
