@@ -9,7 +9,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 a{color:inherit;text-decoration:none}
 #app{min-height:100%}
-.screen{min-height:100vh;display:flex;flex-direction:column;padding:18px 16px calc(100px + var(--safe-b));gap:12px}
+.screen{min-height:100vh;display:flex;flex-direction:column;padding:18px 16px calc(100px + var(--safe-b));gap:20px}
 .row{display:flex;align-items:center;gap:8px}
 .between{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .col{display:flex;flex-direction:column}

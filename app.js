@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.7.0';
+  var VERSION = '0.7.1';
 
   /* ---------- довідники ---------- */
   var ST = {
