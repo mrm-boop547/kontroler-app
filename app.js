@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.1';
+  var VERSION = '0.9.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1445,7 +1445,15 @@
   }
   function fitTo(ps, bottom) {
     if (!map || !ps.length) return;
+    map.resize();
     if (ps.length === 1) return map.easeTo({ center: [ps[0].lon, ps[0].lat], zoom: 17.5 });
+    /* точки, віднесені до села помилково (за десятки км), не мають віддаляти карту: беремо ядро в радіусі 4 км від медіани */
+    if (ps.length > 20) {
+      var med = function (arr) { arr = arr.slice().sort(function (x, y) { return x - y; }); return arr[arr.length >> 1]; };
+      var c0 = { lat: med(ps.map(function (p) { return p.lat; })), lon: med(ps.map(function (p) { return p.lon; })) };
+      var core = ps.filter(function (p) { return dist(c0, p) < 4000; });
+      if (core.length >= ps.length * 0.6) ps = core;
+    }
     var b = new maplibregl.LngLatBounds();
     ps.forEach(function (p) { b.extend([p.lon, p.lat]); });
     map.fitBounds(b, { padding: { top: bottom ? 90 : 190, bottom: bottom || 280, left: 40, right: 40 }, maxZoom: 17.5, duration: 0 });
