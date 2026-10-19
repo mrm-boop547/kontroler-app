@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.2';
+  var VERSION = '0.4.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -497,6 +497,24 @@
     });
   }
   function bindVillageSelect() {}
+  /* статистика зняття по всій дільниці за поточний місяць */
+  function districtCard() {
+    var act = 0, rd = 0, miss = 0;
+    S.points.forEach(function (p) {
+      if (p.status === 'n') return; act++;
+      var v = cycleMap()[p.id];
+      if (v && v.result === 'ok') rd++; else if (v && (v.result === 'none' || v.result === 'blocked')) miss++;
+    });
+    var left = act - rd - miss, P = pct(rd, act);
+    return '<a href="#villages" class="card big" style="gap:12px">' +
+      '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Дільниця · знято за ' + monthName().toLowerCase() + '</span>' +
+      '<span style="font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1">' + P + '%</span></div>' +
+      '<span class="small mute" style="font-size:13px;text-align:right">' + fmt(rd) + ' з ' + fmt(act) + icon('right', 14, 2.4) + '</span></div>' +
+      '<div class="bar" style="height:10px"><span style="flex:' + rd + ' 1 0;background:#111"></span><span style="flex:' + miss + ' 1 0;background:#A1A1AA"></span><span style="flex:' + Math.max(left, 0) + ' 1 0;background:#E4E4E7"></span></div>' +
+      '<div class="row small" style="gap:14px;color:#3F3F46"><span class="row" style="gap:5px"><span class="dot" style="background:#111"></span>Знято ' + fmt(rd) + '</span>' +
+      '<span class="row" style="gap:5px"><span class="dot" style="background:#A1A1AA"></span>Не потрапив ' + fmt(miss) + '</span>' +
+      '<span class="row" style="gap:5px"><span class="dot" style="background:#E4E4E7"></span>Не був ' + fmt(Math.max(left, 0)) + '</span></div></a>';
+  }
   function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
   function renderHome() {
     var ps = villagePoints(), c = counts(ps);
@@ -515,6 +533,7 @@
         '<span style="width:52px;height:52px;border-radius:26px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + icon('go', 22, 2.4) + '</span></div>' +
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
+      districtCard() +
       '<div class="grid2">' + ST_ORDER.map(function (s) {
         return '<a class="tile" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + '" style="width:22px;height:22px;border:4px solid #fff;box-shadow:0 0 0 1px #E4E4E7' + (s === 'n' ? ';border:3.5px solid #A1A1AA;box-shadow:none' : '') + '"></span>' +
           '<div class="col"><span class="num">' + c[s] + '</span><span class="small mute" style="font-size:13px">' + ST[s].label + '</span></div></a>';
