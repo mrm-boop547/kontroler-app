@@ -172,3 +172,5 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .qbtn:active{transform:scale(.97)}
 .tool.dark{background:var(--ink);color:#fff}
 .tool.dark span{color:#B4B4BA}
+.stgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sttile{background:var(--row);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
