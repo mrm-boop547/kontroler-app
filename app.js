@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.2.4';
+  var VERSION = '0.3.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -71,6 +71,7 @@
       list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>', village: '<path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/>',
       skip: '<path d="M5 5l9 7-9 7zM19 5v14"/>', pin: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
       locate: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+      camera: '<rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/>',
       grid: '<path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="4"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>'
     };
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || '') + '</svg>';
@@ -81,13 +82,19 @@
   var db;
   function openDb() {
     return new Promise(function (res, rej) {
-      var rq = indexedDB.open('kontroler', 1);
-      rq.onupgradeneeded = function () {
+      var rq = indexedDB.open('kontroler', 2);
+      rq.onupgradeneeded = function (e) {
         var d = rq.result;
-        d.createObjectStore('points', { keyPath: 'id' });
-        var v = d.createObjectStore('visits', { keyPath: 'id', autoIncrement: true });
-        v.createIndex('pointId', 'pointId');
-        d.createObjectStore('meta', { keyPath: 'k' });
+        if (e.oldVersion < 1) {
+          d.createObjectStore('points', { keyPath: 'id' });
+          var v = d.createObjectStore('visits', { keyPath: 'id', autoIncrement: true });
+          v.createIndex('pointId', 'pointId');
+          d.createObjectStore('meta', { keyPath: 'k' });
+        }
+        if (e.oldVersion < 2) {
+          var ph = d.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
+          ph.createIndex('pointId', 'pointId');
+        }
       };
       rq.onsuccess = function () { db = rq.result; res(); };
       rq.onerror = function () { rej(rq.error); };
@@ -106,6 +113,28 @@
       tx.oncomplete = res; tx.onerror = function () { rej(tx.error); };
     });
   }
+  function photosOf(pid) {
+    return new Promise(function (res) {
+      var r = db.transaction('photos').objectStore('photos').index('pointId').getAll(pid);
+      r.onsuccess = function () { res(r.result.sort(function (a, b) { return b.ts - a.ts; })); }; r.onerror = function () { res([]); };
+    });
+  }
+  /* стискаємо фото до ~1280 px, JPEG — приблизно 150–250 КБ замість 4–8 МБ */
+  function compress(file) {
+    return new Promise(function (res, rej) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var k = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        c.toBlob(function (b) { b ? res(b) : rej(new Error('blob')); }, 'image/jpeg', 0.72);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('img')); };
+      img.src = url;
+    });
+  }
+  function blobToData(b) { return new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(b); }); }
+  function dataToBlob(d) { var p = d.split(','), bin = atob(p[1]), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: 'image/jpeg' }); }
   function setMeta(k, v) { S.meta[k] = v; return put('meta', { k: k, v: v }); }
 
   /* ---------- стан ---------- */
@@ -239,7 +268,14 @@
         tx.oncomplete = function () { toast('Оновлено назв: ' + n); render(); };
         return;
       }
-      bulkReplace(pts, vis, meta).then(load).then(function () {
+      bulkReplace(pts, vis, meta).then(function () {
+        var ph = data.photos || []; if (!ph.length) return;
+        return new Promise(function (res) {
+          var tx = db.transaction('photos', 'readwrite'); tx.objectStore('photos').clear();
+          ph.forEach(function (x) { tx.objectStore('photos').put({ pointId: x.pointId, ts: x.ts, kind: x.kind, blob: dataToBlob(x.data) }); });
+          tx.oncomplete = res; tx.onerror = res;
+        });
+      }).then(load).then(function () {
         if (!S.meta.village) { var v = villages()[0]; setMeta('village', v && v.name !== 'Без села' ? v.name : null); }
         toast('Завантажено ' + fmt(pts.length) + ' точок'); go('#home');
       });
@@ -247,12 +283,17 @@
     rd.readAsText(f);
   }
   function exportBackup() {
+    toast('Готую копію…');
+    all('photos').then(function (ph) {
+      return Promise.all(ph.map(function (x) { return blobToData(x.blob).then(function (d) { return { pointId: x.pointId, ts: x.ts, kind: x.kind, data: d }; }); }));
+    }).then(function (photos) {
     var meta = Object.keys(S.meta).map(function (k) { return { k: k, v: S.meta[k] }; });
-    var data = { version: 1, app: VERSION, exported: new Date().toISOString(), points: Array.from(S.points.values()), visits: S.visits, meta: meta };
+    var data = { version: 2, app: VERSION, exported: new Date().toISOString(), points: Array.from(S.points.values()), visits: S.visits, meta: meta, photos: photos };
     var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'kontroler-backup-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove();
-    setMeta('lastBackup', Date.now()); toast('Резервну копію збережено');
+    setMeta('lastBackup', Date.now()); toast('Резервну копію збережено' + (photos.length ? ' (фото: ' + photos.length + ')' : ''));
+    });
   }
   function exportKml() {
     var col = { g: 'ff4aa316', y: 'ff0b9ef5', r: 'ff2626dc', n: 'ffaaa1a1' };
@@ -658,6 +699,9 @@
       '</div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Як знайти</div>' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
+        '<div id="photos" class="photos"></div>' +
+        '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
+        '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
         '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
       '<div class="card"><div class="h2">Показники</div>' +
         '<div class="grid2" style="gap:8px"><div class="card dark" style="padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">Останній</span><span style="font-size:24px;font-weight:800">' + (last ? fmt(last.reading) : '—') + '</span><span class="small mute">' + (last ? dt(last.ts) + ' · ' + tm(last.ts) : 'ще немає') + '</span></div>' +
@@ -681,13 +725,56 @@
           if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + ' · ' + dt(last.ts) : 'Блок «Показники» вище') + '</div>';
           else if (o[2] === 'select') inp = pickBtn(o[0], val, 'Вибрати');
           else if (o[2] === 'textarea') inp = '<textarea class="input" data-f="' + o[0] + '" placeholder="Номер пломби: статус">' + esc(val) + '</textarea>';
-          else inp = '<input class="input" data-f="' + o[0] + '" type="' + (o[2] === 'tel' ? 'tel' : 'text') + '" value="' + esc(val) + '">';
+          else if (o[2] === 'tel') inp = '<div class="row" style="gap:8px"><input class="input" data-f="phone" id="f-phone" type="tel" inputmode="tel" value="' + esc(val) + '" placeholder="Номер телефону">' +
+            '<button type="button" class="iconbtn" data-act="callPhone" aria-label="Подзвонити" style="width:52px;height:52px;border-radius:16px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 20) + '</button></div>';
+          else inp = '<input class="input" data-f="' + o[0] + '" type="text" value="' + esc(val) + '">';
           return '<div class="field"><label><span style="color:#A1A1AA;margin-right:6px">' + (i + 1) + '</span>' + esc(o[1]) + '</label>' + inp + '</div>';
         }).join('') +
         '<button class="btn" data-act="saveCard" data-id="' + p.id + '">Зберегти</button>' +
       '</div>' +
       '<button class="btn sec" data-act="deletePoint" data-id="' + p.id + '" style="color:#B91C1C">Видалити точку (дубль)</button>' +
       '</div>';
+    loadPhotos(p.id); bindPhotoInputs(p.id);
+  }
+  function loadPhotos(pid) {
+    var box = $('#photos'); if (!box) return;
+    (S.phUrls || []).forEach(function (u) { URL.revokeObjectURL(u); }); S.phUrls = [];
+    photosOf(pid).then(function (ph) {
+      box.innerHTML = ph.map(function (x) {
+        var u = URL.createObjectURL(x.blob); S.phUrls.push(u);
+        return '<button class="ph" data-act="viewPhoto" data-pid="' + x.id + '" data-url="' + u + '" data-kind="' + esc(x.kind || '') + '" data-ts="' + x.ts + '"><img src="' + u + '" alt="' + esc(x.kind || 'Фото') + '"><span>' + esc(x.kind || '') + '</span></button>';
+      }).join('');
+      box.style.display = ph.length ? '' : 'none';
+    });
+  }
+  function bindPhotoInputs(pid) {
+    ['#ph-m', '#ph-h'].forEach(function (sel) {
+      var inp = $(sel); if (!inp) return;
+      inp.onchange = function () {
+        var file = inp.files[0]; if (!file) return;
+        toast('Зберігаю фото…');
+        compress(file).then(function (b) { return put('photos', { pointId: pid, ts: Date.now(), kind: inp.getAttribute('data-kind'), blob: b }); })
+          .then(function () { inp.value = ''; toast('Фото збережено'); loadPhotos(pid); })
+          .catch(function () { toast('Не вдалося зберегти фото'); });
+      };
+    });
+  }
+  function viewPhoto(el) {
+    closeSheet();
+    var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov show ph-view';
+    ov.innerHTML = '<img src="' + el.getAttribute('data-url') + '" alt="">' +
+      '<div class="ph-bar"><span>' + esc(el.getAttribute('data-kind')) + ' · ' + dt(+el.getAttribute('data-ts')) + '</span>' +
+      '<button class="chip" data-pk="del" style="background:#fff;color:#B91C1C">Видалити</button><button class="chip" data-pk="close" style="background:#fff">Закрити</button></div>';
+    ov.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pk]');
+      if (b && b.getAttribute('data-pk') === 'del') {
+        if (!confirm('Видалити фото?')) return;
+        del('photos', +el.getAttribute('data-pid')).then(function () { closeSheet(); toast('Фото видалено'); loadPhotos(location.hash.split('/')[1]); });
+        return;
+      }
+      closeSheet();
+    });
+    document.body.appendChild(ov);
   }
   function saveCard(id) {
     var p = S.points.get(id); if (!p) return;
@@ -910,6 +997,8 @@
       case 'doBind': doBind(); break;
       case 'pickVillage': var v = el.getAttribute('data-v'); setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.sel = null; S.filter = null; go('#home'); }); break;
       case 'pick': doPick(el); break;
+      case 'callPhone': var num = ($('#f-phone').value || '').replace(/[^\d+]/g, ''); if (num.length < 5) { toast('Введіть номер телефону'); $('#f-phone').focus(); } else location.href = 'tel:' + num; break;
+      case 'viewPhoto': viewPhoto(el); break;
       case 'addCancel': cancelAdd(); break;
       case 'addSt': S.adding.st = el.getAttribute('data-v'); renderSheet(); break;
       case 'addSave': saveAdd(); break;
