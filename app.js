@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.9';
+  var VERSION = '0.5.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -538,8 +538,8 @@
       districtCard() +
       '<div class="stlist"><div class="small mute" style="padding:0 4px 2px">Статуси доступу · ' + esc(village() || 'Без села') + '</div>' + ST_ORDER.map(function (s) {
         return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + ' strow-dot"></span>' +
-          '<span class="col" style="gap:2px;min-width:0"><span class="small mute">' + ST[s].label + '</span>' +
-          '<span class="strow-main"><b>' + fmt(c[s]) + '</b> адрес · ' + pct(c[s], ps.length) + '% села</span></span></a>';
+          '<span class="col" style="gap:0;min-width:0"><b class="strow-n">' + fmt(c[s]) + '</b>' +
+          '<span class="strow-l">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '% села</span></span></a>';
       }).join('') + '</div>' +
       (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
       '<button class="btn sec" disabled style="border-style:dashed">' + icon('grid') + 'Сектори між контролерами · скоро</button>' +
