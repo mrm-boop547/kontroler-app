@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.2.0';
+  var VERSION = '0.2.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -364,6 +364,8 @@
       attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
     map.touchZoomRotate.disableRotation();
     map.on('style.load', addLayers);
+    /* підстраховка: якщо після зміни шару наші точки зникли, повертаємо їх */
+    map.on('styledata', function () { if (map.isStyleLoaded() && !map.getLayer('pts')) addLayers(); });
     map.on('click', function (e) {
       if (mapMode !== 'route' && mapMode !== 'all') return;
       var x = e.point.x, y = e.point.y;
@@ -450,7 +452,7 @@
   }
   function setLayer(l) {
     setMeta('layer', l); mapReady = false;
-    map.setStyle(MAP_STYLE(l));
+    map.setStyle(MAP_STYLE(l), { diff: false });
     if (l === 'sat' && !navigator.onLine) toast('Супутник доступний лише з інтернетом');
   }
   function renderMap() {
@@ -461,9 +463,9 @@
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
       '<div class="row">' + villageSelect('vsel') + '<a class="pill" href="#list" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</a></div>' +
       (S.meta.tilesMin
-        ? '<div class="row"><button class="pill tilebar" data-act="toggleTiles" aria-label="Розгорнути статуси">' + ST_ORDER.map(function (s) {
-            return '<span class="row" style="gap:5px' + (S.filter && S.filter !== s ? ';opacity:.35' : '') + '">' + dotHtml(s) + '<b>' + c[s] + '</b></span>';
-          }).join('') + icon('down', 16, 2.6) + '</button></div>'
+        ? '<div class="pill tilebar" style="padding:0 4px 0 8px;gap:2px;align-self:flex-start">' + ST_ORDER.map(function (s) {
+            return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
+          }).join('') + '<button class="tb-item" data-act="toggleTiles" aria-label="Розгорнути статуси">' + icon('down', 16, 2.6) + '</button></div>'
         : '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">' + ST_ORDER.map(function (s) {
             return '<button class="ftile' + (S.filter === s ? ' on' : '') + '" data-act="filter" data-st="' + s + '">' + dotHtml(s) + '<b>' + c[s] + '</b><span>' + ST[s].short + '</span></button>';
           }).join('') + '</div>') +
@@ -482,7 +484,20 @@
       if (S.route && !S.route.fromGps && Date.now() - lastRecalc > 20000) { lastRecalc = Date.now(); S.route = computeRoute(); S.sel = S.route.ids[0]; updateMap(); renderSheet(); }
     });
   }
+  function sheetSwipe(el) {
+    var sh = el.firstElementChild; if (!sh || S.adding) return;
+    var y0 = null;
+    sh.addEventListener('touchstart', function (e) { y0 = e.touches[0].clientY; }, { passive: true });
+    sh.addEventListener('touchend', function (e) {
+      if (y0 === null) return; var dy = e.changedTouches[0].clientY - y0; y0 = null;
+      if (dy > 40 && !S.meta.sheetMin) { setMeta('sheetMin', true); renderSheet(); }
+      else if (dy < -40 && S.meta.sheetMin) { setMeta('sheetMin', false); renderSheet(); }
+    });
+  }
   function renderSheet() {
+    renderSheetInner(); sheetSwipe($('#sheet') || document.createElement('div'));
+  }
+  function renderSheetInner() {
     var el = $('#sheet'); if (!el) return;
     if (S.adding) return renderAddSheet(el);
     var r = mapMode === 'route' ? S.route : null, p = S.points.get(S.sel);
