@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.1.1';
+  var VERSION = '0.1.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -266,16 +266,52 @@
   }
 
   /* ---------- Головна ---------- */
-  function villageSelect(id) {
+  /* ---------- власне вікно вибору замість системного списку ---------- */
+  function openSheet(title, opts, current, onPick) {
+    closeSheet();
+    var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov';
+    ov.innerHTML = '<div class="pk-sheet" role="dialog" aria-label="' + esc(title) + '"><div class="pk-grip"></div>' +
+      '<div class="between" style="padding:0 4px"><div class="h2">' + esc(title) + '</div><button class="iconbtn" data-pk="close" aria-label="Закрити" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
+      '<div class="pk-list">' + opts.map(function (o, i) {
+        var v = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? (o || 'Не вибрано') : o.l, sub = typeof o === 'string' ? '' : (o.sub || '');
+        var on = v === current;
+        return '<button class="pk-row' + (on ? ' on' : '') + '" data-pk="' + i + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
+          (on ? '<span class="pk-check">' + icon('check', 16, 3) + '</span>' : '<span class="pk-radio"></span>') + '</button>';
+      }).join('') + '</div></div>';
+    ov.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pk]');
+      if (e.target === ov || (b && b.getAttribute('data-pk') === 'close')) return closeSheet();
+      if (b) { var o = opts[+b.getAttribute('data-pk')]; closeSheet(); onPick(typeof o === 'string' ? o : o.v); }
+    });
+    document.body.appendChild(ov);
+    requestAnimationFrame(function () { ov.classList.add('show'); });
+  }
+  function closeSheet() { var o = $('#picker'); if (o) o.remove(); }
+  function pickBtn(field, val, ph) {
+    return '<button type="button" class="input selbtn" data-act="pick" data-f="' + field + '" data-val="' + esc(val || '') + '"><span class="' + (val ? '' : 'mute') + '">' + esc(val || ph || 'Вибрати') + '</span>' + icon('down', 18, 2.4) + '</button>';
+  }
+  var PICK_OPTS = { vm: [{ v: 'зчитано', l: 'Зчитано з лічильника' }, { v: 'зі слів споживача', l: 'Зі слів споживача' }, { v: 'по телефону', l: 'Повідомили по телефону' }, { v: 'сусіди', l: 'Повідомили сусіди' }] };
+  OFFICIAL.forEach(function (o) { if (o[2] === 'select') PICK_OPTS[o[0]] = o[3]; });
+  var PICK_TITLE = { vm: 'Як отримано показник' };
+  OFFICIAL.forEach(function (o) { PICK_TITLE[o[0]] = o[1]; });
+  function doPick(el) {
+    var f = el.getAttribute('data-f'), opts = PICK_OPTS[f];
+    openSheet(PICK_TITLE[f] || 'Вибір', opts, el.getAttribute('data-val'), function (v) {
+      el.setAttribute('data-val', v);
+      var lab = v; opts.forEach(function (o) { if (typeof o !== 'string' && o.v === v) lab = o.l; });
+      el.querySelector('span').textContent = lab || 'Не вибрано'; el.querySelector('span').className = v ? '' : 'mute';
+    });
+  }
+  function villageSelect() {
     var v = village();
-    return '<select id="' + id + '" class="pill" style="appearance:none;padding-right:16px;max-width:60%">' + villages().map(function (x) {
-      return '<option value="' + esc(x.name) + '"' + (x.name === v ? ' selected' : '') + '>' + esc(x.name) + ' · ' + x.n + '</option>';
-    }).join('') + '</select>';
+    return '<button type="button" class="pill" data-act="pickVillageSheet" style="max-width:60%;box-shadow:0 6px 20px rgba(0,0,0,.06)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v || 'Без села') + '</span>' + icon('down', 16, 2.6) + '</button>';
   }
-  function bindVillageSelect(id) {
-    var el = $('#' + id); if (!el) return;
-    el.onchange = function () { setMeta('village', el.value === 'Без села' ? null : el.value).then(function () { S.route = null; S.filter = null; S.sel = null; render(); }); };
+  function pickVillage() {
+    openSheet('Населений пункт', villages().map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }), village() || 'Без села', function (v) {
+      setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.filter = null; S.sel = null; render(); });
+    });
   }
+  function bindVillageSelect() {}
   function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
   function renderHome() {
     var ps = villagePoints(), c = counts(ps);
@@ -401,10 +437,15 @@
     var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
       '<div class="row">' + villageSelect('vsel') + '<a class="pill" href="#list" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</a></div>' +
-      '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">' + ST_ORDER.map(function (s) {
-        return '<button class="ftile' + (S.filter === s ? ' on' : '') + '" data-act="filter" data-st="' + s + '">' + dotHtml(s) + '<b>' + c[s] + '</b><span>' + ST[s].short + '</span></button>';
-      }).join('') + '</div>' +
-      '<div class="between"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
+      (S.meta.tilesMin
+        ? '<div class="row"><button class="pill tilebar" data-act="toggleTiles" aria-label="Розгорнути статуси">' + ST_ORDER.map(function (s) {
+            return '<span class="row" style="gap:5px' + (S.filter && S.filter !== s ? ';opacity:.35' : '') + '">' + dotHtml(s) + '<b>' + c[s] + '</b></span>';
+          }).join('') + icon('down', 16, 2.6) + '</button></div>'
+        : '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">' + ST_ORDER.map(function (s) {
+            return '<button class="ftile' + (S.filter === s ? ' on' : '') + '" data-act="filter" data-st="' + s + '">' + dotHtml(s) + '<b>' + c[s] + '</b><span>' + ST[s].short + '</span></button>';
+          }).join('') + '</div>') +
+      '<div class="between"><div class="row"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
+      (S.meta.tilesMin ? '' : '<button class="iconbtn" data-act="toggleTiles" aria-label="Згорнути статуси">' + '<span style="transform:rotate(180deg);display:flex">' + icon('down', 20, 2.6) + '</span></button>') + '</div>' +
       '<div class="seg"><button data-act="layer" data-l="scheme" class="' + (lay === 'scheme' ? 'on' : '') + '">Схема</button><button data-act="layer" data-l="sat" class="' + (lay === 'sat' ? 'on' : '') + '">Супутник</button></div></div>' +
       '</div><div id="sheet"></div>' + tabs('map');
     bindVillageSelect('vsel');
@@ -424,7 +465,15 @@
     if (!p) { el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">Відмічені «Зчитано» та «Не живуть» у маршрут не потрапляють.</div></div>' : ''; return; }
     var idx = routeIndex(p.id), rn = (S.meta.routeNo || {})[village()] || '';
     var d = S.pos ? fdist(dist(S.pos, p)) : '';
-    el.innerHTML = '<div class="sheet">' +
+    if (S.meta.sheetMin) {
+      el.innerHTML = '<div class="sheet mini"><button class="grip" data-act="toggleSheet" aria-label="Розгорнути панель"></button>' +
+        '<div class="row"><button class="row" data-act="toggleSheet" style="flex-grow:1;min-width:0;border:0;background:transparent;padding:0;font-size:16px;font-weight:800;color:#111;text-align:left">' +
+        (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : dotHtml(p.status)) +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span>' + (d ? '<span class="small mute" style="flex-shrink:0">' + d + '</span>' : '') + '</button>' +
+        '<a class="iconbtn" href="#card/' + p.id + '" aria-label="Відкрити картку" style="background:#111;color:#fff;box-shadow:none;width:44px;height:44px">' + icon('arrow', 18, 2.4) + '</a></div></div>';
+      return;
+    }
+    el.innerHTML = '<div class="sheet"><button class="grip" data-act="toggleSheet" aria-label="Згорнути панель"></button>' +
       '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px;min-width:0">' +
       '<div class="row small mute" style="flex-wrap:wrap"><label class="chip" style="height:26px;color:#111">Маршрут №<input id="rno" value="' + esc(rn) + '" placeholder="внести" style="width:84px;border:0;outline:0;background:transparent;font-weight:800"></label>' +
       (r ? r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) : '') + '</div>' +
@@ -434,7 +483,7 @@
       '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:54px;font-size:15px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
       (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:54px;height:54px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
     var rno = $('#rno');
-    rno.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[village()] = rno.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
+    if (rno) rno.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[village()] = rno.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
   }
 
   /* ---------- Картка ---------- */
@@ -480,7 +529,7 @@
         OFFICIAL.map(function (o, i) {
           var val = f[o[0]] || '', inp;
           if (o[2] === 'info') inp = '<div style="font-weight:700">' + (last ? fmt(last.reading) + ' · ' + dt(last.ts) : 'Блок «Показники» вище') + '</div>';
-          else if (o[2] === 'select') inp = '<select class="input" data-f="' + o[0] + '">' + o[3].map(function (x) { return '<option' + (x === val ? ' selected' : '') + ' value="' + esc(x) + '">' + esc(x || '—') + '</option>'; }).join('') + '</select>';
+          else if (o[2] === 'select') inp = pickBtn(o[0], val, 'Вибрати');
           else if (o[2] === 'textarea') inp = '<textarea class="input" data-f="' + o[0] + '" placeholder="Номер пломби: статус">' + esc(val) + '</textarea>';
           else inp = '<input class="input" data-f="' + o[0] + '" type="' + (o[2] === 'tel' ? 'tel' : 'text') + '" value="' + esc(val) + '">';
           return '<div class="field"><label><span style="color:#A1A1AA;margin-right:6px">' + (i + 1) + '</span>' + esc(o[1]) + '</label>' + inp + '</div>';
@@ -493,7 +542,7 @@
   function saveCard(id) {
     var p = S.points.get(id); if (!p) return;
     var f = Object.assign({}, p.fields || {});
-    document.querySelectorAll('[data-f]').forEach(function (el) { f[el.getAttribute('data-f')] = el.value.trim(); });
+    document.querySelectorAll('[data-f]').forEach(function (el) { f[el.getAttribute('data-f')] = (el.tagName === 'BUTTON' ? el.getAttribute('data-val') : el.value).trim(); });
     p.fields = f; p.note = $('#note').value.trim();
     var v = $('#a-v').value.trim(), s = $('#a-s').value.trim(), h = $('#a-h').value.trim();
     if (v !== (p.village || '')) { p.village = v || null; S.route = null; }
@@ -523,7 +572,7 @@
         return '<button class="opt' + (V.res === r[0] ? ' on' : '') + '" data-act="res" data-v="' + r[0] + '"><b style="font-size:15px">' + r[1] + '</b><small>' + r[2] + '</small></button>';
       }).join('') + '</div>' +
       (V.res === 'ok' ? '<div class="field"><label for="vr">Показник (необов\'язково)</label><input id="vr" class="input" inputmode="numeric" placeholder="Загальний"></div>' +
-        '<select id="vm" class="input"><option value="зчитано">Зчитано з лічильника</option><option value="зі слів споживача">Зі слів споживача</option><option value="по телефону">По телефону</option><option value="сусіди">Повідомили сусіди</option></select>' : '') +
+        '<div id="vmw">' + pickBtn('vm', 'зчитано').replace('>зчитано<', '>Зчитано з лічильника<') + '</div>' : '') +
       '</div>' +
       '<div class="card"><div class="col" style="gap:2px"><div class="h2">2. Доступ до лічильника</div><div class="small mute">Зберігається на наступні місяці</div></div><div class="grid2" style="gap:8px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (V.prof === s ? ' on' : '') + '" data-act="prof" data-v="' + s + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:48px">' + dotHtml(s) + '<b style="font-size:14px">' + ST[s].label + '</b></button>';
@@ -540,7 +589,7 @@
     var reading = $('#vr') ? $('#vr').value.replace(/\s/g, '') : '';
     if (reading && !/^\d+(\.\d+)?$/.test(reading)) return toast('Показник: лише цифри');
     var note = $('#vn').value.trim();
-    var v = { pointId: id, ts: Date.now(), result: V.res, prof: V.prof, reading: reading || null, method: reading ? ($('#vm') ? $('#vm').value : 'зчитано') : null, note: note || null,
+    var v = { pointId: id, ts: Date.now(), result: V.res, prof: V.prof, reading: reading || null, method: reading ? (($('#vmw [data-f]') || {}).getAttribute ? $('#vmw [data-f]').getAttribute('data-val') : 'зчитано') : null, note: note || null,
       pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null };
     if (V.res === 'empty') V.prof = 'n';
     p.status = V.prof; p.tags = V.tags.slice();
@@ -710,6 +759,10 @@
       case 'saveVisit': saveVisit(id); break;
       case 'doBind': doBind(); break;
       case 'pickVillage': var v = el.getAttribute('data-v'); setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.sel = null; S.filter = null; go('#home'); }); break;
+      case 'pick': doPick(el); break;
+      case 'toggleSheet': setMeta('sheetMin', !S.meta.sheetMin); renderSheet(); break;
+      case 'toggleTiles': setMeta('tilesMin', !S.meta.tilesMin); renderMap.fitNext = false; render(); break;
+      case 'pickVillageSheet': pickVillage(); break;
       case 'qf': QF = el.getAttribute('data-v') || null; render(); break;
       case 'backup': exportBackup(); break;
       case 'kml': exportKml(); break;
