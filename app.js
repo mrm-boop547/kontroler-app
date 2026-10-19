@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.1.0';
+  var VERSION = '0.1.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -219,7 +219,7 @@
     app.innerHTML = '<div class="screen"><div class="empty">' +
       '<h1 class="h1">Карта контролера</h1>' +
       '<p class="mute" style="margin:0;font-weight:600;line-height:1.5">Даних на цьому телефоні ще немає. Завантажте файл з точками (points.json) або резервну копію.</p>' +
-      '<label class="btn" for="imp">Завантажити файл</label><input id="imp" type="file" accept=".json,application/json" hidden>' +
+      '<label class="btn" for="imp">Завантажити файл</label><input id="imp" type="file" hidden>' +
       '<div class="small mute">Версія ' + VERSION + '. Усі дані зберігаються лише на цьому пристрої.</div>' +
       '</div></div>';
     $('#imp').onchange = importFile;
@@ -682,7 +682,7 @@
       '<div class="card"><div class="field"><label for="dl">Адрес у денному маршруті</label><input id="dl" class="input" inputmode="numeric" value="' + (S.meta.dayLimit || 40) + '"></div></div>' +
       '<button class="btn" data-act="backup">Зберегти резервну копію</button>' +
       '<button class="btn sec" data-act="kml">Експорт у KML (MAPS.ME, Google)</button>' +
-      '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept=".json,application/json" hidden>' +
+      '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" hidden>' +
       '<div class="small mute" style="line-height:1.5">Усі дані зберігаються лише на цьому телефоні. Робіть резервну копію хоча б раз на кілька днів і зберігайте файл у Google Диск або Telegram «Збережене».</div>' +
       '<div class="small mute">Версія ' + VERSION + ' · карта © OpenStreetMap, супутник © Esri</div></div>';
     $('#imp2').onchange = importFile;
