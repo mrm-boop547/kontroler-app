@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.2';
+  var VERSION = '0.11.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -586,13 +586,9 @@
         '<div class="col" style="gap:2px;min-width:0"><b style="font-size:20px">' + esc(u.name) + '</b><span class="small mute">' + (u.tab ? 'Табельний № ' + esc(u.tab) : 'Без табельного номера') + ' · ID ' + esc(id) + '</span></div></div>' +
         '<div class="small mute">Здолбунівська дільниця · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Мої дані · ' + monthName().toLowerCase() + '</div>' +
-        '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div></div>' +
-      '<div class="card"><div class="h2" style="font-size:15px">За весь час</div>' +
-        '<div class="between"><span class="mute">Адрес пройдено</span><b>' + fmt(vis.length) + '</b></div>' +
-        '<div class="between"><span class="mute">Візитів (залишено записок)</span><b>' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + '</b></div>' +
-        '<div class="between"><span class="mute">Точок внесено мною</span><b>' + fmt(added) + '</b></div>' +
-        '<div class="between"><span class="mute">Точок прив\'язано мною (GPS / вручну)</span><b>' + fmt(bound) + '</b></div></div>' +
-      '<button class="btn sec" data-act="myPoints">' + icon('pin', 18) + 'Мої точки на карті</button>' +
+        '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' +
+        '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
+        '<button class="btn sec" data-act="myPoints" style="height:46px">' + icon('pin', 18) + 'Мої точки на карті</button></div>' +
       settingsBody(true) +
       '<button class="btn sec" data-act="logout">' + icon('user', 18) + 'Змінити контролера</button>' +
       '<div class="small mute" style="line-height:1.5">Ідентифікатор будується з табельного номера, тому на новому телефоні після входу й обміну даними ваші записи знову будуть вашими. Пароля немає: це підпис, а не захист.</div>' +
@@ -2201,38 +2197,35 @@
   }
 
   /* ---------- Налаштування ---------- */
+  /* «Я»: спершу те, чим користуються щодня (мої дані, обмін), далі налаштування обходу, внизу — рідкісне (таблиці, офлайн-карта, копія) */
   function settingsBody(inMe) {
     var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
     var mine = S.visits.filter(function (v) { return v.by === me().id || !v.by; }).length;
-    return '<div class="card"><div class="between"><span class="mute">Точок</span><b>' + fmt(S.points.size) + '</b></div><div class="between"><span class="mute">Візитів</span><b>' + fmt(S.visits.length) + '</b></div>' +
-      '<div class="between"><span class="mute">Остання копія</span><b>' + (S.meta.lastBackup ? dt(S.meta.lastBackup) : 'ніколи') + '</b></div><div class="between"><span class="mute">Захист від очищення</span><b>' + (persisted ? 'увімкнено' : 'ні') + '</b></div></div>' +
-
-      '<div class="card"><div class="h2">Норма зчитування</div><div class="small mute">Абонент, не зчитаний довше за норму, потрапляє в «Список ' + nd + '» — друге коло після планового обходу.</div>' +
-        '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div>' +
-        sliderHtml('dl', routeCfg().limit) + '</div>' +
-
-      '<div class="card"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Поки без сервера — файлом через Telegram чи Google Диск</div></div></div>' +
+    var sec = function (t) { return '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + t + '</div>'; };
+    var exchange = '<div class="card dark" style="gap:12px"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Поки без сервера: файлом через Telegram чи Google Диск</div></div></div>' +
         (inMe ? '' : '<a class="list-row" href="#me" style="border:0;padding:0">' + icon('user', 18) + '<b style="flex-grow:1">' + esc(me().name) + (me().tab ? ' · таб. ' + esc(me().tab) : '') + '</b>' + icon('right', 16, 2.4) + '</a>') +
-        '<button class="btn" data-act="syncOut">' + icon('cloud', 18) + 'Надіслати мої дані колегам</button>' +
-        '<label class="btn sec" for="imp3">Прийняти дані від колеги</label><input id="imp3" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
-        '<div class="small mute">Моїх візитів: ' + fmt(mine) + (S.meta.lastSyncOut ? ' · надіслано ' + dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '') + '</div>' +
+        '<button class="btn" data-act="syncOut" style="background:#fff;color:#111">' + icon('cloud', 18) + 'Надіслати мої дані колегам</button>' +
+        '<label class="btn sec" for="imp3" style="background:transparent;color:#fff;border-color:#4A4A4F">Прийняти дані від колеги</label><input id="imp3" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
+        '<div class="small mute">Моїх відміток: ' + fmt(mine) + (S.meta.lastSyncOut ? ' · надіслано ' + dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : ' · ще не надсилав') + '</div>' +
         (Object.keys(peers).length ? '<div class="col" style="gap:0">' + Object.keys(peers).map(function (k) { var x = peers[k];
-          return '<div class="list-row">' + icon('user', 18) + '<div class="col" style="flex-grow:1"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.local ? 'теж працює на цьому телефоні' : x.last ? fmt(x.visits || 0) + ' візитів · отримано ' + dt(x.last) : 'відомий через ' + esc(x.via || 'колегу')) + '</span></div></div>'; }).join('') + '</div>' : '') +
-        '<div class="small mute" style="line-height:1.5">Злиття безпечне: візити лише додаються (кожен має унікальний код), з двох версій точки лишається новіша, повторний імпорт нічого не дублює. Ці ж правила працюватимуть із сервером.</div></div>' +
-
-      '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
+          return '<div class="list-row" style="border-top-color:#2A2A2E">' + icon('user', 18) + '<div class="col" style="flex-grow:1"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.local ? 'теж працює на цьому телефоні' : x.last ? fmt(x.visits || 0) + ' відміток · отримано ' + dt(x.last) : 'відомий через ' + esc(x.via || 'колегу')) + '</span></div></div>'; }).join('') + '</div>' : '') +
+        '<div class="small mute" style="line-height:1.5">Повторний імпорт нічого не дублює: відмітки лише додаються, з двох версій точки лишається новіша.</div></div>';
+    var route = '<div class="card"><div class="h2">Обхід</div>' + sliderHtml('dl', routeCfg().limit) +
+        '<div class="small mute" style="padding-top:4px">Норма зчитування: хто не зчитаний довше, іде в «Список ' + nd + '»</div>' +
+        '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div></div>';
+    var tables = '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
-        '<button class="btn sec" data-act="csvVisits">Журнал візитів</button>' +
-        '<button class="btn sec" data-act="kml">Карта в KML (MAPS.ME, Google)</button></div>' +
-
-      '<div class="card"><div class="h2">Карта без інтернету</div><div class="small mute" style="line-height:1.5">Схема вулиць і будинків усієї дільниці на телефон, ≈10–25 МБ, краще через Wi-Fi. Супутник працює лише з інтернетом.</div>' +
+        '<button class="btn sec" data-act="csvVisits">Журнал відміток</button>' +
+        '<button class="btn sec" data-act="kml">Карта в KML (MAPS.ME, Google)</button></div>';
+    var offline = '<div class="card"><div class="h2">Карта без інтернету</div><div class="small mute" style="line-height:1.5">Схема вулиць і будинків усієї дільниці, ≈10–25 МБ, краще через Wi-Fi. Супутник працює лише з інтернетом.</div>' +
         '<div class="small" id="off-st" style="font-weight:700">' + (off ? 'Збережено ' + dt(off.ts) + ' · ' + off.tiles + ' фрагментів · ' + off.mb + ' МБ' + (off.fail ? ' · не вдалося ' + off.fail : '') : 'Ще не збережено') + '</div>' +
-        '<button class="btn sec" data-act="offline">' + (off ? 'Оновити карту офлайн' : 'Зберегти карту дільниці офлайн') + '</button></div>' +
-
-      '<div class="card"><div class="h2">Резервна копія</div><button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
+        '<button class="btn sec" data-act="offline">' + (off ? 'Оновити карту офлайн' : 'Зберегти карту дільниці офлайн') + '</button></div>';
+    var backup = '<div class="card"><div class="between"><div class="h2">Резервна копія</div><span class="small ' + (S.meta.lastBackup ? 'mute' : '') + '" style="' + (S.meta.lastBackup ? '' : 'color:#B45309') + '">' + (S.meta.lastBackup ? 'остання ' + dt(S.meta.lastBackup) : 'ще не робили') + '</span></div>' +
+        '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
-        '<div class="small mute" style="line-height:1.5">Усі дані зберігаються лише на цьому телефоні. Робіть копію хоча б раз на кілька днів.</div></div>' +
-      '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(me().id) + ' · карта © OpenStreetMap, супутник © Esri</div>';
+        '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
+    return exchange + sec('Налаштування') + route + sec('Дані') + tables + offline + backup +
+      '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
   }
   function bindSettings() {
     if ($('#imp2')) $('#imp2').onchange = importFile; if ($('#imp3')) $('#imp3').onchange = importFile;
