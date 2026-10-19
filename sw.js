@@ -1,5 +1,5 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.4.4';
+var SHELL = 'shell-v0.4.5';
 var TILES = 'tiles-v1';
 var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
   './lib/maplibre-gl.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
