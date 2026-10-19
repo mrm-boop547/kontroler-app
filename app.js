@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.11.0';
+  var VERSION = '0.11.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -15,12 +15,13 @@
   var TAGS = [['dog', 'Собака'], ['eve', 'Після 18:00'], ['wk', 'Вихідні'], ['cam', 'Камера'], ['facade', 'На фасаді'],
     ['call', 'Дзвонити'], ['jur', 'Юридичний'], ['summer', 'Лише влітку'], ['owner', 'Тільки з власником']];
   var TAGNAME = {}; TAGS.forEach(function (t) { TAGNAME[t[0]] = t[1]; });
-  var RESULTS = [['ok', 'Зчитано', 'показник внесено'], ['none', 'Не застав', 'повернутись пізніше'],
-    ['blocked', 'Не відкрили', 'були вдома, не пустили'], ['empty', 'Не живуть', 'прибрати з обходу'],
+  /* «Нема доступу» об'єднує «не застав» і «не пустили» (старі записи 'blocked' рахуються сюди ж) */
+  var RESULTS = [['ok', 'Зчитано', 'показник внесено'], ['none', 'Нема доступу', 'не застав або не пустили'],
+    ['empty', 'Не живуть', 'прибрати з обходу'],
     ['note', 'Візит: записка', 'залишив записку передати показник по телефону']];
   /* «Візит» = залишена фізична записка з проханням передати показник. Рахується окремо і НЕ входить у зчитані:
      невідомо, чи спрацює записка. Адреса виходить з планового обходу, але лишається в «Списку 180», доки показник не надійде. */
-  var RESNAME = {}; RESULTS.forEach(function (r) { RESNAME[r[0]] = r[1]; });
+  var RESNAME = {}; RESULTS.forEach(function (r) { RESNAME[r[0]] = r[1]; }); RESNAME.blocked = 'Нема доступу';
   var PLACEMENTS = ['', 'В середині житлового будинку', 'В підсобному приміщенні', 'В гаражі', 'В квартирі', 'В щиту сходових клітин',
     'В щитовій підвального приміщення', 'На опорі в ящику', 'На внутрішній стороні паркану', 'На фасаді будинку',
     'На тильній стороні будинку', 'На підсобному приміщенні'];
@@ -1305,6 +1306,7 @@
       R.hours += (L[L.length - 1].ts - L[0].ts) / 36e5 + 1 / 6;
       for (var i = 1; i < L.length; i++) { var a = L[i - 1].pos || S.points.get(L[i - 1].pointId), b = L[i].pos || S.points.get(L[i].pointId); if (a && b) R.km += dist(a, b) / 1000; }
     });
+    R.none = (R.none || 0) + (R.blocked || 0); R.blocked = 0;
     R.days = Object.keys(byDay).length; R.byDay = byDay;
     /* дієвість записок: після скількох з них показник таки надійшов */
     R.noteOk = vs.filter(function (v) { return v.result === 'note' && S.visits.some(function (x) { return x.pointId === v.pointId && x.result === 'ok' && x.ts > v.ts; }); }).length;
@@ -1335,7 +1337,7 @@
       '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">адреси · зчитано · нові точки</span></div>' +
         (R.who.length ? R.who.map(function (w) {
           return '<button class="list-row" data-act="whoMap" data-v="' + esc(w.id) + '" style="border-left:0;border-right:0;border-bottom:0;background:none;width:100%;text-align:left;padding:10px 0">' + icon('user', 18) +
-            '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(whoName(w.id)) + '</b><span class="small mute">' + pct(w.ok, w.v) + '% зчитано' + (w.note ? ' · візитів ' + w.note : '') + (w.miss ? ' · не потрапив ' + w.miss : '') + '</span></div>' +
+            '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(whoName(w.id)) + '</b><span class="small mute">' + pct(w.ok, w.v) + '% зчитано' + (w.note ? ' · візитів ' + w.note : '') + (w.miss ? ' · нема доступу ' + w.miss : '') + '</span></div>' +
             '<b style="width:36px;text-align:right">' + w.v + '</b><b style="width:36px;text-align:right">' + w.ok + '</b><b style="width:36px;text-align:right">' + w.pts + '</b>' + icon('right', 14, 2.4) + '</button>';
         }).join('') : '<div class="small mute" style="padding:8px 0">За цей період ще немає даних. Дані колег з\'являються після «Прийняти дані від колеги».</div>') + '</div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Результати обходу</div>' + RESULTS.map(function (r) {
@@ -1355,7 +1357,7 @@
     return ['Звіт контролера' + (me().name ? ' ' + me().name : '') + ' · ' + L,
       'Адрес пройдено: ' + R.total + ', зчитано: ' + R.ok + ' (' + pct(R.ok, R.total) + '%)',
       'Візитів (залишено записок): ' + (R.note || 0) + (R.noteOk ? ', з них уже передали показник: ' + R.noteOk : ''),
-      'Не застав: ' + (R.none || 0) + ', не відкрили: ' + (R.blocked || 0) + ', не живуть: ' + (R.empty || 0),
+      'Нема доступу: ' + ((R.none || 0) + (R.blocked || 0)) + ', не живуть: ' + (R.empty || 0),
       'Днів: ' + R.days + ', в середньому ' + (R.days ? Math.round(R.total / R.days) : 0) + ' адрес/день',
       st ? 'План ' + monthName().toLowerCase() + ': ' + pct(st.done, st.act) + '%, залишилось ' + st.left + ' адрес, ' + st.days + ' роб. днів' : '',
       'Локації на карті: ' + fmt(cv.placed) + ' з ' + fmt(cv.total) + ' (' + pct(cv.placed, cv.total) + '%)'].filter(Boolean).join('\n');
@@ -1557,7 +1559,7 @@
       '<button class="iconbtn" data-act="quickCancel" aria-label="Скасувати" style="width:52px;height:52px;background:#F1F1F3;box-shadow:none;flex-shrink:0">' + icon('close', 18, 2.4) + '</button></div>';
     var b = function (v, l, dark) { return '<button class="qbtn' + (dark ? ' dark' : '') + '" data-act="quick" data-v="' + v + '" data-id="' + p.id + '">' + l + '</button>'; };
     return (cv ? '<div class="small" style="font-weight:700">' + monthName() + ': ' + esc(RESNAME[cv.result].toLowerCase()) + ' ' + dt(cv.ts) + '</div>' : '') +
-      '<div class="qgrid">' + b('ok', 'Зчитано', true) + b('none', 'Не застав') + b('note', 'Записка') + '<a class="qbtn" href="#visit/' + p.id + '">Інше…</a></div>';
+      '<div class="qgrid">' + b('ok', 'Зчитано', true) + b('none', 'Нема доступу') + b('note', 'Записка') + '<a class="qbtn" href="#visit/' + p.id + '">Інше…</a></div>';
   }
   function quickVisit(id, res) {
     var p = S.points.get(id); if (!p) return;
