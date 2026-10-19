@@ -123,6 +123,11 @@ nav.tabs a.on{height:52px;border-radius:26px;background:var(--ink);color:#fff;fl
 .range::-webkit-slider-thumb{-webkit-appearance:none;width:32px;height:32px;border-radius:50%;background:#fff;border:3px solid #111;margin-top:-11px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .range::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #111}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.vsel{height:56px;max-width:70%;padding:0 4px;border:0;background:transparent;color:#111;display:inline-flex;align-items:center;gap:6px;font-size:24px;font-weight:800;letter-spacing:-.01em;flex-shrink:1;min-width:0}
-.mapui .vsel{height:48px;padding:0 14px;border-radius:24px;background:#fff;font-size:17px;box-shadow:0 6px 20px rgba(0,0,0,.06)}
+.vsel{height:56px;max-width:70%;padding:0 18px 0 8px;border:0;border-radius:28px;background:#111;color:#fff;display:inline-flex;align-items:center;gap:10px;font-size:18px;font-weight:800;box-shadow:0 8px 24px rgba(0,0,0,.18);flex-shrink:1;min-width:0}
 .vsel-ic{width:40px;height:40px;border-radius:20px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.stlist{display:flex;flex-direction:column;padding:4px 0}
+.strow{display:flex;align-items:center;gap:12px;padding:14px 4px;color:#111}
+.strow+.strow{border-top:1px solid #E4E4E7}
+.strow-l{flex-grow:1;font-size:16px;font-weight:700}
+.strow-n{font-size:20px;font-weight:800}
+.strow svg{color:#A1A1AA}

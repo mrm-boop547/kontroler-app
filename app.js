@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.7';
+  var VERSION = '0.4.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -489,7 +489,7 @@
   }
   function villageSelect() {
     var v = village();
-    return '<button type="button" class="vsel" data-act="pickVillageSheet" aria-label="Вибрати населений пункт"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v || 'Без села') + '</span>' + icon('down', 22, 2.8) + '</button>';
+    return '<button type="button" class="vsel" data-act="pickVillageSheet" aria-label="Вибрати населений пункт"><span class="vsel-ic">' + icon('village', 18, 2.2) + '</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v || 'Без села') + '</span>' + icon('down', 18, 2.6) + '</button>';
   }
   function pickVillage() {
     openSheet('Населений пункт', villages().map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }), village() || 'Без села', function (v) {
@@ -536,9 +536,9 @@
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
       districtCard() +
-      '<div class="grid2">' + ST_ORDER.map(function (s) {
-        return '<a class="tile" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + '" style="width:22px;height:22px;border:4px solid #fff;box-shadow:0 0 0 1px #E4E4E7' + (s === 'n' ? ';border:3.5px solid #A1A1AA;box-shadow:none' : '') + '"></span>' +
-          '<div class="col"><span class="num">' + c[s] + '</span><span class="small mute" style="font-size:13px">' + ST[s].label + '</span></div></a>';
+      '<div class="stlist"><div class="small mute" style="padding:0 4px 2px">Статуси доступу · ' + esc(village() || 'Без села') + '</div>' + ST_ORDER.map(function (s) {
+        return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + '" style="width:14px;height:14px"></span>' +
+          '<span class="strow-l">' + ST[s].label + '</span><b class="strow-n">' + c[s] + '</b><span class="mute" style="font-size:13px;min-width:38px;text-align:right">' + pct(c[s], ps.length) + '%</span>' + icon('right', 16, 2.4) + '</a>';
       }).join('') + '</div>' +
       (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
       '<button class="btn sec" disabled style="border-style:dashed">' + icon('grid') + 'Сектори між контролерами · скоро</button>' +
