@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.12.2';
+  var VERSION = '0.12.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2651,17 +2651,22 @@
       render();
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
-    checkUpdate();
+    checkUpdate(false, true);
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') checkUpdate(); });
     setInterval(checkUpdate, 10 * 60 * 1000);
   }
   /* оновлення: version.json завжди з мережі, без кешу; якщо там новіша версія — плашка «Оновити» */
   var swReg = null;
   function verNum(v) { return String(v || '0').split('.').reduce(function (a, x) { return a * 1000 + (+x || 0); }, 0); }
-  function checkUpdate(manual) {
+  function checkUpdate(manual, onBoot) {
     if (!navigator.onLine) { if (manual) toast('Немає інтернету'); return Promise.resolve(); }
     return fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
-      if (verNum(j.v) > verNum(VERSION)) showUpdate(j.v);
+      if (verNum(j.v) > verNum(VERSION)) {
+        /* при відкритті сторінки ще нічого не введено — оновлюємось одразу, один раз на версію (щоб не зациклитись, якщо CDN ще віддає старий код) */
+        var k = 'kc-upd-' + j.v, tried = false; try { tried = sessionStorage.getItem(k); sessionStorage.setItem(k, '1'); } catch (e) { tried = true; }
+        if (onBoot && !tried) return applyUpdate();
+        showUpdate(j.v);
+      }
       else if (manual) toast('У вас остання версія ' + VERSION);
     }).catch(function () { if (manual) toast('Не вдалося перевірити'); });
   }
