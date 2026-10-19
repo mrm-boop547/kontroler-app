@@ -1,11 +1,11 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.2.2';
+var SHELL = 'shell-v0.2.3';
 var TILES = 'tiles-v1';
 var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
   './lib/maplibre-gl.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
-  e.waitUntil(caches.open(SHELL).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
+  e.waitUntil(caches.open(SHELL).then(function (c) { return c.addAll(FILES.map(function (u) { return new Request(u, { cache: 'reload' }); })); }).then(function () { return self.skipWaiting(); }));
 });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
@@ -44,12 +44,10 @@ self.addEventListener('fetch', function (e) {
     return;
   }
   if (new URL(url).origin === self.location.origin) {
-    e.respondWith(caches.match(req, { ignoreSearch: true }).then(function (hit) {
-      var net = fetch(req).then(function (res) {
-        if (res.ok) caches.open(SHELL).then(function (c) { c.put(req, res.clone()); });
-        return res;
-      }).catch(function () { return hit; });
-      return hit || net;
-    }));
+    /* спершу мережа (оминаючи кеш браузера), без мережі — збережена копія */
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(function (res) {
+      if (res.ok) { var cp = res.clone(); caches.open(SHELL).then(function (c) { c.put(req, cp); }); }
+      return res;
+    }).catch(function () { return caches.match(req, { ignoreSearch: true }); }));
   }
 });
