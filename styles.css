@@ -93,3 +93,5 @@ nav.tabs a.on{height:52px;border-radius:26px;background:var(--ink);color:#fff;fl
 .sheet .grip::after{content:"";position:absolute;left:8px;right:8px;top:8px;height:5px;border-radius:3px;background:#D4D4D8}
 .sheet.mini{padding:10px 12px 12px 14px;gap:6px}
 .tilebar{height:44px;gap:14px;box-shadow:0 6px 20px rgba(0,0,0,.06);font-size:14px}
+.fchip{height:36px;padding:0 12px;font-size:13px}
+.addpin{cursor:grab}
