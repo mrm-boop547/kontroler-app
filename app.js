@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.6.0';
+  var VERSION = '0.7.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -52,26 +52,12 @@
     return 2 * R * Math.asin(Math.sqrt(x));
   }
   function fdist(m) { return m < 1000 ? Math.round(m) + ' м' : (m / 1000).toFixed(1).replace('.', ',') + ' км'; }
-  /* Цикл обходу: за замовчуванням півріччя (I: січень–червень, II: липень–грудень).
-     «Зчитано» в межах циклу = адреса закрита до кінця циклу. Статус доступу точки не обнуляється ніколи. */
+  /* Норма: кожен абонент має бути зчитаний хоча б раз на 180 днів (рахується від дати останнього зчитування точки).
+     Плановий обхід = села з маршрутних листів на місяць; адреса виходить з планового обходу після будь-якого візиту цього місяця.
+     Хто не зчитаний понад 180 днів (або сьогодні не потрапили) → «Список 180» → друге коло після планових робіт. */
   function pad2(n) { return String(n).padStart(2, '0'); }
-  function cyclePeriod() { return (S.meta && S.meta.cyclePeriod) || 'half'; }
-  function cycleKey(d) {
-    d = d || new Date(); var y = d.getFullYear(), m = d.getMonth(), p = cyclePeriod();
-    if (p === 'month') return y + '-' + pad2(m + 1);
-    if (p === 'quarter') return y + '-Q' + (Math.floor(m / 3) + 1);
-    return y + '-H' + (m < 6 ? 1 : 2);
-  }
-  function cycleName() {
-    var m = new Date().getMonth(), p = cyclePeriod();
-    if (p === 'month') return monthName().toLowerCase();
-    if (p === 'quarter') return ['I', 'II', 'III', 'IV'][Math.floor(m / 3)] + ' квартал';
-    return (m < 6 ? 'I' : 'II') + ' півріччя';
-  }
-  function cycleRange() {
-    var m = new Date().getMonth(), p = cyclePeriod(), a = p === 'month' ? m : p === 'quarter' ? m - m % 3 : m < 6 ? 0 : 6, b = p === 'month' ? m : p === 'quarter' ? a + 2 : a + 5;
-    return a === b ? MONTHS[a].toLowerCase() : MONTHS[a].toLowerCase() + '–' + MONTHS[b].toLowerCase();
-  }
+  function NORM() { return Number(S.meta && S.meta.normDays) || 180; }
+  function cycleName() { return 'норма ' + NORM() + ' днів'; }
   function monthKey(d) { d = d || new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1); }
   var MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
   var MONTHS_GEN = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
@@ -188,16 +174,33 @@
     return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (k) { return { name: k, n: c[k] }; });
   }
   function visitsOf(pid) { return S.visits.filter(function (v) { return v.pointId === pid; }).sort(function (a, b) { return b.ts - a.ts; }); }
-  var cycleCache = null;
+  /* останній візит цього місяця + останнє успішне зчитування кожної точки (кеш, скидається при змінах) */
+  var cycleCache = null, okCache = null;
   function cycleMap() {
     if (cycleCache) return cycleCache;
-    var ck = cycleKey(), m = {};
-    S.visits.forEach(function (v) { if (cycleKey(new Date(v.ts)) === ck) { if (!m[v.pointId] || m[v.pointId].ts < v.ts) m[v.pointId] = v; } });
+    var mk = monthKey(), m = {};
+    S.visits.forEach(function (v) { if (monthKey(new Date(v.ts)) === mk) { if (!m[v.pointId] || m[v.pointId].ts < v.ts) m[v.pointId] = v; } });
     return (cycleCache = m);
   }
-  function invalidate() { cycleCache = null; }
-  function doneThisCycle(p) { var v = cycleMap()[p.id]; return !!(v && (v.result === 'ok' || v.result === 'empty')); }
-  function readThisCycle(p) { var v = cycleMap()[p.id]; return !!(v && v.result === 'ok'); }
+  function okMap() {
+    if (okCache) return okCache;
+    var m = {}; S.visits.forEach(function (v) { if ((v.result === 'ok' || v.result === 'empty') && (!m[v.pointId] || m[v.pointId].ts < v.ts)) m[v.pointId] = v; });
+    return (okCache = m);
+  }
+  function invalidate() { cycleCache = null; okCache = null; }
+  function daysSince(ts) { return Math.floor((Date.now() - ts) / 864e5); }
+  /* відвідано в цьому місяці (будь-який результат) — з планового обходу виходить */
+  function doneThisCycle(p) { return !!cycleMap()[p.id]; }
+  /* зчитано в межах норми (180 днів) */
+  function readThisCycle(p) { var v = okMap()[p.id]; return !!(v && daysSince(v.ts) < NORM()); }
+  /* «Список 180»: не зчитано понад норму — або старе зчитування, або цього місяця не потрапили, або позначка з маршрутного листа */
+  function in180(p) {
+    if (p.status === 'n' || readThisCycle(p)) return false;
+    var ok = okMap()[p.id], mv = cycleMap()[p.id], f = p.fields || {};
+    return !!(ok || (mv && (mv.result === 'none' || mv.result === 'blocked')) || f.d180);
+  }
+  function visitedToday(p) { var v = cycleMap()[p.id]; return !!(v && dayKey(v.ts) === today()); }
+  function daysLabel(p) { var v = okMap()[p.id]; return v ? daysSince(v.ts) + ' дн. тому' : 'немає зчитувань'; }
 
   /* ---------- місячний план: села з маршрутних листів на поточний місяць ---------- */
   function plan() { var p = S.meta.plan; return p && p.month === monthKey() && p.villages && p.villages.length ? p : null; }
@@ -268,14 +271,16 @@
   /* ---------- налаштування маршруту ---------- */
   function routeCfg() {
     var c = S.meta.routeCfg || {};
-    return { auto: c.auto !== false, limit: c.limit || Number(S.meta.dayLimit) || 40, types: c.types && c.types.length ? c.types : ['g', 'y', 'r'], streets: c.streets || {} };
+    return { round: c.round === '180' ? '180' : 'plan', auto: c.auto !== false, limit: c.limit || Number(S.meta.dayLimit) || 40, types: c.types && c.types.length ? c.types : ['g', 'y', 'r'], streets: c.streets || {} };
   }
   /* «вартість» переходу: зміна вулиці дорожча — маршрут іде вздовж вулиці, а не зигзагом через квартал */
   function cost(a, b) { var d = dist(a, b); return a.street && b.street && a.street !== b.street ? d * 1.6 + 40 : d; }
   function computeRoute() {
     var v = village(); if (!v) return null;
     var cfg = routeCfg(), st = v === ALL ? [] : cfg.streets[v] || [];
-    var all = villagePoints(v).filter(function (p) { return p.status !== 'n' && !doneThisCycle(p) && (v !== ALL || inPlan(p.village)); });
+    var r180 = cfg.round === '180';
+    /* плановий обхід: ще не відвідані цього місяця; коло 180: не зчитані довше за норму */
+    var all = villagePoints(v).filter(function (p) { return p.status !== 'n' && (r180 ? in180(p) && !visitedToday(p) : !doneThisCycle(p)) && (v !== ALL || inPlan(p.village)); });
     var cand = all.filter(function (p) { return !S.skipped[p.id] && cfg.types.indexOf(p.status) >= 0 && (!st.length || st.indexOf(p.street) >= 0) && inMySector(p); });
     if (!cfg.auto) return { village: v, ids: [], meters: 0, total: cand.length, off: true };
     if (!cand.length) return { village: v, ids: [], meters: 0, total: 0 };
@@ -295,7 +300,8 @@
     setTimeout(function () { improveRoute(r); }, 0);
     return r;
   }
-  function inMySector(p) { var sc = S.meta.sectors; if (!sc || sc.mine == null) return true; var a = sc.assign[p.id]; return a == null || a === sc.mine; }
+  /* якщо в селі є розподіл вулиць і я в ньому — маршрут лише по моїх вулицях */
+  function inMySector(p) { var s = splitOf(p.village), m = myIdx(s); if (m == null) return true; var a = s.assign[p.id]; return a == null || a === m; }
   function routeKey(r) { return r.start.lat.toFixed(4) + ',' + r.start.lon.toFixed(4) + ':' + r.ids.join(','); }
   function centroid(ps) { var a = 0, b = 0; ps.forEach(function (p) { a += p.lat; b += p.lon; }); return { lat: a / ps.length, lon: b / ps.length }; }
   function nn(start, pts, cf, max) {
@@ -537,20 +543,19 @@
   }
 
   /* ---------- експорт у таблицю (Excel відкриває CSV з «;» і BOM) ---------- */
-  var CY_NAME = { ok: 'Був', miss: 'Не потрапив', todo: 'Не був' };
+  var CY_NAME = { ok: 'Зчитано вчасно', miss: 'Список 180', todo: 'Немає даних' };
   function exportCsv(kind, filter) {
     var rows = [], sep = ';';
     if (kind === 'points') {
       var off = OFFICIAL.filter(function (o) { return o[2] !== 'info' && o[0] !== 'address'; });
-      rows.push(['ID', 'Село', 'Вулиця', 'Будинок', 'Доступ', 'Стан (' + cycleName() + ')', 'Останній візит', 'Результат', 'Хто', 'Показник', 'Мітки', 'Нотатка',
-        'Широта', 'Довгота', 'Прив\'язка', 'Маршрут №', 'Сектор'].concat(off.map(function (o) { return o[1]; })));
-      var sc = S.meta.sectors;
+      rows.push(['ID', 'Село', 'Вулиця', 'Будинок', 'Доступ', 'Стан (норма ' + NORM() + ' дн.)', 'Днів від зчитування', 'Останній візит', 'Результат', 'Хто', 'Показник', 'Мітки', 'Нотатка',
+        'Широта', 'Довгота', 'Прив\'язка', 'Маршрут №', 'Хто ходить'].concat(off.map(function (o) { return o[1]; })));
       S.points.forEach(function (p) {
         if (filter && !filter(p)) return;
         var vs = visitsOf(p.id), lv = vs[0], rd = lastReading(p.id)[0], f = p.fields || {};
-        rows.push([p.id, p.village || '', p.street || '', p.house || '', ST[p.status].label, CY_NAME[cycleState(p)], lv ? dt(lv.ts) + ' ' + tm(lv.ts) : '', lv ? RESNAME[lv.result] : '',
+        rows.push([p.id, p.village || '', p.street || '', p.house || '', ST[p.status].label, CY_NAME[cycleState(p)], okMap()[p.id] ? daysSince(okMap()[p.id].ts) : '', lv ? dt(lv.ts) + ' ' + tm(lv.ts) : '', lv ? RESNAME[lv.result] : '',
           lv ? peerName(lv.by) : '', rd ? rd.reading : (f.prevIndex || ''), (p.tags || []).map(function (t) { return TAGNAME[t] || t; }).join(', '), p.note || '',
-          p.lat, p.lon, p.src || '', (S.meta.routeNo || {})[p.village] || '', sc && sc.assign[p.id] != null ? sectorName(sc.assign[p.id]) : '']
+          p.lat, p.lon, p.src || '', (S.meta.routeNo || {})[p.village] || '', splitIdx(p) != null ? sectorName(splitIdx(p), splitOf(p.village)) : '']
           .concat(off.map(function (o) {
             if (o[0] === 'sealStatuses') return sealList(p).map(function (x) { return x.n + ' ' + x.place + (x.st ? ' — ' + x.st : ''); }).join(' | ');
             return f[o[0]] || '';
@@ -578,9 +583,9 @@
        • видалення — «надгробки» з часом, щоб видалена точка не повернулась від колеги. */
   function syncPackage() {
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
-    return { type: 'kontroler-sync', v: 1, app: VERSION, from: me(), exported: Date.now(), cycle: cycleKey(),
+    return { type: 'kontroler-sync', v: 1, app: VERSION, from: me(), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      plan: S.meta.plan || null, sectors: S.meta.sectors ? { n: S.meta.sectors.n, names: S.meta.sectors.names, assign: S.meta.sectors.assign, made: S.meta.sectors.made } : null };
+      plan: S.meta.plan || null, splits: S.meta.splits || {} };
   }
   function exportSync() {
     if (!me().name) { toast('Спершу впишіть своє ім\'я'); var el = $('#me-name'); if (el) el.focus(); return; }
@@ -616,7 +621,7 @@
       var peers = Object.assign({}, S.meta.peers || {});
       if (d.from) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
       var jobs = [setMeta('peers', peers), setMeta('deleted', tomb)];
-      if (d.sectors && (!S.meta.sectors || (d.sectors.made || 0) > (S.meta.sectors.made || 0))) jobs.push(setMeta('sectors', Object.assign({}, d.sectors, { mine: S.meta.sectors ? S.meta.sectors.mine : null })));
+      var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () {
         toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : ''));
         go('#settings');
@@ -738,19 +743,18 @@
     var act = 0, rd = 0, miss = 0;
     S.points.forEach(function (p) {
       if (p.status === 'n') return; act++;
-      var v = cycleMap()[p.id];
-      if (v && v.result === 'ok') rd++; else if (v && (v.result === 'none' || v.result === 'blocked')) miss++;
+      if (readThisCycle(p)) rd++; else if (in180(p)) miss++;
     });
     var left = act - rd - miss, P = pct(rd, act);
     return '<a href="#report" class="card big" style="gap:12px">' +
-      '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Дільниця · ' + cycleName() + ' (' + cycleRange() + ')</span>' +
+      '<div class="between" style="align-items:flex-end"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Дільниця · зчитано за ' + NORM() + ' днів</span>' +
       '<span style="font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1">' + P + '%</span></div>' +
       '<span class="small mute" style="font-size:13px;text-align:right">' + fmt(rd) + ' з ' + fmt(act) + icon('right', 14, 2.4) + '</span></div>' +
       '<div class="bar" style="height:10px"><span style="flex:' + rd + ' 1 0;background:#16A34A"></span><span style="flex:' + miss + ' 1 0;background:#F59E0B"></span><span style="flex:' + Math.max(left, 0) + ' 1 0;background:#E4E4E7"></span></div>' +
       '<div class="grid3">' +
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#16A34A"></span>Знято</span><b style="font-size:20px">' + pct(rd, act) + '%</b><span class="small mute">' + fmt(rd) + '</span></div>' +
-        '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#F59E0B"></span>Не потрапив</span><b style="font-size:20px">' + pct(miss, act) + '%</b><span class="small mute">' + fmt(miss) + '</span></div>' +
-        '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#fff;border:2px solid #A1A1AA"></span>Не був</span><b style="font-size:20px">' + pct(Math.max(left, 0), act) + '%</b><span class="small mute">' + fmt(Math.max(left, 0)) + '</span></div>' +
+        '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#F59E0B"></span>Список ' + NORM() + '</span><b style="font-size:20px">' + pct(miss, act) + '%</b><span class="small mute">' + fmt(miss) + '</span></div>' +
+        '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#fff;border:2px solid #A1A1AA"></span>Немає даних</span><b style="font-size:20px">' + pct(Math.max(left, 0), act) + '%</b><span class="small mute">' + fmt(Math.max(left, 0)) + '</span></div>' +
       '</div></a>';
   }
   function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
@@ -758,13 +762,17 @@
     var ps = villagePoints(), c = counts(ps);
     var active = ps.filter(function (p) { return p.status !== 'n'; });
     var read = active.filter(readThisCycle).length;
-    var left = active.filter(function (p) { return !doneThisCycle(p); }).length;
+    var vis = function (p) { return village() !== ALL || inPlan(p.village); };
+    var leftPlan = active.filter(function (p) { return vis(p) && !doneThisCycle(p); }).length, left180 = active.filter(function (p) { return vis(p) && in180(p); }).length;
+    var r180 = routeCfg().round === '180', left = r180 ? left180 : leftPlan;
     var r = ensureRoute(); var first = r && r.ids.length ? S.points.get(r.ids[0]) : null;
     var km = r ? fdist(r.meters) : '—', hrs = r ? Math.max(1, Math.round((r.meters / 1.25 / 60 + r.ids.length * 3) / 60)) : 0;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     app.innerHTML = '<div class="screen">' +
       '<div class="between">' + villageSelect('vsel') + '<div class="row"><a class="iconbtn" href="#list" aria-label="Пошук">' + icon('search') + '</a><a class="iconbtn" href="#settings" aria-label="Налаштування">' + icon('gear') + '</a></div></div>' +
       '<div class="col" style="gap:2px;padding:4px 2px 0"><div class="small mute" style="font-size:13px">' + monthName() + ' · сьогодні</div><h1 class="h1">' + left + ' адрес чекають</h1></div>' +
+      '<div class="seg segw" style="background:#fff;box-shadow:none;height:48px"><button data-act="round" data-v="plan" class="' + (r180 ? '' : 'on') + '" style="height:40px">Плановий · ' + leftPlan + '</button>' +
+        '<button data-act="round" data-v="180" class="' + (r180 ? 'on' : '') + '" style="height:40px">Коло ' + NORM() + ' · ' + left180 + '</button></div>' +
       '<a href="#map" data-act="startRoute" class="card big dark" style="gap:16px">' +
         '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px"><span style="font-size:22px;font-weight:800">Почати обхід</span>' +
         '<span class="small mute" style="font-size:13px">' + (r ? r.ids.length : 0) + ' адрес на сьогодні · ' + km + (hrs ? ' · ≈ ' + hrs + ' год' : '') + '</span></div>' +
@@ -777,11 +785,11 @@
       '<div class="stlist"><div class="small mute" style="padding:0 4px 2px">Статуси доступу · ' + esc(vLabel()) + '</div>' + ST_ORDER.map(function (s) {
         return '<a class="strow" href="#map" data-act="filter" data-st="' + s + '"><span class="dot ' + s + ' strow-dot"></span>' +
           '<span class="col" style="gap:0;min-width:0"><b class="strow-n">' + fmt(c[s]) + '</b>' +
-          '<span class="strow-l">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '% села</span></span></a>';
+          '<span class="strow-l">' + ST[s].label + ' · ' + pct(c[s], ps.length) + '%</span></span></a>';
       }).join('') + '</div>' +
       (needBackup ? '<button class="btn sec" data-act="backup">Зробити резервну копію даних</button>' : '') +
       '<div class="grid3 tools"><a href="#plan" class="tool">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
-        '<a href="#sectors" class="tool">' + icon('grid', 22) + '<b>Сектори</b><span>між контролерами</span></a>' +
+        '<a href="#sectors" class="tool">' + icon('grid', 22) + '<b>Вулиці</b><span>хто куди йде</span></a>' +
         '<a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span>день, місяць</span></a></div>' +
       '</div>' + tabs('home');
     bindVillageSelect('vsel');
@@ -808,7 +816,6 @@
     var eta = null; if (days != null) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
     return { total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, byV: byV };
   }
-  function crew() { return (S.meta.sectors && S.meta.sectors.n) || 7; }
   function coverageCard(full) {
     var c = coverage(), P = pct(c.placed, c.total);
     var eta = c.eta ? MONTHS[c.eta.getMonth()].toLowerCase() + ' ' + c.eta.getFullYear() : '—';
@@ -844,7 +851,7 @@
     var left = function (v) { var a = 0, d = 0; villagePoints(v).forEach(function (q) { if (q.status === 'n') return; a++; if (doneThisCycle(q)) d++; }); return { a: a, d: d }; };
     var st = planStats();
     app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><div class="col"><div class="small mute">Маршрутні листи</div><h1 class="h1" style="font-size:24px">План на ' + monthName().toLowerCase() + '</h1></div></div>' +
-      '<div class="small mute" style="line-height:1.5;padding:0 4px">Відмітьте села, які дали на цей місяць. Денний маршрут, вибір села і темп рахуються лише по них. Цикл обходу — ' + cycleName() + ' (' + cycleRange() + '): зчитана адреса не повертається в маршрут до кінця циклу.</div>' +
+      '<div class="small mute" style="line-height:1.5;padding:0 4px">Відмітьте села, які дали на цей місяць. Денний маршрут, вибір села і темп рахуються лише по них. Після будь-якого візиту цього місяця адреса виходить з планового обходу; хто не зчитаний понад ' + NORM() + ' днів, іде в «Список ' + NORM() + '» на друге коло.</div>' +
       (st ? '<div class="card dark" style="gap:8px"><div class="between"><span class="small mute">Разом по плану</span><b>' + pct(st.done, st.act) + '%</b></div>' +
         '<div style="font-size:22px;font-weight:800">' + fmt(st.left) + ' адрес залишилось</div>' +
         '<div class="small mute">' + st.days + ' робочих днів → ≈ ' + st.pace + ' на день · зараз у маршруті ' + limLabel(routeCfg().limit) + '</div>' +
@@ -869,39 +876,37 @@
     });
   }
 
-  /* ---------- Сектори між контролерами ----------
-     Мета: поділити адреси на N секторів з рівним НАВАНТАЖЕННЯМ (хвилини), а не рівною кількістю адрес.
-     1) Хвилини на адресу: зелена 3, червона 5 (спроба), жовта 7 (чекати власника), +1 собака, +2 «після 18:00».
-     2) Неділимі блоки: вулиця в селі (довга вулиця ріжеться на шматки вздовж ходу); точки без вулиці — квадрати ~150 м.
-        Вага блоку = хвилини на адреси + пішки всередині блоку (обхід «найближчий сусід», 75 м/хв).
-     3) Збалансований k-means: центри розставляються якнайдалі один від одного, далі 20 ітерацій:
-        блоки, яким «найбільше втрачати» (різниця між найближчим і другим центром), розподіляються першими,
-        кожен — до найближчого сектора, що ще не перевищив норму +8%.
-     4) Шліфування меж: блок на межі переходить у сусідній легший сектор, якщо це зменшує перекіс і не робить сектор розкиданим.
-     Результат: кожен сектор — компактна група вулиць, навантаження відрізняється на кілька відсотків. */
+  /* ---------- Розподіл вулиць села між контролерами ----------
+     У село привозять усіх разом, і контролери ділять вулиці між собою. Два режими:
+       • автоматично — вулиці діляться так, щоб у кожного було порівну РОБОТИ (хвилини), а не адрес;
+       • вручну — тап по вулиці → хто її бере (як домовились усно).
+     Розподіл бачать усі: QR-код з телефона на телефон без інтернету, або файл обміну; далі — сервер у реальному часі.
+     Хвилини на адресу: зелена 3, червона 5, жовта 7, +1 собака, +2 після 18:00, плюс пішки 75 м/хв.
+     Рахуються лише адреси, що ще чекають цього місяця; вулиця ділиться на частини, тільки якщо вона більша за норму однієї людини. */
   var SEC_COL = ['#2563EB', '#DB2777', '#0D9488', '#7C3AED', '#EA580C', '#65A30D', '#0891B2', '#B45309', '#4F46E5', '#BE123C'];
-  var SVC = { g: 3, y: 7, r: 5 }, WALK = 75, DAY_MIN = 6.5 * 60;
-  var SC = { n: 7, scope: 'all', res: null, focus: null };
-  function sectorName(i) { var sc = S.meta.sectors, n = sc && sc.names && sc.names[i]; return n || 'Сектор ' + (i + 1); }
+  var SVC = { g: 3, y: 7, r: 5 }, WALK = 75;
   function ptMin(p) { var t = p.tags || [], m = SVC[p.status] || 5; if (t.indexOf('dog') >= 0) m += 1; if (t.indexOf('eve') >= 0) m += 2; return m; }
   var KX = 111320 * Math.cos(50.4 * Math.PI / 180), KY = 110570;
   function fd(a, b) { var x = (a.lon - b.lon) * KX, y = (a.lat - b.lat) * KY; return Math.sqrt(x * x + y * y); }
   function tourLen(ps) { if (ps.length < 2) return 0; var o = nn(ps[0], ps.slice(1), fd), m = 0, prev = ps[0]; o.forEach(function (p) { m += fd(prev, p); prev = p; }); return m; }
+  function splitOf(v) { var s = (S.meta.splits || {})[v]; return s && s.month === monthKey() ? s : null; }
+  function myIdx(s) { if (!s) return null; var n = me().name, i = n ? s.crew.indexOf(n) : -1; if (i < 0) { var m = (S.meta.splitMine || {})[s.v]; if (m != null) i = m; } return i >= 0 ? i : null; }
+  function splitIdx(p) { var s = splitOf(p.village); if (!s) return null; var a = s.assign[p.id]; return a == null ? null : a; }
+  function sectorName(i, s) { return (s && s.crew[i]) || 'Контролер ' + (i + 1); }
+  function crew() { return 7; }
+  function streetKey(p) { return p.street || ''; }
+  /* блоки: вулиця цілком; точки без вулиці — квадрати ~150 м; дуже довга вулиця — шматки вздовж ходу */
   function makeUnits(pts, target) {
     var g = {};
-    pts.forEach(function (p) {
-      var k = p.street ? p.village + '|' + p.street : p.village + '|#' + Math.round(p.lat * KY / 150) + ':' + Math.round(p.lon * KX / 150);
-      (g[k] = g[k] || []).push(p);
-    });
+    pts.forEach(function (p) { var k = p.street ? p.street : '#' + Math.round(p.lat * KY / 150) + ':' + Math.round(p.lon * KX / 150); (g[k] = g[k] || []).push(p); });
     var units = [];
     Object.keys(g).forEach(function (k) {
       var ps = g[k], o = nn(ps[0], ps.slice(1), fd); o.unshift(ps[0]);
-      /* довгу вулицю ріжемо на шматки вздовж ходу, щоб не створювати величезних блоків */
-      var w = 0; o.forEach(function (p) { w += ptMin(p); }); w += tourLen(o) / WALK;
-      var parts = w > target * 0.3 ? Math.ceil(w / (target * 0.15)) : 1, size = Math.ceil(o.length / parts);
+      var wOf = function (L) { var m = 0, live = L.filter(function (p) { return !doneThisCycle(p); }); live.forEach(function (p) { m += ptMin(p); }); return Math.max(0.5, m + tourLen(live) / WALK); };
+      var w = wOf(o), parts = w > target * 0.6 ? Math.ceil(w / (target * 0.5)) : 1, size = Math.ceil(o.length / parts);
       for (var i = 0; i < o.length; i += size) {
-        var ch = o.slice(i, i + size), c = centroid(ch), mins = 0; ch.forEach(function (p) { mins += ptMin(p); });
-        units.push({ key: k, village: ch[0].village || 'Без села', street: ch[0].street || '', pts: ch, lat: c.lat, lon: c.lon, svc: mins, walk: tourLen(ch) / WALK, w: mins + tourLen(ch) / WALK });
+        var ch = o.slice(i, i + size), c = centroid(ch);
+        units.push({ key: k, street: ch[0].street || '', pts: ch, lat: c.lat, lon: c.lon, w: wOf(ch), left: ch.filter(function (p) { return !doneThisCycle(p); }).length });
       }
     });
     return units;
@@ -968,89 +973,162 @@
     }
     return { A: A, C: C, T: T };
   }
-  function scopePoints(scope) {
-    var p = plan(), v = village();
-    return Array.from(S.points.values()).filter(function (q) {
-      if (q.status === 'n' || q.lat == null) return false;
-      if (scope === 'plan') return p ? p.villages.indexOf(q.village) >= 0 : true;
-      if (scope === 'village') return v === ALL || q.village === v;
-      return true;
-    });
+  /* підсумок по людях з довільного розподілу (pid → індекс) */
+  function splitStats(v, k, assign) {
+    var out = []; for (var j = 0; j < k; j++) out.push({ i: j, n: 0, left: 0, min: 0, streets: {} });
+    var by = {};
+    villagePoints(v).forEach(function (p) { var j = assign[p.id]; if (j == null || p.status === 'n' || !out[j]) return; var o = out[j]; o.n++; if (p.street) o.streets[p.street] = 1;
+      if (!doneThisCycle(p)) { o.left++; o.min += ptMin(p); (by[j] = by[j] || []).push(p); } });
+    out.forEach(function (o) { o.min += tourLen(by[o.i] || []) / WALK; o.streets = Object.keys(o.streets).length; });
+    return out;
   }
-  function computeSectors(k, scope) {
-    var pts = scopePoints(scope); if (pts.length < k) return null;
-    var t0 = Date.now(), approx = 0; pts.forEach(function (p) { approx += ptMin(p) + 30 / WALK * 60 / 60; });
-    var units = makeUnits(pts, approx / k), P = partition(units, k);
-    var secs = []; for (var j = 0; j < k; j++) secs.push({ i: j, n: 0, svc: 0, walk: 0, km: 0, villages: {}, streets: {}, pts: [] });
-    var assign = {};
-    units.forEach(function (u, i) {
-      var s = secs[P.A[i]]; s.n += u.pts.length; s.svc += u.svc;
-      s.villages[u.village] = (s.villages[u.village] || 0) + u.pts.length; if (u.street) s.streets[u.village + ', ' + u.street] = 1;
-      u.pts.forEach(function (p) { assign[p.id] = P.A[i]; s.pts.push(p); });
+  /* точки без вулиці — до того, хто має найближчу точку з вулицею (однаково рахується на всіх телефонах) */
+  function fillNoStreet(v, assign) {
+    var withS = villagePoints(v).filter(function (p) { return p.street && assign[p.id] != null; });
+    villagePoints(v).forEach(function (p) {
+      if (p.street || assign[p.id] != null) return;
+      var b = null, bd = Infinity; withS.forEach(function (q) { var d = fd(p, q); if (d < bd) { bd = d; b = q; } });
+      if (b) assign[p.id] = assign[b.id];
     });
-    /* пішки: обхід кожного села сектора окремо (переїзди між селами не входять) */
-    secs.forEach(function (s) {
-      var byV = {}; s.pts.forEach(function (p) { (byV[p.village] = byV[p.village] || []).push(p); });
-      Object.keys(byV).forEach(function (v) { s.km += tourLen(byV[v]) / 1000; });
-      s.walk = s.km * 1000 / WALK; s.min = s.svc + s.walk; s.days = s.min / DAY_MIN; delete s.pts;
-    });
-    var mins = secs.map(function (s) { return s.min; }), avg = mins.reduce(function (a, b) { return a + b; }, 0) / k;
-    return { k: k, scope: scope, assign: assign, secs: secs, avg: avg, spread: (Math.max.apply(null, mins) - Math.min.apply(null, mins)) / avg, ms: Date.now() - t0, units: units.length, n: pts.length };
+    return assign;
+  }
+  function autoSplit(v, k) {
+    var pts = villagePoints(v).filter(function (p) { return p.status !== 'n'; }); if (pts.length < k) return null;
+    var tot = 0; pts.forEach(function (p) { if (!doneThisCycle(p)) tot += ptMin(p) + 1; });
+    var units = makeUnits(pts, Math.max(30, tot / k)), P = partition(units, k), assign = {};
+    units.forEach(function (u, i) { u.pts.forEach(function (p) { assign[p.id] = P.A[i]; }); });
+    return assign;
+  }
+  var SP = null; /* робочий стан екрана: { v, crew, assign, focus, mode, saved } */
+  function crewSuggest() {
+    var a = [];
+    if (me().name) a.push(me().name);
+    Object.keys(S.meta.peers || {}).forEach(function (k) { var n = S.meta.peers[k].name; if (n && a.indexOf(n) < 0) a.push(n); });
+    (S.meta.crewNames || []).forEach(function (n) { if (a.indexOf(n) < 0) a.push(n); });
+    return a;
   }
   function renderSectors() {
     mapMode = 'sectors';
-    var saved = S.meta.sectors;
-    if (!SC.res && saved && saved.stats) { SC.res = Object.assign({ assign: saved.assign }, saved.stats); SC.n = saved.n; SC.scope = saved.scope || 'all'; SC.saved = true; }
-    app.innerHTML = '<div class="mapui" style="top:18px"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a>' +
-      '<div class="pill" style="flex-grow:1;height:48px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('grid', 18) + 'Сектори між контролерами</div></div></div>' +
+    var v = village();
+    if (!SP || SP.v !== v) {
+      var sv = v && v !== ALL ? splitOf(v) : null;
+      SP = sv ? { v: v, crew: sv.crew.slice(), assign: Object.assign({}, sv.assign), mode: 'auto', saved: true, focus: null }
+        : { v: v, crew: crewSuggest().slice(0, 3), assign: null, mode: 'auto', saved: false, focus: null };
+      while (SP.crew.length < 2) SP.crew.push('Контролер ' + (SP.crew.length + 1));
+    }
+    app.innerHTML = '<div class="mapui" style="top:18px"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a>' + villageSelect() + '</div></div>' +
       '<div class="sheet sec-sheet" id="sec-ui"></div>';
-    if (!SC.res) runSectors(); else { renderSectorsUi(); fitSectors(); }
-  }
-  function runSectors() {
-    var el = $('#sec-ui'); if (el) el.innerHTML = '<div class="small" style="padding:12px 4px;font-weight:700">Рахую сектори…</div>';
-    setTimeout(function () { SC.res = computeSectors(SC.n, SC.scope); SC.focus = null; SC.saved = false; renderSectorsUi(); fitSectors(); }, 30);
+    if (!v || v === ALL) { $('#sec-ui').innerHTML = '<div class="h2">Оберіть село</div><div class="small mute">Вулиці діляться в межах одного села, куди вас привезли.</div>'; fitSectors(); return; }
+    if (!SP.assign) SP.assign = autoSplit(v, SP.crew.length) || {};
+    renderSectorsUi(); fitSectors();
   }
   function fitSectors() {
-    var go2 = function () { updateMap(); if (SC.res) fitTo(Object.keys(SC.res.assign).map(function (id) { return S.points.get(id); }).filter(Boolean), Math.round(window.innerHeight * 0.58)); };
+    var go2 = function () { updateMap(); var ps = villagePoints().filter(function (p) { return SP && (SP.focus == null || SP.assign[p.id] === SP.focus); }); if (ps.length) fitTo(ps, Math.round(window.innerHeight * 0.58)); };
     if (mapReady) go2(); else S.pendingFit = go2;
   }
   function renderSectorsUi() {
-    var el = $('#sec-ui'); if (!el) return;
-    var R = SC.res, sc = S.meta.sectors, mine = sc ? sc.mine : null;
-    var chips = '<div class="seg segw">' + [2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<button class="' + (SC.n === n ? 'on' : '') + '" data-act="secN" data-v="' + n + '">' + n + '</button>'; }).join('') + '</div>' +
-      '<div class="seg segw">' + [['all', 'Дільниця'], ['plan', 'План місяця'], ['village', 'Поточне село']].map(function (s) { return '<button class="' + (SC.scope === s[0] ? 'on' : '') + '" data-act="secScope" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>';
-    if (!R) { el.innerHTML = '<div class="small mute">Контролерів</div>' + chips + '<div class="small mute">Замало адрес для поділу</div>'; return; }
-    el.innerHTML = '<div class="between"><div class="col" style="gap:2px"><b style="font-size:17px">' + R.k + ' секторів · ' + fmt(R.n) + ' адрес</b>' +
-        '<span class="small mute">Перекіс навантаження ' + Math.round(R.spread * 100) + '% · ≈' + (R.avg / 60).toFixed(0) + ' год на сектор за цикл</span></div>' +
-        (SC.saved ? '<span class="chip on">Збережено</span>' : '') + '</div>' +
-      '<div class="small mute" style="margin-bottom:-6px">Скільки контролерів і де ділимо</div>' + chips +
-      '<div class="sec-list">' + R.secs.map(function (s) {
-        var vs = Object.keys(s.villages).sort(function (a, b) { return s.villages[b] - s.villages[a]; });
-        var foc = SC.focus === s.i;
-        return '<button class="sec-row' + (foc ? ' on' : '') + '" data-act="secPick" data-v="' + s.i + '"><span class="dot" style="background:' + SEC_COL[s.i % SEC_COL.length] + ';width:14px;height:14px"></span>' +
-          '<span class="col" style="flex-grow:1;min-width:0;gap:1px"><b>' + esc(sectorName(s.i)) + (mine === s.i ? ' · мій' : '') + '</b><span class="small mute" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(vs.slice(0, 3).join(', ') + (vs.length > 3 ? ' +' + (vs.length - 3) : '')) + '</span></span>' +
-          '<span class="col" style="align-items:flex-end;gap:1px;flex-shrink:0"><b>' + fmt(s.n) + ' адр</b><span class="small mute">' + (s.min / 60).toFixed(0) + ' год · ' + s.km.toFixed(1).replace('.', ',') + ' км · ' + s.days.toFixed(1).replace('.', ',') + ' дн</span></span></button>' +
-          (foc ? '<div class="sec-foc"><input class="input" id="sec-name" value="' + esc(sc && sc.names && sc.names[s.i] || '') + '" placeholder="Ім\'я контролера" style="height:44px;font-size:14px">' +
-            '<button class="btn out" data-act="secMine" data-v="' + s.i + '" style="height:44px">' + (mine === s.i ? 'Мій сектор ✓' : 'Це мій сектор') + '</button></div>' : '');
+    var el = $('#sec-ui'); if (!el || !SP) return;
+    var st = splitStats(SP.v, SP.crew.length, SP.assign), sv = splitOf(SP.v), mine = myIdx(sv);
+    var mins = st.map(function (o) { return o.min; }), avg = mins.reduce(function (a, b) { return a + b; }, 0) / (st.length || 1);
+    var spread = avg ? (Math.max.apply(null, mins) - Math.min.apply(null, mins)) / avg : 0;
+    var streets = {}; villagePoints(SP.v).forEach(function (p) { if (p.status === 'n') return; var k = streetKey(p); var o = streets[k] = streets[k] || { n: 0, left: 0, who: {} }; o.n++; if (!doneThisCycle(p)) o.left++; var j = SP.assign[p.id]; if (j != null) o.who[j] = (o.who[j] || 0) + 1; });
+    var names = Object.keys(streets).filter(Boolean).sort(function (a, b) { return a.localeCompare(b, 'uk'); });
+    var whoOf = function (o) { var ks = Object.keys(o.who); return ks.length === 1 ? +ks[0] : ks.length ? 'mix' : null; };
+    el.innerHTML = '<div class="between"><div class="col" style="gap:2px"><b style="font-size:17px">Хто якою вулицею</b><span class="small mute">' + (SP.saved ? 'Збережено' + (sv && sv.by && sv.by !== me().id ? ' · від ' + esc(peerName(sv.by)) : '') : 'Не збережено') + ' · різниця навантаження ' + Math.round(spread * 100) + '%</span></div></div>' +
+      '<div class="col" style="gap:6px"><div class="small mute">Хто сьогодні в селі</div><div class="tags">' + SP.crew.map(function (n, i) {
+        return '<span class="chip" style="background:#fff;border:1.5px solid ' + SEC_COL[i % SEC_COL.length] + ';gap:6px"><span class="dot" style="background:' + SEC_COL[i % SEC_COL.length] + '"></span>' + esc(n) +
+          (SP.crew.length > 2 ? '<button class="seal-x" data-act="crewDel" data-v="' + i + '" aria-label="Прибрати" style="width:20px;height:20px;background:transparent">' + icon('close', 12, 2.6) + '</button>' : '') + '</span>';
+      }).join('') + '<button class="chip" data-act="crewAdd">' + icon('plus', 14, 2.6) + 'Додати</button></div></div>' +
+      '<div class="seg segw"><button data-act="spMode" data-v="auto" class="' + (SP.mode === 'auto' ? 'on' : '') + '">Автоматично</button><button data-act="spMode" data-v="manual" class="' + (SP.mode === 'manual' ? 'on' : '') + '">Вручну по вулицях</button></div>' +
+      (SP.mode === 'auto' ? '<button class="btn out" data-act="spAuto" style="height:46px">Розділити порівну на ' + SP.crew.length + '</button>' : '') +
+      '<div class="sec-list">' + st.map(function (o) {
+        var foc = SP.focus === o.i;
+        return '<button class="sec-row' + (foc ? ' on' : '') + '" data-act="secPick" data-v="' + o.i + '"><span class="dot" style="background:' + SEC_COL[o.i % SEC_COL.length] + ';width:14px;height:14px"></span>' +
+          '<span class="col" style="flex-grow:1;min-width:0;gap:1px"><b>' + esc(SP.crew[o.i]) + (mine === o.i ? ' · я' : '') + '</b><span class="small mute">' + o.streets + ' вулиць · ' + o.n + ' адрес</span></span>' +
+          '<span class="col" style="align-items:flex-end;gap:1px;flex-shrink:0"><b>' + o.left + ' чекають</b><span class="small mute">≈ ' + (o.min / 60).toFixed(1).replace('.', ',') + ' год</span></span></button>' +
+          (foc && SP.saved ? '<button class="btn sec" data-act="secMine" data-v="' + o.i + '" style="height:42px;font-size:13px">' + (mine === o.i ? 'Це я ✓ — мій маршрут лише по цих вулицях' : 'Це я') + '</button>' : '');
       }).join('') + '</div>' +
-      '<div class="small mute" style="line-height:1.45">Хвилини: зелена 3, червона 5, жовта 7, +1 собака, +2 після 18:00, плюс пішки 4,5 км/год. Робочий день 6,5 год. «Мій сектор» обмежує денний маршрут адресами сектора.</div>' +
-      '<div class="row" style="gap:8px"><button class="btn" data-act="secSave" style="flex:2;height:50px">' + (SC.saved ? 'Зберегти зміни' : 'Зберегти розподіл') + '</button>' +
-      '<button class="btn sec" data-act="secCsv" style="flex:1;height:50px">Таблиця</button></div>' +
-      (sc ? '<button class="btn sec" data-act="secClear" style="height:44px;color:#B91C1C">Прибрати сектори</button>' : '');
-    var ni = $('#sec-name');
-    if (ni) ni.onchange = function () { var names = (sc && sc.names ? sc.names : []).slice(); names[SC.focus] = ni.value.trim(); if (sc) setMeta('sectors', Object.assign({}, sc, { names: names })).then(renderSectorsUi); else { SC.names = names; } };
+      (SP.mode === 'manual' ? '<div class="small mute">Торкніться вулиці, щоб вибрати, хто її бере</div><div class="col" style="gap:4px">' + names.map(function (n) {
+        var o = streets[n], w = whoOf(o);
+        return '<button class="sec-row" data-act="spStreet" data-v="' + esc(n) + '" style="padding:8px 12px"><span class="col" style="flex-grow:1;min-width:0;gap:0"><b>' + esc(n) + '</b><span class="small mute">' + o.left + ' з ' + o.n + ' чекають</span></span>' +
+          (w === 'mix' ? '<span class="chip">кілька</span>' : w == null ? '<span class="chip">нікого</span>' : '<span class="chip" style="background:' + SEC_COL[w % SEC_COL.length] + ';color:#fff">' + esc(SP.crew[w]) + '</span>') + '</button>';
+      }).join('') + (streets[''] ? '<div class="small mute" style="padding:4px">Без назви вулиці: ' + streets[''].n + ' — до найближчого сусіда</div>' : '') + '</div>' : '') +
+      '<div class="row" style="gap:8px"><button class="btn" data-act="secSave" style="flex:1;height:50px">Зберегти</button><button class="btn sec" data-act="spQr" style="flex:1;height:50px">' + icon('grid', 18) + 'Показати QR</button></div>' +
+      '<button class="btn sec" data-act="spScan" style="height:46px">' + icon('camera', 18) + 'Сканувати QR колеги</button>' +
+      '<div class="small mute" style="line-height:1.45">QR передає розподіл з телефона на телефон без інтернету. Він також іде у файл обміну з колегами. З сервером розподіл з\'являтиметься в усіх одразу.</div>';
   }
-  function saveSectors() {
-    var R = SC.res; if (!R) return;
-    var old = S.meta.sectors || {};
-    var stats = { k: R.k, scope: R.scope, secs: R.secs, avg: R.avg, spread: R.spread, n: R.n, units: R.units };
-    setMeta('sectors', { n: R.k, scope: R.scope, assign: R.assign, names: old.names || SC.names || [], mine: old.n === R.k ? old.mine : null, made: Date.now(), stats: stats })
-      .then(function () { SC.saved = true; S.route = null; toast('Розподіл збережено — його можна надіслати колегам'); renderSectorsUi(); });
+  function spSave(from) {
+    var sv = { v: SP.v, month: monthKey(), crew: SP.crew.slice(), assign: fillNoStreet(SP.v, Object.assign({}, SP.assign)), made: Date.now(), by: from || me().id };
+    var all = Object.assign({}, S.meta.splits || {}); all[SP.v] = sv;
+    var names = (S.meta.crewNames || []).slice(); SP.crew.forEach(function (n) { if (!/^Контролер \d+$/.test(n) && names.indexOf(n) < 0) names.push(n); });
+    return Promise.all([setMeta('splits', all), setMeta('crewNames', names.slice(-20))]).then(function () { SP.saved = true; SP.assign = sv.assign; S.route = null; });
   }
+  function saveSectors() { spSave().then(function () { toast('Розподіл збережено'); renderSectorsUi(); }); }
   function setMine(i) {
-    if (!SC.saved) return toast('Спершу збережіть розподіл');
-    var sc = Object.assign({}, S.meta.sectors); sc.mine = sc.mine === i ? null : i;
-    setMeta('sectors', sc).then(function () { S.route = null; toast(sc.mine == null ? 'Маршрут — без обмеження сектором' : 'Денний маршрут — лише ' + sectorName(i)); renderSectorsUi(); });
+    var m = Object.assign({}, S.meta.splitMine || {}); m[SP.v] = m[SP.v] === i ? null : i;
+    var p = me().name && SP.crew.indexOf(me().name) >= 0 && SP.crew.indexOf(me().name) !== i ? null : 1;
+    if (!me().name) { var mm = Object.assign({}, me(), { name: SP.crew[i] }); if (!/^Контролер \d+$/.test(SP.crew[i])) setMeta('me', mm); }
+    setMeta('splitMine', m).then(function () { S.route = null; toast(m[SP.v] == null ? 'Маршрут — по всьому селу' : 'Ваш маршрут: лише вулиці ' + SP.crew[i]); renderSectorsUi(); });
+  }
+  /* QR: назви вулиць → індекс людини; змішані вулиці — по точках; точки без вулиці перераховує сам телефон */
+  function spPayload() {
+    var s = {}, x = {}, mix = {};
+    villagePoints(SP.v).forEach(function (p) { if (!p.street) return; var j = SP.assign[p.id]; if (j == null) return; if (s[p.street] == null) s[p.street] = j; else if (s[p.street] !== j) mix[p.street] = 1; });
+    villagePoints(SP.v).forEach(function (p) { if (p.street && mix[p.street]) x[p.id] = SP.assign[p.id]; });
+    Object.keys(mix).forEach(function (k) { delete s[k]; });
+    return JSON.stringify({ k: 'ks1', v: SP.v, m: monthKey(), c: SP.crew, s: s, x: x });
+  }
+  function spQr() {
+    if (!SP.saved) { spSave().then(spQr); return; }
+    var txt = spPayload(), qr;
+    try { qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']; qr = qrcode(0, 'L'); qr.addData(txt, 'Byte'); qr.make(); } catch (e) { return toast('Забагато даних для QR — надішліть файлом'); }
+    closeSheet();
+    var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov show';
+    ov.innerHTML = '<div class="pk-sheet" style="align-items:center"><div class="h2">' + esc(SP.v) + ' · ' + SP.crew.length + ' контролери</div>' +
+      '<div class="qrbox">' + qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }) + '</div>' +
+      '<div class="small mute" style="text-align:center">Колеги: «Вулиці» → «Сканувати QR колеги»</div><button class="btn" data-pk="close">Готово</button></div>';
+    ov.addEventListener('click', function (e) { if (e.target === ov || e.target.closest('[data-pk]')) closeSheet(); });
+    document.body.appendChild(ov);
+  }
+  function applySplitCode(txt) {
+    var d; try { d = JSON.parse(txt); } catch (e) { return toast('Це не QR розподілу'); }
+    if (d.k !== 'ks1') return toast('Це не QR розподілу');
+    var assign = {};
+    S.points.forEach(function (p) { if (p.village !== d.v) return; if (d.x[p.id] != null) assign[p.id] = d.x[p.id]; else if (p.street && d.s[p.street] != null) assign[p.id] = d.s[p.street]; });
+    var go2 = function () {
+      SP = { v: d.v, crew: d.c, assign: assign, mode: 'auto', saved: false, focus: null };
+      spSave('qr').then(function () {
+        toast('Розподіл отримано: ' + d.v);
+        if (!me().name || d.c.indexOf(me().name) < 0) openSheet('Хто з них ви?', d.c.map(function (n, i) { return { v: String(i), l: n }; }), null, function (i) { setMine(+i); });
+        render();
+      });
+    };
+    if (d.v !== village()) setMeta('village', d.v).then(go2); else go2();
+  }
+  function spScan() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return toast('Камера недоступна');
+    closeSheet();
+    var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov show scan';
+    ov.innerHTML = '<video playsinline muted></video><div class="scan-frame"></div><button class="btn" data-pk="close" style="position:absolute;left:16px;right:16px;width:auto;bottom:calc(24px + var(--safe-b))">Скасувати</button>';
+    document.body.appendChild(ov);
+    var video = ov.querySelector('video'), stream = null, stop = false, canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+    var end = function () { stop = true; if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); closeSheet(); };
+    ov.addEventListener('click', function (e) { if (e.target.closest('[data-pk]')) end(); });
+    var det = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+    var loadJsQR = function () { return window.jsQR ? Promise.resolve() : new Promise(function (ok, no) { var sc = document.createElement('script'); sc.src = 'lib/jsQR.js'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }); };
+    var found = function (t) { end(); applySplitCode(t); };
+    var tick = function () {
+      if (stop) return;
+      if (video.readyState < 2) return requestAnimationFrame(tick);
+      if (det) det.detect(video).then(function (r) { if (r.length) found(r[0].rawValue); else setTimeout(tick, 150); }).catch(function () { det = null; tick(); });
+      else {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight; ctx.drawImage(video, 0, 0);
+        var im = ctx.getImageData(0, 0, canvas.width, canvas.height), r = window.jsQR(im.data, im.width, im.height);
+        if (r && r.data) found(r.data); else setTimeout(tick, 200);
+      }
+    };
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (s) { stream = s; video.srcObject = s; return video.play(); })
+      .then(function () { return det ? null : loadJsQR(); }).then(tick).catch(function () { end(); toast('Немає доступу до камери'); });
   }
 
   /* ---------- Звіт ---------- */
@@ -1059,7 +1137,7 @@
     var d = new Date(); d.setHours(0, 0, 0, 0);
     if (k === 'week') { var w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); }
     if (k === 'month') d.setDate(1);
-    if (k === 'cycle') { var p = cyclePeriod(), m = d.getMonth(); d.setDate(1); d.setMonth(p === 'month' ? m : p === 'quarter' ? m - m % 3 : m < 6 ? 0 : 6); }
+    if (k === 'cycle') return Date.now() - NORM() * 864e5;
     return d.getTime();
   }
   function reportData(k) {
@@ -1086,7 +1164,7 @@
     });
     app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Звіт</h1></div>' +
       '<div class="seg" style="align-self:flex-start">' + [['day', 'Сьогодні'], ['week', 'Тиждень'], ['month', 'Місяць'], ['cycle', 'Цикл']].map(function (x) { return '<button data-act="rp" data-v="' + x[0] + '" class="' + (RP === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="card dark" style="gap:12px"><div class="small mute">' + ({ day: 'Сьогодні', week: 'Цей тиждень', month: monthName(), cycle: cycleName()[0].toUpperCase() + cycleName().slice(1) })[RP] + ' · днів з обходом: ' + R.days + '</div>' +
+      '<div class="card dark" style="gap:12px"><div class="small mute">' + ({ day: 'Сьогодні', week: 'Цей тиждень', month: monthName(), cycle: 'Останні ' + NORM() + ' днів' })[RP] + ' · днів з обходом: ' + R.days + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:28px">' + fmt(R.total) + '</b><span class="small mute">візитів</span></div><div class="col"><b style="font-size:28px">' + fmt(R.ok) + '</b><span class="small mute">зчитано</span></div>' +
         '<div class="col"><b style="font-size:28px">' + pct(R.ok, R.total) + '%</b><span class="small mute">успішних</span></div></div>' +
         '<div class="grid3"><div class="col"><b style="font-size:18px">' + (R.days ? (R.total / R.days).toFixed(0) : 0) + '</b><span class="small mute">адрес / день</span></div><div class="col"><b style="font-size:18px">' + (R.hours ? (R.total / R.hours).toFixed(1).replace('.', ',') : '—') + '</b><span class="small mute">адрес / год</span></div>' +
@@ -1098,13 +1176,13 @@
         return '<div class="c14"><div class="c14b"><span style="height:' + (x.n / mx * 100) + '%;background:#D4D4D8"></span><span style="height:' + (x.ok / mx * 100) + '%;background:#111;position:absolute;bottom:0;left:0;right:0"></span></div><span>' + x.d.getDate() + '</span></div>';
       }).join('') + '</div><div class="row small mute" style="gap:12px"><span class="row" style="gap:4px"><span class="dot" style="background:#111"></span>зчитано</span><span class="row" style="gap:4px"><span class="dot" style="background:#D4D4D8"></span>усі візити</span></div></div>' +
       (st ? '<div class="card"><div class="h2" style="font-size:15px">План на ' + monthName().toLowerCase() + '</div><div class="small mute">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + ' · ' + st.days + ' роб. днів · ≈' + st.pace + '/день</div>' + '<div class="col" style="gap:0">' + vrows.join('') + '</div></div>'
-        : '<div class="card"><div class="h2" style="font-size:15px">Села · ' + cycleName() + '</div><div class="col" style="gap:0">' + vrows.join('') + '</div></div>') +
+        : '<div class="card"><div class="h2" style="font-size:15px">Села · зчитано за ' + NORM() + ' днів</div><div class="col" style="gap:0">' + vrows.join('') + '</div></div>') +
       '<div class="card"><div class="h2" style="font-size:15px">Локації на карті</div><div class="small mute">' + fmt(cv.placed) + ' з ' + fmt(cv.total) + ' (' + pct(cv.placed, cv.total) + '%) · точно прив\'язано ' + fmt(cv.exact) + '</div></div>' +
       '<div class="row" style="gap:8px"><button class="btn" data-act="shareReport" style="flex:1">Надіслати звіт</button><button class="btn sec" data-act="csvVisits" style="flex:1;height:56px">Журнал у Excel</button></div>' +
       '</div>' + tabs('home');
   }
   function reportText() {
-    var R = reportData(RP), st = planStats(), cv = coverage(), L = ({ day: 'сьогодні ' + dt(Date.now()), week: 'тиждень', month: monthName().toLowerCase(), cycle: cycleName() })[RP];
+    var R = reportData(RP), st = planStats(), cv = coverage(), L = ({ day: 'сьогодні ' + dt(Date.now()), week: 'тиждень', month: monthName().toLowerCase(), cycle: 'останні ' + NORM() + ' днів' })[RP];
     return ['Звіт контролера' + (me().name ? ' ' + me().name : '') + ' · ' + L,
       'Візитів: ' + R.total + ', зчитано: ' + R.ok + ' (' + pct(R.ok, R.total) + '%)',
       'Не застав: ' + (R.none || 0) + ', не відкрили: ' + (R.blocked || 0) + ', не живуть: ' + (R.empty || 0),
@@ -1195,10 +1273,10 @@
     if (!map || !mapReady || !map.getSource('pts')) return;
     if (mapMode === 'sectors') {
       (S.markers || []).forEach(function (mk) { mk.remove(); }); S.markers = [];
-      var sf = [], asg = SC.res ? SC.res.assign : {};
-      Object.keys(asg).forEach(function (id) {
-        var p = S.points.get(id); if (!p) return; var j = asg[id];
-        sf.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: { id: id, st: p.status, col: SEC_COL[j % SEC_COL.length], num: 0, sel: false, dim: SC.focus != null && SC.focus !== j } });
+      var sf = [], asg = SP && SP.assign ? SP.assign : {};
+      villagePoints().forEach(function (p) {
+        var j = asg[p.id], col = j == null ? '#A1A1AA' : SEC_COL[j % SEC_COL.length];
+        sf.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: { id: p.id, st: p.status, col: col, num: 0, sel: false, dim: SP && SP.focus != null && SP.focus !== j } });
       });
       map.getSource('pts').setData({ type: 'FeatureCollection', features: sf });
       map.getSource('lbl').setData({ type: 'FeatureCollection', features: [] });
@@ -1303,7 +1381,7 @@
     if (!p && mapMode === 'all') { el.innerHTML = '<div class="sheet mini"><div class="small mute" style="padding:6px 4px">Торкніться точки, щоб відкрити її, або порожнього місця, щоб додати нову</div></div>'; return; }
     if (!p) {
       var nv = r && !r.ids.length && village() !== ALL ? nextPlanVillage(village()) : null;
-      el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">Зчитані за ' + cycleName() + ' та «Не живуть» у маршрут не потрапляють.</div>' +
+      el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">' + (routeCfg().round === '180' ? 'Список ' + NORM() + ' тут порожній.' : 'Планові адреси пройдено. Далі — друге коло по «Списку ' + NORM() + '».') + '</div>' + (routeCfg().round !== '180' && villagePoints().some(in180) ? '<button class="btn out" data-act="round" data-v="180">Почати коло ' + NORM() + ' · ' + villagePoints().filter(in180).length + ' адрес</button>' : '') +
         (nv ? '<button class="btn" data-act="pickVillage" data-v="' + esc(nv) + '" data-stay="1">Наступне село плану: ' + esc(nv) + icon('arrow', 18, 2.4) + '</button>' : '') + '</div>' : ''; return;
     }
     var rkey = village() === ALL ? p.village : village(), idx = routeIndex(p.id), rn = (S.meta.routeNo || {})[rkey] || '';
@@ -1384,8 +1462,8 @@
   }
 
   /* ---------- Усі мітки з фільтрами ---------- */
-  var CY = [['ok', 'Був'], ['miss', 'Не потрапив'], ['todo', 'Не був']];
-  function cycleState(p) { var v = cycleMap()[p.id]; if (!v) return 'todo'; return v.result === 'ok' || v.result === 'empty' ? 'ok' : 'miss'; }
+  var CY = [['ok', 'Зчитано вчасно'], ['miss', 'Список 180'], ['todo', 'Немає даних']];
+  function cycleState(p) { return readThisCycle(p) ? 'ok' : in180(p) ? 'miss' : 'todo'; }
   function allF() { return S.meta.allF || { st: [], cy: [] }; }
   function allFiltered() {
     var F = allF(), out = [];
@@ -1408,7 +1486,7 @@
       ? '<button class="pill tilebar" data-act="toggleAll" style="align-self:flex-start">' + icon('grid', 16) + 'Фільтри' + (F.st.length + F.cy.length ? ' · ' + (F.st.length + F.cy.length) : '') + ' · ' + fmt(shown.length) + icon('down', 16, 2.6) + '</button>'
       : '<div class="card" style="padding:12px;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' +
         '<div class="small mute">Доступ</div><div class="tags">' + ST_ORDER.map(function (s) { return chip('st', s, ST[s].short, cs[s], true); }).join('') + '</div>' +
-        '<div class="small mute">' + cycleName()[0].toUpperCase() + cycleName().slice(1) + '</div><div class="tags">' + CY.map(function (c) { return chip('cy', c[0], c[1], cc[c[0]]); }).join('') + '</div>' +
+        '<div class="small mute">Норма ' + NORM() + ' днів</div><div class="tags">' + CY.map(function (c) { return chip('cy', c[0], c[1], cc[c[0]]); }).join('') + '</div>' +
         '<div class="between"><span class="small">Показано ' + fmt(shown.length) + ' з ' + fmt(S.points.size) + '</span><span class="row">' +
         (F.st.length + F.cy.length ? '<button class="chip" data-act="allReset">Скинути</button>' : '') +
         '<button class="chip" data-act="toggleAll" aria-label="Згорнути фільтри"><span style="transform:rotate(180deg);display:flex">' + icon('down', 16, 2.6) + '</span></button></span></div></div>';
@@ -1442,8 +1520,8 @@
       '<div class="card big" style="gap:14px">' +
         '<h1 class="h1" style="font-size:26px">' + esc(addr(p)) + '</h1>' +
         (p.orig && p.orig.replace(/\s/g, '').toLowerCase() !== addr(p).replace(/\s/g, '').toLowerCase() ? '<div class="small mute" style="margin-top:-8px">У MAPS.ME: ' + esc(p.orig) + '</div>' : '') +
-        '<div class="tags"><span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span><span class="chip mute">' + cycleName()[0].toUpperCase() + cycleName().slice(1) + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
-          (S.meta.sectors && S.meta.sectors.assign[p.id] != null ? '<span class="chip mute"><span class="dot" style="background:' + SEC_COL[S.meta.sectors.assign[p.id] % SEC_COL.length] + '"></span>' + esc(sectorName(S.meta.sectors.assign[p.id])) + '</span>' : '') + '</div>' +
+        '<div class="tags"><span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') + '<span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
+          (splitIdx(p) != null ? '<span class="chip mute"><span class="dot" style="background:' + SEC_COL[splitIdx(p) % SEC_COL.length] + '"></span>' + esc(sectorName(splitIdx(p), splitOf(p.village))) + '</span>' : '') + '</div>' +
         (flags.length ? '<div class="tags">' + flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' : '') +
         '<a class="btn" href="#visit/' + p.id + '">' + icon('check', 20, 2.6) + 'Відмітити візит</a>' +
         '<div class="row" style="gap:8px"><button class="btn sec" data-act="showOnMap" data-id="' + p.id + '" style="flex:1">' + icon('map', 18) + 'На карті</button>' +
@@ -1788,14 +1866,14 @@
 
   /* ---------- Налаштування ---------- */
   function renderSettings() {
-    var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, cp = cyclePeriod();
+    var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
     var mine = S.visits.filter(function (v) { return v.by === me().id || !v.by; }).length;
     app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Дані й налаштування</h1></div>' +
       '<div class="card"><div class="between"><span class="mute">Точок</span><b>' + fmt(S.points.size) + '</b></div><div class="between"><span class="mute">Візитів</span><b>' + fmt(S.visits.length) + '</b></div>' +
       '<div class="between"><span class="mute">Остання копія</span><b>' + (S.meta.lastBackup ? dt(S.meta.lastBackup) : 'ніколи') + '</b></div><div class="between"><span class="mute">Захист від очищення</span><b>' + (persisted ? 'увімкнено' : 'ні') + '</b></div></div>' +
 
-      '<div class="card"><div class="h2">Цикл обходу</div><div class="small mute">Зчитана адреса не повертається в маршрут до кінця циклу. Зараз: ' + cycleName() + ' (' + cycleRange() + ')</div>' +
-        '<div class="tags">' + [['half', 'Півріччя'], ['quarter', 'Квартал'], ['month', 'Місяць']].map(function (c) { return '<button class="chip fchip' + (cp === c[0] ? ' on' : '') + '" data-act="cycle" data-v="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="card"><div class="h2">Норма зчитування</div><div class="small mute">Абонент, не зчитаний довше за норму, потрапляє в «Список ' + nd + '» — друге коло після планового обходу.</div>' +
+        '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div>' +
         sliderHtml('dl', routeCfg().limit) + '</div>' +
 
       '<div class="card"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Поки без сервера — файлом через Telegram чи Google Диск</div></div></div>' +
@@ -1849,6 +1927,7 @@
       case 'vEdit': S.vEdit = !S.vEdit; render(); break;
       case 'vEditSave': var vt2 = {}; document.querySelectorAll('[data-vt]').forEach(function (x) { var n = parseInt(x.value, 10); if (n > 0) vt2[x.getAttribute('data-vt')] = n; });
         var tot = parseInt($('#tot').value, 10); Promise.all([setMeta('vTotals', vt2), setMeta('totalSubs', tot > 0 ? tot : TOTAL_DEFAULT)]).then(function () { S.vEdit = false; toast('Збережено'); render(); }); break;
+      case 'round': var rc = Object.assign({}, S.meta.routeCfg || {}); rc.round = el.getAttribute('data-v'); setMeta('routeCfg', rc).then(function () { S.route = null; S.sel = null; renderMap.fitNext = true; render(); }); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
@@ -1857,15 +1936,24 @@
       case 'csvVisits': exportCsv('visits'); break;
       case 'syncOut': exportSync(); break;
       case 'offline': downloadOffline(el); break;
-      case 'cycle': setMeta('cyclePeriod', el.getAttribute('data-v')).then(function () { invalidate(); S.route = null; renderSettings(); }); break;
-      case 'secN': SC.n = +el.getAttribute('data-v'); runSectors(); break;
-      case 'secScope': SC.scope = el.getAttribute('data-v'); runSectors(); break;
-      case 'secPick': SC.focus = SC.focus === +el.getAttribute('data-v') ? null : +el.getAttribute('data-v'); renderSectorsUi(); updateMap();
-        if (SC.res) fitTo(Object.keys(SC.res.assign).filter(function (id) { return SC.focus == null || SC.res.assign[id] === SC.focus; }).map(function (id) { return S.points.get(id); }).filter(Boolean), Math.round(window.innerHeight * 0.58)); break;
+      case 'cycle': setMeta('normDays', +el.getAttribute('data-v')).then(function () { invalidate(); S.route = null; renderSettings(); }); break;
+      case 'secPick': SP.focus = SP.focus === +el.getAttribute('data-v') ? null : +el.getAttribute('data-v'); renderSectorsUi(); fitSectors(); break;
       case 'secSave': saveSectors(); break;
       case 'secMine': setMine(+el.getAttribute('data-v')); break;
-      case 'secCsv': exportCsv('points', function (p) { return S.meta.sectors && S.meta.sectors.assign[p.id] != null; }); break;
-      case 'secClear': if (confirm('Прибрати розподіл на сектори?')) setMeta('sectors', null).then(function () { SC.res = null; S.route = null; renderSectors(); }); break;
+      case 'spMode': SP.mode = el.getAttribute('data-v'); renderSectorsUi(); break;
+      case 'spAuto': SP.assign = autoSplit(SP.v, SP.crew.length) || {}; SP.saved = false; SP.focus = null; renderSectorsUi(); updateMap(); break;
+      case 'crewDel': SP.crew.splice(+el.getAttribute('data-v'), 1); SP.assign = autoSplit(SP.v, SP.crew.length) || {}; SP.saved = false; SP.focus = null; renderSectorsUi(); updateMap(); break;
+      case 'crewAdd': var sug = crewSuggest().filter(function (n) { return SP.crew.indexOf(n) < 0; });
+        openSheet('Хто ще в селі', sug.map(function (n) { return { v: n, l: n }; }).concat([{ v: '__new', l: 'Інше ім\'я…', head: sug.length ? 'Або' : '' }]), null, function (n) {
+          if (n === '__new') { n = (prompt('Ім\'я контролера') || '').trim(); if (!n) return; }
+          SP.crew.push(n); SP.assign = autoSplit(SP.v, SP.crew.length) || {}; SP.saved = false; renderSectorsUi(); updateMap();
+        }); break;
+      case 'spStreet': var stn = el.getAttribute('data-v');
+        openSheet(stn, SP.crew.map(function (n, i) { return { v: String(i), l: n }; }), null, function (i) {
+          villagePoints(SP.v).forEach(function (p) { if (p.street === stn) SP.assign[p.id] = +i; }); SP.saved = false; renderSectorsUi(); updateMap();
+        }); break;
+      case 'spQr': spQr(); break;
+      case 'spScan': spScan(); break;
       case 'rp': RP = el.getAttribute('data-v'); renderReport(); break;
       case 'shareReport': shareReport(); break;
       case 'pick': doPick(el); break;
@@ -1919,6 +2007,6 @@
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
   }
-  window.__app = { S: S, computeRoute: computeRoute, computeSectors: computeSectors, map: function () { return map; } };
+  window.__app = { S: S, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; } };
   boot();
 })();

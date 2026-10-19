@@ -1,9 +1,9 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.6.0';
+var SHELL = 'shell-v0.7.0';
 var OFFLINE = 'offline-v1'; /* карта дільниці, збережена кнопкою «Зберегти карту офлайн» — не чиститься автоматично */
 var TILES = 'tiles-v1';
 var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
-  './lib/maplibre-gl.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
+  './lib/maplibre-gl.js', './lib/qrcode.js', './lib/jsQR.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(SHELL).then(function (c) { return c.addAll(FILES.map(function (u) { return new Request(u, { cache: 'reload' }); })); }).then(function () { return self.skipWaiting(); }));
