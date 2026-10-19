@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.2';
+  var VERSION = '0.9.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -255,6 +255,7 @@
     if (confirm('Схоже, ця точка вже є: ' + addr(d.p) + ' (' + Math.round(d.d) + ' м' + (d.p.createdBy && d.p.createdBy !== me().id ? ', вніс ' + peerName(d.p.createdBy) : '') + ').\n\nВсе одно додати нову?')) return true;
     go('#card/' + d.p.id); return false;
   }
+  function whoName(id) { return id === me().id ? (me().name || 'я') + ' (я)' : peerName(id) === 'колега' ? 'Контролер ' + id : peerName(id); }
   function authorOf(p) { return p.createdBy ? peerName(p.createdBy) === 'я' ? 'ви' : peerName(p.createdBy) : p.src === 'MAPS.ME' ? 'імпорт з MAPS.ME' : '—'; }
   /* об'єднати дубль: лишаємо картку keep, з другої переносимо поля, мітки, нотатки, візити, фото; друга видаляється з «надгробком» */
   function mergeDup(keepId, otherId) {
@@ -1275,6 +1276,11 @@
       for (var i = 1; i < L.length; i++) { var a = L[i - 1].pos || S.points.get(L[i - 1].pointId), b = L[i].pos || S.points.get(L[i].pointId); if (a && b) R.km += dist(a, b) / 1000; }
     });
     R.days = Object.keys(byDay).length; R.byDay = byDay;
+    /* розбивка по контролерах: візити, зчитано, нові точки за період */
+    var W = {}, wk = function (id) { id = id || me().id; return W[id] = W[id] || { id: id, v: 0, ok: 0, miss: 0, pts: 0 }; };
+    vs.forEach(function (v) { var w = wk(v.by); w.v++; if (v.result === 'ok') w.ok++; if (v.result === 'none' || v.result === 'blocked') w.miss++; });
+    var fromDay = dayKey(from); S.points.forEach(function (p) { if (p.createdBy && (p.created || '') >= fromDay) wk(p.createdBy).pts++; });
+    R.who = Object.keys(W).map(function (k) { return W[k]; }).sort(function (a, b) { return b.v - a.v || b.pts - a.pts; });
     return R;
   }
   function renderReport() {
@@ -1294,6 +1300,12 @@
         '<div class="col"><b style="font-size:28px">' + pct(R.ok, R.total) + '%</b><span class="small mute">успішних</span></div></div>' +
         '<div class="grid3"><div class="col"><b style="font-size:18px">' + (R.days ? (R.total / R.days).toFixed(0) : 0) + '</b><span class="small mute">адрес / день</span></div><div class="col"><b style="font-size:18px">' + (R.hours ? (R.total / R.hours).toFixed(1).replace('.', ',') : '—') + '</b><span class="small mute">адрес / год</span></div>' +
         '<div class="col"><b style="font-size:18px">' + R.km.toFixed(1).replace('.', ',') + '</b><span class="small mute">км між адресами</span></div></div></div>' +
+      '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">візити · зчитано · нові точки</span></div>' +
+        (R.who.length ? R.who.map(function (w) {
+          return '<button class="list-row" data-act="whoMap" data-v="' + esc(w.id) + '" style="border-left:0;border-right:0;border-bottom:0;background:none;width:100%;text-align:left;padding:10px 0">' + icon('user', 18) +
+            '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(whoName(w.id)) + '</b><span class="small mute">' + pct(w.ok, w.v) + '% успішних' + (w.miss ? ' · не потрапив ' + w.miss : '') + '</span></div>' +
+            '<b style="width:36px;text-align:right">' + w.v + '</b><b style="width:36px;text-align:right">' + w.ok + '</b><b style="width:36px;text-align:right">' + w.pts + '</b>' + icon('right', 14, 2.4) + '</button>';
+        }).join('') : '<div class="small mute" style="padding:8px 0">За цей період ще немає даних. Дані колег з\'являються після «Прийняти дані від колеги».</div>') + '</div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Результати візитів</div>' + RESULTS.map(function (r) {
         var n = R[r[0]] || 0; return '<div class="between"><span>' + r[1] + '</span><span class="row"><span style="width:110px;height:8px;border-radius:4px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(n, R.total) + '%;background:' + (r[0] === 'ok' ? '#16A34A' : r[0] === 'empty' ? '#A1A1AA' : '#F59E0B') + '"></span></span><b style="width:40px;text-align:right">' + n + '</b></span></div>';
       }).join('') + '</div>' +
@@ -1599,12 +1611,16 @@
   var CY = [['ok', 'Зчитано вчасно'], ['miss', 'Список 180'], ['todo', 'Немає даних']];
   function cycleState(p) { return readThisCycle(p) ? 'ok' : in180(p) ? 'miss' : 'todo'; }
   function allF() { return S.meta.allF || { st: [], cy: [] }; }
+  var vbCache = {};
+  function visitedBy(who) { var key = who + ':' + S.visits.length; if (vbCache.k === key) return vbCache.m; var m = {}; S.visits.forEach(function (v) { if ((v.by || me().id) === who) m[v.pointId] = 1; }); vbCache = { k: key, m: m }; return m; }
+  function authors() { var a = {}; a[me().id] = 1; S.visits.forEach(function (v) { if (v.by) a[v.by] = 1; }); S.points.forEach(function (p) { if (p.createdBy) a[p.createdBy] = 1; }); return Object.keys(a); }
   function allFiltered() {
     var F = allF(), out = [];
     S.points.forEach(function (p) {
       if (F.st.length && F.st.indexOf(p.status) < 0) return;
       if (F.cy.length && F.cy.indexOf(cycleState(p)) < 0) return;
-      if (F.mine && p.createdBy !== me().id && p.by !== me().id) return;
+      var who = F.who || (F.mine ? me().id : null);
+      if (who && p.createdBy !== who && !visitedBy(who)[p.id]) return;
       out.push(p);
     });
     return out;
@@ -1618,13 +1634,15 @@
       return '<button class="chip fchip' + (on ? ' on' : '') + '" data-act="allF" data-g="' + grp + '" data-v="' + v + '">' + (dot ? dotHtml(v) : '') + label + ' <span style="opacity:.6">' + fmt(n) + '</span></button>';
     };
     var panel = S.meta.allMin
-      ? '<button class="pill tilebar" data-act="toggleAll" style="align-self:flex-start">' + icon('grid', 16) + 'Фільтри' + (F.st.length + F.cy.length + (F.mine ? 1 : 0) ? ' · ' + (F.st.length + F.cy.length) : '') + ' · ' + fmt(shown.length) + icon('down', 16, 2.6) + '</button>'
+      ? '<button class="pill tilebar" data-act="toggleAll" style="align-self:flex-start">' + icon('grid', 16) + 'Фільтри' + (F.st.length + F.cy.length + (F.mine || F.who ? 1 : 0) ? ' · ' + (F.st.length + F.cy.length) : '') + ' · ' + fmt(shown.length) + icon('down', 16, 2.6) + '</button>'
       : '<div class="card" style="padding:12px;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' +
         '<div class="small mute">Доступ</div><div class="tags">' + ST_ORDER.map(function (s) { return chip('st', s, ST[s].short, cs[s], true); }).join('') + '</div>' +
         '<div class="small mute">Норма ' + NORM() + ' днів</div><div class="tags">' + CY.map(function (c) { return chip('cy', c[0], c[1], cc[c[0]]); }).join('') + '</div>' +
-        '<div class="tags"><button class="chip fchip' + (F.mine ? ' on' : '') + '" data-act="allMine">' + icon('user', 14, 2.4) + 'Лише мої точки</button></div>' +
+        '<div class="small mute">Контролер: внесені або відвідані ним точки</div><div class="tags"><button class="chip fchip' + (!F.who && !F.mine ? ' on' : '') + '" data-act="allWho" data-v="">Усі</button>' + authors().map(function (id) {
+          var on = (F.who || (F.mine ? me().id : '')) === id;
+          return '<button class="chip fchip' + (on ? ' on' : '') + '" data-act="allWho" data-v="' + esc(id) + '">' + icon('user', 14, 2.4) + esc(whoName(id)) + '</button>'; }).join('') + '</div>' +
         '<div class="between"><span class="small">Показано ' + fmt(shown.length) + ' з ' + fmt(S.points.size) + '</span><span class="row">' +
-        (F.st.length + F.cy.length + (F.mine ? 1 : 0) ? '<button class="chip" data-act="allReset">Скинути</button>' : '') +
+        (F.st.length + F.cy.length + (F.mine || F.who ? 1 : 0) ? '<button class="chip" data-act="allReset">Скинути</button>' : '') +
         '<button class="chip" data-act="toggleAll" aria-label="Згорнути фільтри"><span style="transform:rotate(180deg);display:flex">' + icon('down', 16, 2.6) + '</span></button></span></div></div>';
     var lay = S.meta.layer || 'scheme';
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
@@ -2081,6 +2099,8 @@
       case 'loginAs': var lu = (S.meta.users || []).filter(function (x) { return x.id === el.getAttribute('data-v'); })[0]; if (lu) doLogin(lu); break;
       case 'logout': setMeta('me', Object.assign({}, me(), { login: false })).then(function () { go('#login'); }); break;
       case 'myPoints': setMeta('allF', { st: [], cy: [], mine: true }).then(function () { go('#all'); }); break;
+      case 'allWho': var nf = Object.assign({ st: [], cy: [] }, S.meta.allF || {}); nf.mine = false; nf.who = el.getAttribute('data-v') || null; setMeta('allF', nf); renderAll.fitNext = true; render(); break;
+      case 'whoMap': setMeta('allF', { st: [], cy: [], who: el.getAttribute('data-v') }).then(function () { setMeta('allMin', true); renderAll.fitNext = true; go('#all'); }); break;
       case 'allMine': setMeta('allF', Object.assign({ st: [], cy: [] }, S.meta.allF || {}, { mine: !(S.meta.allF || {}).mine })); render(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
