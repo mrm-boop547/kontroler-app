@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.4.0';
+  var VERSION = '0.4.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -170,6 +170,26 @@
   function offGps() { gpsListeners = []; }
 
   /* ---------- маршрут ---------- */
+  /* слайдер кількості адрес: 10…150, крайнє праве положення = «Усі» */
+  var LIM_MAX = 160;
+  function limLabel(n) { return n >= 9999 || n >= LIM_MAX ? 'Усі' : String(n); }
+  function sliderHtml(id, n) {
+    var v = n >= 9999 ? LIM_MAX : Math.min(LIM_MAX, n);
+    return '<div class="sld"><div class="between"><span class="small mute">Скільки адрес</span><b class="sld-val" id="' + id + '-v">' + limLabel(n) + '</b></div>' +
+      '<input type="range" class="range" id="' + id + '" min="10" max="' + LIM_MAX + '" step="5" value="' + v + '" style="--p:' + ((v - 10) / (LIM_MAX - 10) * 100) + '%">' +
+      '<div class="between small mute"><span>10</span><span>50</span><span>100</span><span>Усі</span></div></div>';
+  }
+  function bindSlider(id, onSet) {
+    var el = $('#' + id) || document.getElementById(id); if (!el) return;
+    var upd = function () { var v = +el.value; el.style.setProperty('--p', ((v - 10) / (LIM_MAX - 10) * 100) + '%'); (document.getElementById(id + '-v') || {}).textContent = limLabel(v); return v >= LIM_MAX ? 9999 : v; };
+    el.oninput = function () { upd(); };
+    el.onchange = function () { onSet(upd()); };
+  }
+  function setLimit(n) {
+    var nc = Object.assign({}, S.meta.routeCfg || {}); nc.limit = n;
+    setMeta('dayLimit', n); return setMeta('routeCfg', nc).then(function () { S.route = null; });
+  }
+
   /* ---------- налаштування маршруту ---------- */
   function routeCfg() {
     var c = S.meta.routeCfg || {};
@@ -309,8 +329,7 @@
         '<div class="col" style="gap:8px"><div class="small mute">Кого обходимо</div><div class="tags">' +
           chip('preset', 'g', 'Швидко · лише зелені', same(T.types, ['g'])) + chip('preset', 'y', 'Точно · жовті', same(T.types, ['y'])) + chip('preset', 'g,y,r', 'Усі доступні', same(T.types, ['g', 'y', 'r'])) + '</div>' +
           '<div class="tags">' + ['g', 'y', 'r'].map(function (s) { return '<button class="chip fchip' + (T.types.indexOf(s) >= 0 ? ' on' : '') + '" data-rc="type" data-v="' + s + '">' + dotHtml(s) + ST[s].short + '</button>'; }).join('') + '</div></div>' +
-        '<div class="col" style="gap:8px"><div class="small mute">Скільки адрес</div><div class="tags">' +
-          [20, 30, 40, 60, 100, 9999].map(function (n) { return chip('limit', n, n >= 9999 ? 'Усі' : n, T.limit === n); }).join('') + '</div></div>' +
+        sliderHtml('rc-lim', T.limit) +
         '<div class="col" style="gap:8px"><div class="small mute">Вулиці (сектор)</div><div class="tags">' + chip('street', '', 'Усі вулиці', !T.streets.length) +
           names.map(function (n) { return chip('street', n, esc(n) + ' <span style="opacity:.6">' + streets[n] + '</span>', T.streets.indexOf(n) >= 0); }).join('') + '</div></div>' +
         '</div><button class="btn" data-rc="apply">Побудувати маршрут</button></div>';
@@ -330,9 +349,9 @@
         setMeta('routeCfg', nc).then(function () { closeSheet(); S.route = computeRoute(); S.sel = S.route.ids[0] || S.sel; renderMap.fitNext = true; render(); });
         return;
       }
-      var y = ov.querySelector('.pk-list').scrollTop; draw(); ov.querySelector('.pk-list').scrollTop = y;
+      var y = ov.querySelector('.pk-list').scrollTop; draw(); ov.querySelector('.pk-list').scrollTop = y; bindSlider('rc-lim', function (n) { T.limit = n; });
     });
-    draw(); document.body.appendChild(ov); requestAnimationFrame(function () { ov.classList.add('show'); });
+    draw(); document.body.appendChild(ov); bindSlider('rc-lim', function (n) { T.limit = n; }); requestAnimationFrame(function () { ov.classList.add('show'); });
   }
   function ensureRoute(force) {
     if (force || !S.route || S.route.village !== village()) S.route = computeRoute();
@@ -1089,14 +1108,14 @@
     app.innerHTML = '<div class="screen"><div class="row"><a class="iconbtn" href="#home" aria-label="Назад">' + icon('back', 20, 2.4) + '</a><h1 class="h1" style="font-size:24px">Дані</h1></div>' +
       '<div class="card"><div class="between"><span class="mute">Точок</span><b>' + fmt(S.points.size) + '</b></div><div class="between"><span class="mute">Візитів</span><b>' + fmt(S.visits.length) + '</b></div>' +
       '<div class="between"><span class="mute">Остання копія</span><b>' + (S.meta.lastBackup ? dt(S.meta.lastBackup) : 'ніколи') + '</b></div><div class="between"><span class="mute">Захист від очищення</span><b>' + (persisted ? 'увімкнено' : 'ні') + '</b></div></div>' +
-      '<div class="card"><div class="field"><label for="dl">Адрес у денному маршруті</label><input id="dl" class="input" inputmode="numeric" value="' + (S.meta.dayLimit || 40) + '"></div></div>' +
+      '<div class="card">' + sliderHtml('dl', routeCfg().limit) + '</div>' +
       '<button class="btn" data-act="backup">Зберегти резервну копію</button>' +
       '<button class="btn sec" data-act="kml">Експорт у KML (MAPS.ME, Google)</button>' +
       '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
       '<div class="small mute" style="line-height:1.5">Усі дані зберігаються лише на цьому телефоні. Робіть резервну копію хоча б раз на кілька днів і зберігайте файл у Google Диск або Telegram «Збережене».</div>' +
       '<div class="small mute">Версія ' + VERSION + ' · карта © OpenStreetMap, супутник © Esri</div></div>';
     $('#imp2').onchange = importFile;
-    $('#dl').onchange = function () { var n = Math.max(5, Math.min(300, parseInt($('#dl').value) || 40)); setMeta('dayLimit', n); S.route = null; toast('Маршрут: ' + n + ' адрес'); };
+    bindSlider('dl', function (n) { setLimit(n).then(function () { toast('Маршрут: ' + limLabel(n) + ' адрес'); }); });
   }
 
   /* ---------- події ---------- */

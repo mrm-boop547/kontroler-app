@@ -115,3 +115,10 @@ nav.tabs a.on{height:52px;border-radius:26px;background:var(--ink);color:#fff;fl
 .sw{width:46px;height:28px;border-radius:14px;background:#D4D4D8;position:relative;flex-shrink:0;transition:.2s}
 .sw::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
 .sw.on{background:#16A34A}.sw.on::after{left:21px}
+.sld{display:flex;flex-direction:column;gap:10px}
+.sld-val{font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.range{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;margin:0}
+.range::-webkit-slider-runnable-track{height:10px;border-radius:5px;background:linear-gradient(to right,#111 0,#111 var(--p),#E4E4E7 var(--p))}
+.range::-moz-range-track{height:10px;border-radius:5px;background:linear-gradient(to right,#111 0,#111 var(--p),#E4E4E7 var(--p))}
+.range::-webkit-slider-thumb{-webkit-appearance:none;width:32px;height:32px;border-radius:50%;background:#fff;border:3px solid #111;margin-top:-11px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.range::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #111}
