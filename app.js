@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.4';
+  var VERSION = '0.9.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -172,6 +172,8 @@
   function villagePoints(v) { var t = v || village(), out = []; S.points.forEach(function (p) { if (t === ALL || p.village === t) out.push(p); }); return out; }
   function villages() {
     var c = {}; S.points.forEach(function (p) { var k = p.village || 'Без села'; c[k] = (c[k] || 0) + 1; });
+    /* села, додані вручну, видно ще до першої точки в них */
+    (S.meta.extraVillages || []).forEach(function (v) { if (!c[v]) c[v] = 0; });
     return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (k) { return { name: k, n: c[k] }; });
   }
   function visitsOf(pid) { return S.visits.filter(function (v) { return v.pointId === pid; }).sort(function (a, b) { return b.ts - a.ts; }); }
@@ -708,7 +710,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
+      extraVillages: S.meta.extraVillages || [], merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -745,7 +747,8 @@
       var peers = Object.assign({}, S.meta.peers || {});
       Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from && d.from.id !== me().id) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
-      var jobs = [setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
+      var exv = (S.meta.extraVillages || []).slice(); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0) exv.push(v); });
+      var jobs = [setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () {
         toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : '') + (R.newPts ? ', нових на карті ' + R.newPts : '') + (R.dups ? ', можливих дублів ' + R.dups + ' — у «Уточнити в полі»' : ''));
@@ -858,7 +861,9 @@
         .concat(b.map(function (x, i) { return { v: x.name, l: x.name, sub: x.n + ' точок', head: i === 0 ? 'Інші села' : '' }; }));
     } else opts = vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; });
     opts = [{ v: ALL, l: 'Уся дільниця', sub: fmt(S.points.size) + ' точок' + (p ? ' · маршрут по селах плану' : ' · усі села разом'), hot: true }].concat(opts);
+    opts = opts.concat([NEW_V]);
     openSheet('Населений пункт', opts, village() || 'Без села', function (v) {
+      if (v === '__newv') return addVillage(function (n) { setMeta('village', n).then(function () { S.route = null; S.filter = null; S.sel = null; render(); }); });
       setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.filter = null; S.sel = null; render(); });
     });
   }
@@ -1577,9 +1582,21 @@
     return '<button type="button" class="input selbtn" data-act="' + act + '" style="height:56px"><span class="col" style="gap:1px;align-items:flex-start;min-width:0"><span class="small mute" style="font-size:11px">Село' + (how ? ' · ' + esc(how) : '') + '</span>' +
       '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">' + esc(cur || 'Без села') + '</span></span>' + icon('down', 18, 2.4) + '</button>';
   }
+  /* нове село: назва з великої літери, без зайвих пробілів; якщо таке вже є (без урахування регістру) — беремо наявне */
+  function addVillage(cb) {
+    var n = (prompt('Назва нового населеного пункту') || '').trim().replace(/\s+/g, ' ');
+    if (!n) return;
+    n = n.charAt(0).toUpperCase() + n.slice(1);
+    var key = function (t) { return t.toLowerCase().replace(/[^а-яіїєґa-z' ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' '); };
+    var same = villages().filter(function (x) { return key(x.name) === key(n); })[0];
+    if (same) { toast('Таке село вже є: ' + same.name); return cb(same.name); }
+    var ex = (S.meta.extraVillages || []).concat([n]);
+    setMeta('extraVillages', ex).then(function () { toast('Додано село: ' + n); cb(n); });
+  }
+  var NEW_V = { v: '__newv', l: '+ Додати нове село', sub: 'якого ще немає в списку', hot: true };
   function pickVillageFor(cur, cb) {
     var vs = villages().filter(function (x) { return x.name !== 'Без села'; });
-    openSheet('У яке село', vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }).concat([{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', cb);
+    openSheet('У яке село', [NEW_V].concat(vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }), [{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', function (v) { if (v === '__newv') addVillage(cb); else cb(v); });
   }
   function startAdd(ll, pt) {
     var street = '', house = '';
@@ -1998,7 +2015,7 @@
       coverageCard(true) + '<button class="btn sec" data-act="vEdit">' + icon('edit', 18) + 'Кількість абонентів по селах</button>' +
 
       '<a href="#queue" class="card big dark"><div class="between"><span style="font-size:17px;font-weight:800">Уточнити в полі</span><span class="numbadge" style="background:#F59E0B;color:#111">' + fmt(q) + '</span></div><span class="small mute">Без вулиці чи номера, без села, можливі дублі</span></a>' +
-      rows.join('') + '</div>' + tabs('villages');
+      rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
   function renderVillageTotals(vs, vt) {
     app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="vEdit" aria-label="Готово">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Абонентів по селах</h1></div>' +
@@ -2126,6 +2143,7 @@
       case 'allMine': setMeta('allF', Object.assign({ st: [], cy: [] }, S.meta.allF || {}, { mine: !(S.meta.allF || {}).mine })); render(); break;
       case 'addVillage': pickVillageFor(S.adding.village, function (v) { S.adding.village = v || null; S.adding.vSet = true; renderSheet(); }); break;
       case 'bindVillage': pickVillageFor(bindVillage().v, function (v) { B.village = v || null; B.vSet = true; renderBindUi(); }); break;
+      case 'newVillage': addVillage(function () { render(); }); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
