@@ -201,3 +201,7 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .photo-btn.done{background:#16A34A;color:#fff}
 .feeder{display:flex;align-items:center;flex-wrap:wrap;font-size:17px;font-weight:600;color:#71717A;background:#F6F6F7;border-radius:16px;padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .feeder input{border:0;border-bottom:2px solid #111;background:transparent;font:inherit;font-weight:800;color:#111;text-align:center;padding:0 2px;margin:0 1px;min-width:2ch}
+.fold-card summary{list-style:none;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:15px;min-height:28px}
+.fold-card summary::-webkit-details-marker{display:none}
+.fold-card[open] summary>svg{transform:rotate(180deg)}
+.fold-card:not([open]){gap:0}
