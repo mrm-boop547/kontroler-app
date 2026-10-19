@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.12.1';
+  var VERSION = '0.12.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2089,6 +2089,15 @@
   function stepHead(n, t, done, sub) {
     return '<div class="rstep"><span class="rnum' + (done ? ' done' : '') + '">' + (done ? icon('check', 16, 3) : n) + '</span><div class="col" style="gap:1px;min-width:0"><div class="h2" style="font-size:17px">' + t + '</div>' + (sub ? '<span class="small mute">' + sub + '</span>' : '') + '</div></div>';
   }
+  var R_OPTS = {
+    serial: [{ v: 'ok', l: 'Збігається' }, { v: 'diff', l: 'Інший номер' }, { v: 'skip', l: 'Не видно номера' }],
+    seals: [{ v: 'all', l: 'Без зауважень' }, { v: 'Відсутня', l: 'Відсутня пломба' }, { v: 'Пошкоджена', l: 'Пошкоджена пломба' }, { v: 'other', l: 'Інше (в шафі обліку, немає доступу)' }]
+  };
+  function rSel(k, val, ph, id) {
+    var lab = ''; R_OPTS[k].forEach(function (o) { if (o.v === val) lab = o.l; });
+    if (k === 'serial' && val === 'diff' && !((S.points.get(id) || {}).fields || {}).serial) lab = 'Переписати з лічильника';
+    return '<button type="button" class="input selbtn" data-act="rPick" data-k="' + k + '" data-id="' + id + '"><span class="' + (lab ? '' : 'mute') + '">' + esc(lab || ph) + '</span>' + icon('down', 18, 2.4) + '</button>';
+  }
   function renderRead(id) {
     var p = S.points.get(id); if (!p) return go('#home');
     var f = p.fields || {};
@@ -2117,10 +2126,10 @@
           (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:800">' + esc(f.phone) + '</a></div>' : '') + '</div>' +
         '<div class="small mute" style="margin-bottom:-4px">Серійний номер</div>' +
         (serial ? '<div class="serial">' + esc(serial) + '</div>' +
-          '<div class="grid2" style="gap:8px">' + b('rSerial', 'ok', 'Збігається', R.serial === 'ok') + b('rSerial', 'diff', 'Інший номер', R.serial === 'diff') + '</div>' +
+          fld('Номер на лічильнику', rSel('serial', R.serial, 'Звірте з лічильником', id)) +
           (R.serial === 'diff' ? '<input id="r-sf" class="input" placeholder="Номер на лічильнику" value="' + esc(R.serialFact) + '" autocapitalize="characters">' : '')
-        : '<input id="r-sf" class="input" placeholder="Немає в даних, перепишіть з лічильника" value="' + esc(R.serialFact) + '" autocapitalize="characters">' +
-          '<button class="chip' + (R.serial === 'skip' ? ' on' : '') + '" data-act="rSerial" data-v="skip" data-id="' + id + '" style="align-self:flex-start">Не видно номера</button>') +
+        : '<div class="small mute">Серійного номера немає в даних</div>' + fld('Номер на лічильнику', rSel('serial', R.serial, 'Виберіть', id).replace('data-k="serial"', 'data-k="serial" data-nodata="1"')) +
+          (R.serial === 'diff' ? '<input id="r-sf" class="input" placeholder="Серійний номер з лічильника" value="' + esc(R.serialFact) + '" autocapitalize="characters">' : '')) +
         '<div class="kvs">' + row('Тип', esc(f.mtype || '')) + row('Статус установки', esc(f.instStatus || '')) + row('Розміщення', esc(f.placement || '')) + row('Місце прилада', esc(f.devicePlace || '')) + '</div>' +
         fld('Сигнал тривоги на лічильнику', pickBtn('alarm', F.alarm)) +
       '</div>' +
@@ -2139,7 +2148,7 @@
         fld('Розміщення', pickBtn('placement2', F.placement2)) +
         fld('Примітка', pickBtn('noteSel', F.noteSel, 'Виберіть примітку')) +
         fld('ЗКО', pickBtn('zko', F.zko)) +
-        '<div class="field"><label>Пломби' + (nL ? ' · у даних ' + nL : '') + '</label><div class="grid2" style="gap:8px">' + b('rSeals', 'all', nL ? 'Усі ' + nL + ' на місці' : 'Без зауважень', R.seals === 'all') + b('rSeals', 'issue', 'Є проблема', R.seals === 'issue') + '</div></div>' +
+        fld('Пломби' + (nL ? ' · у даних ' + nL : ''), rSel('seals', R.sealsSel, 'Виберіть стан пломб', id)) +
         (R.seals === 'issue' ? '<div class="col" style="gap:8px">' + R.L.map(function (x, i) {
             var bad = x.st && x.st !== 'Наявна';
             return '<div class="seal' + (bad ? ' bad' : '') + '"><div class="col" style="min-width:0;flex-grow:1"><b style="font-size:15px">' + esc(x.n || 'Пломба ' + (i + 1)) + '</b><span class="small mute">' + esc(x.place) + '</span></div>' +
@@ -2147,7 +2156,7 @@
               (x.added ? '<button class="seal-x" data-act="rSealDel" data-i="' + i + '" data-id="' + id + '" aria-label="Прибрати">' + icon('close', 14, 2.4) + '</button>' : '') + '</div>';
           }).join('') +
           '<button class="btn sec" data-act="rSealAdd" data-id="' + id + '" style="height:46px">' + icon('plus', 16, 2.6) + (nL ? 'Ще пломба, якої немає в даних' : 'Додати пломбу') + '</button>' +
-          '<div class="small mute">Позначте статус кожної. Наявні теж відмічайте «Наявна».</div></div>' : '') +
+          '<div class="small mute">Вкажіть, яка саме. Решта: «Наявна».</div></div>' : '') +
         old('Номінал автомата (старе значення)', f.avOld) +
         fld('Номінал автомата', pickBtn('av', F.av, 'Вибрати')) +
         old("Пофідерна прив'язка (старе значення)", f.feederOld) +
@@ -2157,7 +2166,7 @@
       '<button class="btn sec" data-act="quick" data-v="note" data-id="' + id + '" data-back="1">' + icon('edit', 18) + 'Повідомлення про візит (записка)</button>' +
       '</div>' +
       '<div style="position:fixed;left:16px;right:16px;bottom:calc(16px + var(--safe-b))"><button id="r-save" class="btn" data-act="rSave" data-id="' + id + '" style="height:58px"></button></div>';
-    var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); if (!serial) R.serial = R.serialFact ? 'diff' : (R.serial === 'skip' ? 'skip' : null); readUi(); };
+    var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); readUi(); };
     $('#r-val').oninput = function () { R.val = this.value.replace(/\s/g, '').replace(',', '.'); readUi(); };
     $('#r-note').oninput = function () { R.note = this.value; };
     $('#r-cam').onchange = function () {
@@ -2204,6 +2213,22 @@
       if (R.seals === 'all') R.L = R.L.filter(function (x) { return !x.added; }).map(function (x) { return Object.assign({}, x, { st: '' }); });
       if (R.seals === 'issue' && !R.L.length) R.L.push({ n: '', place: 'ЛІЧИЛЬНИК', st: '', added: true });
       return readKeep();
+    }
+    if (a === 'rPick') {
+      var k = el.getAttribute('data-k'), opts = R_OPTS[k];
+      if (el.getAttribute('data-nodata')) opts = [{ v: 'diff', l: 'Переписати з лічильника' }, { v: 'skip', l: 'Не видно номера' }];
+      readCollect();
+      return openSheet(k === 'serial' ? 'Серійний номер' : 'Пломби', opts, k === 'serial' ? R.serial : R.sealsSel, function (v) {
+        if (k === 'serial') { R.serial = v; return readKeep(); }
+        R.sealsSel = v; R.seals = v === 'all' ? 'all' : 'issue';
+        R.L = R.L.filter(function (x) { return !x.added; }).map(function (x) { return Object.assign({}, x, { st: '' }); });
+        /* одна пломба в даних — їй одразу цей статус; кілька — вибрати, яка саме */
+        if (R.seals === 'issue') {
+          if (!R.L.length) R.L.push({ n: '', place: 'ЛІЧИЛЬНИК', st: v === 'other' ? '' : v, added: true });
+          else if (R.L.length === 1 && v !== 'other') R.L[0].st = v;
+        }
+        readKeep();
+      });
     }
     if (a === 'rSealSt') return openSheet(R.L[i].n || 'Пломба ' + (i + 1), SEAL_ST, R.L[i].st, function (v) { R.L[i].st = v; readKeep(); });
     if (a === 'rSealDel') { R.L.splice(i, 1); return readKeep(); }
@@ -2545,7 +2570,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
-      case 'rSerial': case 'rSeals': case 'rSealSt': case 'rSealDel': case 'rSealAdd': case 'rSave': readAction(a, el); break;
+      case 'rSerial': case 'rSeals': case 'rPick': case 'rSealSt': case 'rSealDel': case 'rSealAdd': case 'rSave': readAction(a, el); break;
       case 'applyPace': var ps0 = planStats(); if (ps0) setLimit(Math.max(10, Math.min(150, Math.ceil(ps0.pace / 5) * 5))).then(function () { toast('У денному маршруті: ' + limLabel(routeCfg().limit) + ' адрес'); renderPlan(); }); break;
       case 'bindMode': B.mode = el.getAttribute('data-v'); if (B.mode === 'manual' && (S.meta.layer || 'scheme') !== 'sat' && navigator.onLine) setLayer('sat'); renderBindUi(); break;
       case 'bindLayer': setLayer(el.getAttribute('data-l')); renderBindUi(); break;
