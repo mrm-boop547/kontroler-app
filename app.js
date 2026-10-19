@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.9.5';
+  var VERSION = '0.9.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -809,21 +809,28 @@
 
   /* ---------- Головна ---------- */
   /* ---------- власне вікно вибору замість системного списку ---------- */
-  function openSheet(title, opts, current, onPick) {
-    closeSheet();
+  /* extra: { btn: {v, l} — кнопка біля заголовка; pin: N — перші N варіантів закріплені над списком і не прокручуються } */
+  function openSheet(title, opts, current, onPick, extra) {
+    closeSheet(); extra = extra || {};
+    var row = function (o, i) {
+      var v = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? (o || 'Не вибрано') : o.l, sub = typeof o === 'string' ? '' : (o.sub || '');
+      var on = v === current, hot = typeof o !== 'string' && o.hot;
+      var head = typeof o !== 'string' && o.head ? '<div class="small mute" style="padding:6px 4px 0">' + esc(o.head) + '</div>' : '';
+      return head + '<button class="pk-row' + (on ? ' on' : '') + (hot ? ' hot' : '') + '" data-pk="' + i + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
+        (on ? '<span class="pk-check">' + icon('check', 16, 3) + '</span>' : '<span class="pk-radio"></span>') + '</button>';
+    };
+    var pin = extra.pin || 0;
     var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov';
     ov.innerHTML = '<div class="pk-sheet" role="dialog" aria-label="' + esc(title) + '"><div class="pk-grip"></div>' +
-      '<div class="between" style="padding:0 4px"><div class="h2">' + esc(title) + '</div><button class="iconbtn" data-pk="close" aria-label="Закрити" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
-      '<div class="pk-list">' + opts.map(function (o, i) {
-        var v = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? (o || 'Не вибрано') : o.l, sub = typeof o === 'string' ? '' : (o.sub || '');
-        var on = v === current, hot = typeof o !== 'string' && o.hot;
-        var head = typeof o !== 'string' && o.head ? '<div class="small mute" style="padding:6px 4px 0">' + esc(o.head) + '</div>' : '';
-        return head + '<button class="pk-row' + (on ? ' on' : '') + (hot ? ' hot' : '') + '" data-pk="' + i + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
-          (on ? '<span class="pk-check">' + icon('check', 16, 3) + '</span>' : '<span class="pk-radio"></span>') + '</button>';
-      }).join('') + '</div></div>';
+      '<div class="between" style="padding:0 4px;gap:8px"><div class="h2" style="flex-shrink:0">' + esc(title) + '</div>' +
+      '<div class="row" style="gap:8px">' + (extra.btn ? '<button class="chip" data-pk="btn" style="height:40px;padding:0 14px;background:#111;color:#fff;border-radius:20px">' + icon('plus', 16, 2.6) + esc(extra.btn.l) + '</button>' : '') +
+      '<button class="iconbtn" data-pk="close" aria-label="Закрити" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div></div>' +
+      (pin ? '<div class="col" style="gap:6px">' + opts.slice(0, pin).map(row).join('') + '</div>' : '') +
+      '<div class="pk-list">' + opts.slice(pin).map(function (o, i) { return row(o, i + pin); }).join('') + '</div></div>';
     ov.addEventListener('click', function (e) {
       var b = e.target.closest('[data-pk]');
       if (e.target === ov || (b && b.getAttribute('data-pk') === 'close')) return closeSheet();
+      if (b && b.getAttribute('data-pk') === 'btn') { closeSheet(); return onPick(extra.btn.v); }
       if (b) { var o = opts[+b.getAttribute('data-pk')]; closeSheet(); onPick(typeof o === 'string' ? o : o.v); }
     });
     document.body.appendChild(ov);
@@ -861,11 +868,10 @@
         .concat(b.map(function (x, i) { return { v: x.name, l: x.name, sub: x.n + ' точок', head: i === 0 ? 'Інші села' : '' }; }));
     } else opts = vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; });
     opts = [{ v: ALL, l: 'Уся дільниця', sub: fmt(S.points.size) + ' точок' + (p ? ' · маршрут по селах плану' : ' · усі села разом'), hot: true }].concat(opts);
-    opts = opts.concat([NEW_V]);
     openSheet('Населений пункт', opts, village() || 'Без села', function (v) {
       if (v === '__newv') return addVillage(function (n) { setMeta('village', n).then(function () { S.route = null; S.filter = null; S.sel = null; render(); }); });
       setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.filter = null; S.sel = null; render(); });
-    });
+    }, { btn: { v: '__newv', l: 'Нове' }, pin: 1 });
   }
   function bindVillageSelect() {}
   /* статистика зняття по всій дільниці за поточний цикл (півріччя) */
@@ -1596,7 +1602,10 @@
   var NEW_V = { v: '__newv', l: '+ Додати нове село', sub: 'якого ще немає в списку', hot: true };
   function pickVillageFor(cur, cb) {
     var vs = villages().filter(function (x) { return x.name !== 'Без села'; });
-    openSheet('У яке село', [NEW_V].concat(vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }), [{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', function (v) { if (v === '__newv') addVillage(cb); else cb(v); });
+    var hv = village() && village() !== ALL ? village() : null, list = vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; });
+    var pinned = hv ? list.filter(function (o) { return o.v === hv; }).map(function (o) { return Object.assign({}, o, { head: 'Обране на головній', hot: true }); }) : [];
+    var rest = list.filter(function (o) { return o.v !== hv; }); if (rest.length && pinned.length) rest[0] = Object.assign({}, rest[0], { head: 'Інші села' });
+    openSheet('У яке село', pinned.concat(rest, [{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', function (v) { if (v === '__newv') addVillage(cb); else cb(v); }, { btn: { v: '__newv', l: 'Нове' }, pin: pinned.length });
   }
   function startAdd(ll, pt) {
     var street = '', house = '';
