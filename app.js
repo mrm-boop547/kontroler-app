@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.7';
+  var VERSION = '0.14.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2568,17 +2568,29 @@
   function renderVillages() {
     var vs = villages(), allActive = 0, allRead = 0, vt = S.meta.vTotals || {};
     if (S.vEdit) return renderVillageTotals(vs, vt);
+    /* план місяця — нагорі, решта за абеткою: нове село легко знайти, а не губиться серед сортування за кількістю */
+    var pl = (plan() || {}).villages || [];
+    vs = vs.slice().sort(function (a, b) {
+      var pa = pl.indexOf(a.name) >= 0, pb = pl.indexOf(b.name) >= 0;
+      if (pa !== pb) return pa ? -1 : 1;
+      if ((a.name === 'Без села') !== (b.name === 'Без села')) return a.name === 'Без села' ? 1 : -1;
+      return a.name.localeCompare(b.name, 'uk');
+    });
+    var firstOther = true;
     var rows = vs.map(function (v) {
+      var head = '';
+      if (pl.length && pl.indexOf(v.name) >= 0 && v === vs[0]) head = '<div class="small mute" style="padding:8px 4px 0;font-size:13px">План на ' + monthName().toLowerCase() + '</div>';
+      else if (pl.indexOf(v.name) < 0 && firstOther) { firstOther = false; head = '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + (pl.length ? 'Інші села' : 'Села') + ' · за абеткою</div>'; }
       var ps = villagePoints(v.name === 'Без села' ? null : v.name);
       if (v.name === 'Без села') ps = Array.from(S.points.values()).filter(function (p) { return !p.village; });
       var c = counts(ps), act = ps.filter(function (p) { return p.status !== 'n'; }), rd = act.filter(readThisCycle).length;
       allActive += act.length; allRead += rd;
       var seg = function (s) { return '<span style="flex:' + c[s] + ' 1 0;min-width:' + (c[s] ? 3 : 0) + 'px;background:' + (s === 'n' ? '#fff;box-sizing:border-box;border:1.5px solid #A1A1AA' : ST[s].color) + '"></span>'; };
-      return '<button class="card" data-act="pickVillage" data-v="' + esc(v.name) + '" style="padding:12px 16px;gap:8px;border:0;text-align:left">' +
+      return head + '<button class="card" data-act="pickVillage" data-v="' + esc(v.name) + '" style="padding:12px 16px;gap:8px;border:0;text-align:left">' +
         '<div class="between"><div class="col"><b style="font-size:15px">' + esc(v.name) + '</b><span class="small mute">' + (vt[v.name] ? 'внесено ' + v.n + ' з ' + fmt(vt[v.name]) + ' · ' + pct(v.n, vt[v.name]) + '%' : v.n + ' точок') + '</span></div>' +
         '<div class="row"><span style="width:56px;height:6px;border-radius:3px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(rd, act.length) + '%;background:#111;border-radius:3px"></span></span><b style="font-size:18px;min-width:44px;text-align:right">' + pct(rd, act.length) + '%</b></div></div>' +
         '<div class="bar">' + ST_ORDER.map(seg).join('') + '</div>' +
-        '<div class="row small" style="gap:10px;font-size:11px;color:#3F3F46">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:4px">' + dotHtml(s) + pct(c[s], ps.length) + '%</span>'; }).join('') + '</div></button>';
+        '<div class="row small" style="gap:12px;font-size:13px;color:#3F3F46;flex-wrap:wrap">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:5px">' + dotHtml(s) + '<b>' + c[s] + '</b><span class="mute">' + pct(c[s], ps.length) + '%</span></span>'; }).join('') + '</div></button>';
     });
     var q = queuePoints().length;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
@@ -2588,7 +2600,7 @@
       districtCard() +
       coverageCard(true) +
 
-      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · зчитано за ' + NORM() + ' днів</div>' +
+      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">% праворуч — зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
   function renderVillageTotals(vs, vt) {
