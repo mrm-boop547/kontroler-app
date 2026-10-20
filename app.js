@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.4';
+  var VERSION = '0.14.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1714,6 +1714,7 @@
       '</div>' + dotHtml(p.status) + '</div>' +
       quickHtml(p, idx) +
       '<div class="row"><a class="btn sec" href="#card/' + p.id + '" style="flex-grow:1;height:46px;font-size:14px">Відкрити картку ' + icon('arrow', 16, 2.4) + '</a>' +
+      '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
       (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
     var qr = $('#q-r'); if (qr) { qr.focus(); qr.onkeydown = function (e) { if (e.key === 'Enter') quickVisit(p.id, 'ok'); }; }
     var rno = $('#rno');
@@ -2229,6 +2230,7 @@
           flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' +
         (cv && cv.result === 'note' ? '<div class="small" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;font-weight:700;line-height:1.4">Записку залишено ' + dt(cv.ts) + '. Показник, переданий по телефону, внесіть в «Історії» нижче.</div>' : '') +
         '<div class="row" style="gap:8px"><button class="btn sec" data-act="showOnMap" data-id="' + p.id + '" style="flex:1;height:46px">' + icon('map', 18) + 'На карті</button>' +
+        '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
         '<a class="iconbtn" href="' + navUrl + '" target="_blank" rel="noopener" aria-label="Навігація" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('nav', 18) + '</a>' +
         (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:46px;height:46px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
       '</div>' + dupBox(p);
@@ -2260,7 +2262,9 @@
   function saveFind(id) {
     var p = S.points.get(id); if (!p) return;
     p.note = $('#note').value.trim();
-    var v = $('#a-v').value.trim(), s = $('#a-s').value.trim(), h = $('#a-h').value.trim();
+    return applyAddr(p, $('#a-v').value.trim(), $('#a-s').value.trim(), $('#a-h').value.trim()).then(function () { toast('Збережено'); });
+  }
+  function applyAddr(p, v, s, h) {
     if (v !== (p.village || '')) { p.village = v || null; S.route = null; }
     p.street = s; p.house = h;
     var same = 0;
@@ -2270,7 +2274,43 @@
       if (x === 'no_village' || x === 'village_guess' || x === 'village_check') return !v;
       if (x === 'dup') return same > 0; return true;
     });
-    return savePoint(p).then(function () { toast('Збережено'); });
+    return savePoint(p);
+  }
+  /* редагування точки з карти (Обхід, Мітки) і з картки: адреса, доступ, орієнтир, розташування */
+  function openPointEditor(id) {
+    var p = S.points.get(id); if (!p) return;
+    var E = { st: p.status, v: p.village || '' };
+    var ov = document.createElement('div'); ov.id = 'pe-ov'; ov.className = 'seals-ov';
+    var draw = function () {
+      var keep = ov.querySelector('#pe-s') ? { s: ov.querySelector('#pe-s').value, h: ov.querySelector('#pe-h').value, n: ov.querySelector('#pe-n').value } : { s: p.street || '', h: p.house || '', n: p.note || '' };
+      ov.innerHTML = '<div class="seals-head"><button class="iconbtn" data-pe="close" aria-label="Закрити">' + icon('close', 20, 2.4) + '</button><div class="col"><div class="small mute">Редагування точки</div><div style="font-size:20px;font-weight:800">' + esc(addr(p)) + '</div></div></div>' +
+        '<div class="seals-body">' +
+        '<div class="card"><div class="h2" style="font-size:16px">Доступ до лічильника</div><div class="grid2" style="gap:8px">' + ST_ORDER.map(function (k) {
+          return '<button class="opt' + (E.st === k ? ' on' : '') + '" data-pe="st" data-v="' + k + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:52px">' + dotHtml(k) + '<b style="font-size:15px">' + ST[k].label + '</b></button>';
+        }).join('') + '</div></div>' +
+        '<div class="card"><div class="h2" style="font-size:16px">Адреса</div>' +
+          '<div class="field"><label>Село</label><button type="button" class="input selbtn" data-pe="v"><span class="' + (E.v ? '' : 'mute') + '">' + esc(E.v || 'Без села') + '</span>' + icon('down', 18, 2.4) + '</button></div>' +
+          '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="pe-s">Вулиця</label><input id="pe-s" class="input" value="' + esc(keep.s) + '"></div><div class="field"><label for="pe-h">Будинок</label><input id="pe-h" class="input" value="' + esc(keep.h) + '"></div></div></div>' +
+        '<div class="card"><div class="h2" style="font-size:16px">Як знайти</div><textarea id="pe-n" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(keep.n) + '</textarea>' +
+          '<button class="btn sec" data-pe="bind" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Пересунути точку на карті</span><span class="small mute">' + esc(p.src || '') + '</span></button></div>' +
+        '</div><div class="seals-foot"><button class="btn" data-pe="save" style="height:58px">Зберегти</button></div>';
+    };
+    ov.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pe]'); if (!b) return;
+      var k = b.getAttribute('data-pe');
+      if (k === 'close') return ov.remove();
+      if (k === 'st') { E.st = b.getAttribute('data-v'); return draw(); }
+      if (k === 'v') return pickVillageFor(E.v, function (v) { E.v = v || ''; draw(); });
+      if (k === 'bind') { ov.remove(); return go('#bind/' + id); }
+      if (k === 'save') {
+        var st0 = p.status; p.status = E.st; p.note = ov.querySelector('#pe-n').value.trim();
+        applyAddr(p, E.v, ov.querySelector('#pe-s').value.trim(), ov.querySelector('#pe-h').value.trim()).then(function () {
+          ov.remove(); toast('Точку збережено' + (st0 !== E.st ? ' · ' + ST[E.st].label.toLowerCase() : ''));
+          S.route = null; if (/^#(map|all)/.test(location.hash || '#home')) { updateMap(); renderSheet(); } else { var y = window.scrollY; render(); window.scrollTo(0, y); }
+        });
+      }
+    });
+    draw(); document.body.appendChild(ov);
   }
   /* значення полів-виборів і пофідерної прив'язки зберігаємо в R.form перед перемальовуванням */
   function readCollect() {
@@ -2687,6 +2727,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'editPoint': openPointEditor(id); break;
       case 'hideDone': setMeta('hideDone', !S.meta.hideDone); renderMap.fitNext = false; render(); break;
       case 'quickUndo': if (S.lastQuick && S.lastQuick.pid === id) { var lq = S.lastQuick; S.lastQuick = null; del('visits', lq.key).then(function () { S.visits = S.visits.filter(function (x) { return x.uid !== lq.uid; }); invalidate(); S.route = computeRoute(); S.sel = id; updateMap(); renderSheet(); refreshDone(); toast('Відмітку скасовано'); }); } break;
       case 'saveFind': saveFind(id); break;
