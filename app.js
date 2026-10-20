@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.0';
+  var VERSION = '0.15.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -890,18 +890,17 @@
       .catch(function (e) { toast(e.message || 'Не вдалося підключитись'); });
   }
   function ghCard() {
-    var g = gh();
-    if (!g) return '<div class="card" style="gap:12px"><div class="row" style="gap:10px">' + icon('cloud', 22) + '<div class="col"><div class="h2">Синхронізація через інтернет</div><div class="small mute">Адреси й відмітки між телефонами, без файлів</div></div></div>' +
+    var g = gh(), head = '<div class="sync-sub">' + icon('cloud', 18) + '<b>Через інтернет</b></div>';
+    if (!g) return head +
       '<div class="field"><label for="gh-repo">Репозиторій</label><input id="gh-repo" class="input" value="mrm-boop547/kontroler-data" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
       '<div class="field"><label for="gh-tok">Токен доступу</label><input id="gh-tok" class="input" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
       '<button class="btn" data-act="ghConnect">Підключити</button>' +
-      '<div class="small mute" style="line-height:1.5">На сервер ідуть лише адреси, координати, доступ, орієнтир і факт візиту. ПІБ, телефони, серійні номери, показники й фото лишаються тільки на телефоні.</div></div>';
+      '<div class="small mute" style="line-height:1.5">На сервер ідуть лише адреси, координати, доступ, орієнтир і факт візиту. ПІБ, телефони, серійні номери, показники й фото лишаються тільки на телефоні.</div>';
     var peers = Object.keys(S.meta.ghSeen || {}).filter(function (k) { return k !== ghFile(); }).length;
-    return '<div class="card" style="gap:12px"><div class="row" style="gap:10px">' + icon('cloud', 22) + '<div class="col" style="flex-grow:1"><div class="h2">Синхронізація через інтернет</div><div class="small mute">' + esc(g.repo) + '</div></div></div>' +
-      '<div class="small" id="gh-st" style="font-weight:700;' + (S.meta.ghErr ? 'color:#B91C1C' : '') + '">' + (S.meta.ghErr ? 'Помилка: ' + esc(S.meta.ghErr) : S.meta.ghLast ? 'Остання синхронізація ' + dt(S.meta.ghLast) + ' ' + tm(S.meta.ghLast) + ' · телефонів колег: ' + peers : 'Ще не синхронізовано') + '</div>' +
+    return head +
+      '<div class="small" id="gh-st" style="font-weight:700;' + (S.meta.ghErr ? 'color:#B91C1C' : '') + '">' + (S.meta.ghErr ? 'Помилка: ' + esc(S.meta.ghErr) : S.meta.ghLast ? 'Остання ' + dt(S.meta.ghLast) + ' ' + tm(S.meta.ghLast) + ' · телефонів колег: ' + peers : 'Ще не синхронізовано') + '</div>' +
       '<button class="btn" data-act="ghSync">' + icon('sync', 18) + 'Синхронізувати зараз</button>' +
-      '<div class="small mute" style="line-height:1.5">Працює сама: при відкритті застосунку, коли з\'являється інтернет і через 15 с після кожної відмітки. Без інтернету все зберігається на телефоні і піде пізніше.</div>' +
-      '<button class="chip" data-act="ghOff" style="align-self:flex-start">Відключити цей телефон</button></div>';
+      '<div class="small mute" style="line-height:1.5">Працює сама: при відкритті, коли з\'являється інтернет і через 15 с після кожної відмітки. ' + esc(g.repo) + ' · <button class="linkbtn" data-act="ghOff">відключити цей телефон</button></div>';
   }
 
   /* ---------- офлайн-карта: векторні тайли всієї дільниці (OpenFreeMap дає їх до z14, далі карта збільшує сама) ---------- */
@@ -2768,14 +2767,15 @@
     var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
     var mine = S.visits.filter(function (v) { return v.by === me().id || !v.by; }).length;
     var sec = function (t) { return '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + t + '</div>'; };
-    var exchange = '<div class="card dark" style="gap:12px"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Файлом через Telegram чи Google Диск</div></div></div>' +
-        (inMe ? '' : '<a class="list-row" href="#me" style="border:0;padding:0">' + icon('user', 18) + '<b style="flex-grow:1">' + esc(me().name) + (me().tab ? ' · таб. ' + esc(me().tab) : '') + '</b>' + icon('right', 16, 2.4) + '</a>') +
-        '<button class="btn" data-act="syncOut" style="background:#fff;color:#111">' + icon('cloud', 18) + 'Надіслати мої дані колегам</button>' +
-        '<label class="btn sec" for="imp3" style="background:transparent;color:#fff;border-color:#4A4A4F">Прийняти дані від колеги</label><input id="imp3" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
-        '<div class="small mute">Моїх відміток: ' + fmt(mine) + (S.meta.lastSyncOut ? ' · надіслано ' + dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : ' · ще не надсилав') + '</div>' +
+    var exchange = '<div class="sync-sub" style="border-top:1px solid var(--bg);padding-top:14px">' + icon('user', 18) + '<b>Без інтернету, з колегою поруч</b></div>' +
+        '<div class="small mute" style="line-height:1.5;margin-top:-6px">«Надіслати» відкриває меню Android: вибери Quick Share (Обмін поблизу) або Bluetooth. Інтернет не потрібен. Колега приймає файл кнопкою нижче.</div>' +
+        '<div class="grid2" style="gap:8px"><button class="btn sec" data-act="syncOut" style="height:50px">' + icon('cloud', 18) + 'Надіслати</button>' +
+        '<label class="btn sec" for="imp3" style="height:50px">Прийняти</label></div><input id="imp3" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
+        '<div class="small mute">Моїх відміток: ' + fmt(mine) + (S.meta.lastSyncOut ? ' · надіслано ' + dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '') + '</div>' +
         (Object.keys(peers).length ? '<div class="col" style="gap:0">' + Object.keys(peers).map(function (k) { var x = peers[k];
-          return '<div class="list-row" style="border-top-color:#2A2A2E">' + icon('user', 18) + '<div class="col" style="flex-grow:1"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.local ? 'теж працює на цьому телефоні' : x.last ? fmt(x.visits || 0) + ' відміток · отримано ' + dt(x.last) : 'відомий через ' + esc(x.via || 'колегу')) + '</span></div></div>'; }).join('') + '</div>' : '') +
-        '<div class="small mute" style="line-height:1.5">Повторний імпорт нічого не дублює: відмітки лише додаються, з двох версій точки лишається новіша.</div></div>';
+          return '<div class="list-row">' + icon('user', 18) + '<div class="col" style="flex-grow:1"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.local ? 'теж працює на цьому телефоні' : x.last ? fmt(x.visits || 0) + ' відміток · отримано ' + dt(x.last) : 'відомий через ' + esc(x.via || 'колегу')) + '</span></div></div>'; }).join('') + '</div>' : '');
+    var syncCard = '<div class="card" style="gap:14px"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + ghCard() + exchange +
+        '<div class="small mute" style="line-height:1.5">Обидва способи безпечно поєднуються: відмітки лише додаються, з двох версій точки лишається новіша, повтор нічого не дублює.</div></div>';
     var route = routeCardHtml();
     var tables = '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
@@ -2788,7 +2788,7 @@
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
-    return ghCard() + exchange + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
+    return syncCard + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
       '<button class="btn sec" data-act="chkUpd">' + icon('sync', 18) + 'Перевірити оновлення · v' + VERSION + '</button>' +
       '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
   }

@@ -235,3 +235,5 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .fold-card{display:block}
 .fold-body{display:flex;flex-direction:column;gap:14px;padding-top:16px}
 .fold-body .photos:empty{display:none}
+.sync-sub{display:flex;align-items:center;gap:8px;font-size:15px}
+.linkbtn{border:0;background:none;padding:0;font:inherit;color:#B91C1C;text-decoration:underline;cursor:pointer}
