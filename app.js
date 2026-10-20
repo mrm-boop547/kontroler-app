@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.0';
+  var VERSION = '0.19.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1189,6 +1189,10 @@
       '<div class="col" style="gap:2px;padding:4px 2px 0"><div class="small mute" style="font-size:13px">' + monthName() + ' · сьогодні</div><h1 class="h1">' + left + ' адрес чекають</h1></div>' +
       '<div class="seg segw" style="background:#fff;box-shadow:none;height:48px"><button data-act="round" data-v="plan" class="' + (r180 ? '' : 'on') + '" style="height:40px">Плановий · ' + leftPlan + '</button>' +
         '<button data-act="round" data-v="180" class="' + (r180 ? 'on' : '') + '" style="height:40px">Коло ' + NORM() + ' · ' + left180 + '</button></div>' +
+      planTile() +
+      planCard() +
+      streetsCard() +
+      statusList() +
       '<a href="#map" data-act="startRoute" class="card big dark" style="gap:16px">' +
         '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px"><span style="font-size:22px;font-weight:800">Почати обхід</span>' +
         '<span class="small mute" style="font-size:13px">' + (r ? r.ids.length : 0) + ' адрес на сьогодні · ' + km + (hrs ? ' · ≈ ' + hrs + ' год' : '') + '</span></div>' +
@@ -1196,9 +1200,6 @@
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
       brigadeCard() +
-      streetsCard() +
-      planCard() +
-      statusList() +
       installCard(true) +
       (needBackup ? '<button class="btn sec" data-act="backup">' + icon('cloud', 18) + 'Зробити резервну копію даних</button>' : '') +
       '</div>' + tabs('home');
@@ -1272,12 +1273,17 @@
   }
 
   /* ---------- План на місяць ---------- */
+  /* «План · села на місяць» — перший блок головної */
+  function planTile() {
+    var p = plan();
+    return '<a href="#plan" class="tool dark" style="flex-direction:row;align-items:center;gap:14px;min-height:0;padding:16px 18px">' + icon('list', 22) +
+      '<span class="col" style="gap:2px;flex:1;min-width:0;font-size:13px"><b style="margin:0;font-size:17px;color:#fff">План</b><span style="font-size:13px">' + (p ? 'села на ' + monthName().toLowerCase() + ': ' + esc(p.villages.slice().sort(ukSort).join(', ')) : 'задати села на ' + monthName().toLowerCase()) + '</span></span>' + icon('right', 18, 2.4) + '</a>';
+  }
   function planCard() {
     var st = planStats();
-    if (!st) return '<a href="#plan" class="card" style="border:1.5px dashed #C4C4C8;background:transparent;gap:6px"><div class="between"><b style="font-size:16px">Задати план на ' + monthName().toLowerCase() + '</b>' + icon('right', 18, 2.4) + '</div>' +
-      '<span class="small mute">Відмітьте села з маршрутних листів — обхід і темп рахуватимуться лише по них</span></a>';
+    if (!st) return '';
     var p = plan();
-    return '<a href="#plan" class="card" style="gap:10px"><div class="row" style="gap:12px;align-items:center"><span class="hico">' + icon('list', 22) + '</span><div class="col" style="gap:2px;flex:1;min-width:0"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + p.villages.length + ' сіл</span>' +
+    return '<a href="#plan" class="card" style="gap:10px"><div class="row" style="gap:12px;align-items:center"><span class="hico">' + icon('chart', 22) + '</span><div class="col" style="gap:2px;flex:1;min-width:0"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + p.villages.length + ' сіл</span>' +
       '<b style="font-size:20px">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + '</b></div>' + icon('right', 18, 2.4) + '</div>' +
       '<div class="bar" style="height:8px"><span style="flex:' + st.done + ' 1 0;background:#111"></span><span style="flex:' + Math.max(st.left, 0) + ' 1 0;background:#E4E4E7"></span></div>' +
       '<div class="small mute">' + st.days + ' робочих днів до кінця місяця → ≈ <b style="color:#111">' + st.pace + ' адрес на день</b></div></a>';
