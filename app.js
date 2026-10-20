@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.2';
+  var VERSION = '0.15.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -513,7 +513,7 @@
     if (!S.points.size && name !== 'settings') return renderEmpty();
     /* без входу контролера працювати не можна: кожен візит і кожна точка записуються на когось */
     if (!me().login && name !== 'settings') return renderLogin();
-    var f = { home: renderHome, map: renderMap, all: renderAll, card: renderRead, visit: renderVisit, read: renderRead, bind: renderBind, villages: renderVillages,
+    var f = { home: renderHome, map: renderMap, all: renderAll, card: renderRead, visit: renderVisit, read: renderRead, village: renderVillage, bind: renderBind, villages: renderVillages,
       list: function () { S.focusSearch = true; location.replace('#all'); }, profile: renderProfile, queue: renderQueue, settings: renderSettings, me: renderMe, login: renderLogin, plan: renderPlan, sectors: renderSectors, report: renderReport }[name] || renderHome;
     f(arg);
     window.scrollTo(0, 0);
@@ -2708,29 +2708,24 @@
   function renderVillages() {
     var vs = villages(), allActive = 0, allRead = 0, vt = S.meta.vTotals || {};
     if (S.vEdit) return renderVillageTotals(vs, vt);
-    /* план місяця — нагорі, решта за абеткою: нове село легко знайти, а не губиться серед сортування за кількістю */
+    /* за абеткою; «Без села» в кінці */
     var pl = (plan() || {}).villages || [];
     vs = vs.slice().sort(function (a, b) {
-      var pa = pl.indexOf(a.name) >= 0, pb = pl.indexOf(b.name) >= 0;
-      if (pa !== pb) return pa ? -1 : 1;
       if ((a.name === 'Без села') !== (b.name === 'Без села')) return a.name === 'Без села' ? 1 : -1;
       return a.name.localeCompare(b.name, 'uk');
     });
-    var firstOther = true;
     var rows = vs.map(function (v) {
       var head = '';
-      if (pl.length && pl.indexOf(v.name) >= 0 && v === vs[0]) head = '<div class="small mute" style="padding:8px 4px 0;font-size:13px">План на ' + monthName().toLowerCase() + '</div>';
-      else if (pl.indexOf(v.name) < 0 && firstOther) { firstOther = false; head = '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + (pl.length ? 'Інші села' : 'Села') + ' · за абеткою</div>'; }
       var ps = villagePoints(v.name === 'Без села' ? null : v.name);
       if (v.name === 'Без села') ps = Array.from(S.points.values()).filter(function (p) { return !p.village; });
       var c = counts(ps), act = ps.filter(function (p) { return p.status !== 'n'; }), rd = act.filter(readThisCycle).length;
       allActive += act.length; allRead += rd;
       var seg = function (s) { return '<span style="flex:' + c[s] + ' 1 0;min-width:' + (c[s] ? 3 : 0) + 'px;background:' + (s === 'n' ? '#fff;box-sizing:border-box;border:1.5px solid #A1A1AA' : ST[s].color) + '"></span>'; };
-      return head + '<button class="card" data-act="pickVillage" data-v="' + esc(v.name) + '" style="padding:12px 16px;gap:8px;border:0;text-align:left">' +
-        '<div class="between"><div class="col"><b style="font-size:15px">' + esc(v.name) + '</b><span class="small mute">' + (vt[v.name] ? 'внесено ' + v.n + ' з ' + fmt(vt[v.name]) + ' · ' + pct(v.n, vt[v.name]) + '%' : v.n + ' точок') + '</span></div>' +
+      return head + '<a class="card vcard" href="#village/' + encodeURIComponent(v.name) + '">' +
+        '<div class="between"><div class="col"><b style="font-size:15px">' + esc(v.name) + (pl.indexOf(v.name) >= 0 ? ' <span class="chip" style="height:22px;font-size:11px;padding:0 8px;vertical-align:2px">план</span>' : '') + '</b><span class="small mute">' + (vt[v.name] ? 'внесено ' + v.n + ' з ' + fmt(vt[v.name]) + ' · ' + pct(v.n, vt[v.name]) + '%' : v.n + ' точок') + '</span></div>' +
         '<div class="row"><span style="width:56px;height:6px;border-radius:3px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(rd, act.length) + '%;background:#111;border-radius:3px"></span></span><b style="font-size:18px;min-width:44px;text-align:right">' + pct(rd, act.length) + '%</b></div></div>' +
         '<div class="bar">' + ST_ORDER.map(seg).join('') + '</div>' +
-        '<div class="row small" style="gap:12px;font-size:13px;color:#3F3F46;flex-wrap:wrap">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:5px">' + dotHtml(s) + '<b>' + c[s] + '</b><span class="mute">' + pct(c[s], ps.length) + '%</span></span>'; }).join('') + '</div></button>';
+        '<div class="row small" style="gap:12px;font-size:13px;color:#3F3F46;flex-wrap:wrap">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:5px">' + dotHtml(s) + '<b>' + c[s] + '</b><span class="mute">' + pct(c[s], ps.length) + '%</span></span>'; }).join('') + '</div></a>';
     });
     var q = queuePoints().length;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
@@ -2740,8 +2735,35 @@
       districtCard() +
       coverageCard(true) +
 
-      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">% праворуч — зчитано за ' + NORM() + ' днів</div>' +
+      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села за абеткою · % праворуч — зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
+  }
+  /* сторінка села з «Огляду»: стан доступу, зчитування, вулиці, хто працював */
+  function renderVillage(name) {
+    var none = name === 'Без села', ps = none ? Array.from(S.points.values()).filter(function (p) { return !p.village; }) : villagePoints(name);
+    var c = counts(ps), act = ps.filter(function (p) { return p.status !== 'n'; }), cm = cycleMap();
+    var rd = act.filter(readThisCycle).length, l180 = act.filter(in180).length, vt = (S.meta.vTotals || {})[name];
+    var mOk = 0, mNo = 0, by = {}; ps.forEach(function (p) { var x = cm[p.id]; if (!x) return; if (x.result === 'ok') mOk++; else mNo++; var w = x.by || me().id; by[w] = (by[w] || 0) + 1; });
+    var q = ps.filter(function (p) { return (p.flags || []).some(function (f) { return QUEUE_FLAGS.indexOf(f) >= 0; }); }).length;
+    var st = {}; ps.forEach(function (p) { var k = p.street || 'Без вулиці'; var o = st[k] = st[k] || { n: 0, rd: 0, v: 0, c: { g: 0, y: 0, r: 0, n: 0 } }; o.n++; o.c[p.status]++; if (p.status !== 'n' && readThisCycle(p)) o.rd++; if (cm[p.id]) o.v++; });
+    var streets = Object.keys(st).sort(function (a, b) { if ((a === 'Без вулиці') !== (b === 'Без вулиці')) return a === 'Без вулиці' ? 1 : -1; return a.localeCompare(b, 'uk'); });
+    var inPl = ((plan() || {}).villages || []).indexOf(name) >= 0, rn = (S.meta.routeNo || {})[name];
+    var seg = function (cc, s) { return '<span style="flex:' + cc[s] + ' 1 0;min-width:' + (cc[s] ? 3 : 0) + 'px;background:' + (s === 'n' ? '#fff;box-sizing:border-box;border:1.5px solid #A1A1AA' : ST[s].color) + '"></span>'; };
+    var kv = function (k, v) { return '<div class="between" style="font-size:15px"><span class="mute">' + k + '</span><b>' + v + '</b></div>'; };
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">Огляд' + (inPl ? ' · у плані на ' + monthName().toLowerCase() : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><h1 class="h1" style="font-size:26px">' + esc(name) + '</h1></div></div>' +
+      '<div class="card" style="gap:12px"><div class="between" style="align-items:flex-end"><div class="col"><span class="small mute">Точок на карті</span><b style="font-size:26px">' + fmt(ps.length) + (vt ? ' <span class="mute" style="font-size:15px;font-weight:600">з ' + fmt(vt) + '</span>' : '') + '</b></div>' + (vt ? '<b style="font-size:22px">' + pct(ps.length, vt) + '%</b>' : '') + '</div>' +
+        '<div class="bar" style="height:10px">' + ST_ORDER.map(function (s2) { return seg(c, s2); }).join('') + '</div>' +
+        '<div class="col" style="gap:8px">' + ST_ORDER.map(function (s2) { return '<div class="between" style="font-size:15px"><span class="row" style="gap:8px">' + dotHtml(s2) + ST[s2].label + '</span><b>' + c[s2] + ' <span class="mute" style="font-weight:600">· ' + pct(c[s2], ps.length) + '%</span></b></div>'; }).join('') + '</div></div>' +
+      '<div class="card" style="gap:10px"><div class="h2" style="font-size:16px">Зчитування</div>' +
+        kv('Зчитано за ' + NORM() + ' днів', fmt(rd) + ' з ' + fmt(act.length) + ' · ' + pct(rd, act.length) + '%') +
+        kv('У «Списку ' + NORM() + '»', fmt(l180)) +
+        kv(monthName() + ': зчитано', fmt(mOk)) + kv(monthName() + ': без показника', fmt(mNo)) +
+        (Object.keys(by).length ? '<div class="small mute" style="padding-top:4px">Хто працював у ' + monthName().toLowerCase() + '</div>' + Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return kv(esc(whoName(k)), fmt(by[k])); }).join('') : '') + '</div>' +
+      (q ? '<a class="card" href="#queue" style="gap:4px"><div class="between"><b>Уточнити в полі</b><span class="numbadge" style="background:#F59E0B;color:#111">' + q + '</span></div><span class="small mute">Без вулиці, номера, можливі дублі</span></a>' : '') +
+      '<div class="card" style="gap:0;padding:8px 16px"><div class="between" style="padding:6px 0 8px"><div class="h2" style="font-size:16px">Вулиці · ' + streets.length + '</div><span class="small mute">зчитано</span></div>' + streets.map(function (k) { var o = st[k], a2 = o.n - o.c.n;
+        return '<div class="list-row" style="flex-direction:column;align-items:stretch;gap:6px"><div class="between"><b style="font-size:15px">' + esc(k) + '</b><span class="small"><b>' + pct(o.rd, a2) + '%</b> <span class="mute">· ' + o.n + ' точок</span></span></div><div class="bar" style="height:6px">' + ST_ORDER.map(function (s2) { return seg(o.c, s2); }).join('') + '</div></div>'; }).join('') + '</div>' +
+      (none ? '' : '<button class="btn" data-act="pickVillage" data-v="' + esc(name) + '" data-stay="1">' + icon('map', 18) + 'Відкрити на карті</button>') +
+      '</div>' + tabs('villages');
   }
   function renderVillageTotals(vs, vt) {
     app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="vEdit" aria-label="Готово">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Абонентів по селах</h1></div>' +
