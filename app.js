@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.7';
+  var VERSION = '0.15.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1242,12 +1242,19 @@
         '<div style="font-size:22px;font-weight:800">' + fmt(st.left) + ' адрес залишилось</div>' +
         '<div class="small mute">' + st.days + ' робочих днів → ≈ ' + st.pace + ' на день · зараз у маршруті ' + limLabel(routeCfg().limit) + '</div>' +
         '<button class="btn" data-act="applyPace" style="background:#fff;color:#111;height:46px;font-size:14px">Ставити ' + st.pace + ' адрес у денний маршрут</button></div>' : '') +
-      '<div class="card" style="gap:0;padding:6px 12px">' + vs.map(function (v) {
+      /* відмічені в плані — нагорі (за абеткою), далі решта (теж за абеткою) */
+      (function () {
+        var onV = vs.filter(function (v) { return p.villages.indexOf(v.name) >= 0; }), offV = vs.filter(function (v) { return p.villages.indexOf(v.name) < 0; });
+        var rowsOf = function (list) { return list.map(function (v) {
         var on = p.villages.indexOf(v.name) >= 0, l = left(v.name);
         return '<div class="list-row" style="gap:10px"><button class="pk-row' + (on ? ' on' : '') + '" data-act="planToggle" data-v="' + esc(v.name) + '" style="flex-grow:1;min-height:52px">' +
           '<span class="col" style="gap:2px;min-width:0"><span>' + esc(v.name) + '</span><span class="small" style="opacity:.6">залишилось ' + (l.a - l.d) + ' з ' + l.a + '</span></span><span class="sw' + (on ? ' on' : '') + '"></span></button>' +
           (on ? '<input class="input" data-act="none" data-rno="' + esc(v.name) + '" value="' + esc(rn[v.name] || '') + '" placeholder="Маршрут №" style="width:110px;height:48px;font-size:14px">' : '') + '</div>';
-      }).join('') + '</div></div>' + tabs('home');
+        }).join(''); };
+        var hd = function (t) { return '<div class="small mute" style="padding:8px 4px 4px;font-size:13px;font-weight:700">' + t + '</div>'; };
+        return (onV.length ? hd('У плані · ' + onV.length) + '<div class="card" style="gap:0;padding:6px 12px">' + rowsOf(onV) + '</div>' : '') +
+          hd(onV.length ? 'Інші села' : 'Села') + '<div class="card" style="gap:0;padding:6px 12px">' + rowsOf(offV) + '</div>';
+      })() + '</div>' + tabs('home');
     document.querySelectorAll('[data-rno]').forEach(function (el) {
       el.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[el.getAttribute('data-rno')] = el.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
     });
