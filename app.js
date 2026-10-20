@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.8';
+  var VERSION = '0.14.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2248,27 +2248,28 @@
       '</div>' + dupBox(p);
   }
   function cardFind(p) {
-    return '<details class="card fold-card"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary>' +
+    return '<details class="card fold-card"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
-        '<div id="photos" class="photos"></div>' +
-        '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
+        '<div class="field"><label for="note">Орієнтир</label><textarea id="note" class="input" placeholder="Колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
+        '<div class="field"><label>Фото</label><div id="photos" class="photos"></div>' +
+        '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Хвіртка</label></div></div>' +
         '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
-        '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea>' +
+        '<div class="v-sec" style="text-align:left;font-size:15px">Адреса на карті</div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
         '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
-        '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
-        '<div class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</div>' +
-        '<button class="btn" data-act="saveFind" data-id="' + p.id + '">Зберегти орієнтир і адресу</button></details>';
+        '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px;gap:10px"><span class="row" style="gap:8px;white-space:nowrap">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute" style="text-align:right">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
+        '<div class="small mute">Вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</div>' +
+        '<button class="btn" data-act="saveFind" data-id="' + p.id + '">Зберегти орієнтир і адресу</button></div></details>';
   }
   function cardBottom(p) {
     var rd = lastReading(p.id);
-    return '<details class="card fold-card"' + ((cycleMap()[p.id] || {}).result === 'note' ? ' open' : '') + '><summary><span class="row" style="gap:10px">' + icon('list', 18) + '<b>Історія · ' + visitsOf(p.id).length + '</b></span>' + icon('down', 18, 2.4) + '</summary>' +
+    return '<details class="card fold-card"' + ((cycleMap()[p.id] || {}).result === 'note' ? ' open' : '') + '><summary><span class="row" style="gap:10px">' + icon('list', 18) + '<b>Історія · ' + visitsOf(p.id).length + '</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
         '<div class="field"><label for="rdg">Показник передали по телефону</label><div class="row" style="gap:8px"><input id="rdg" class="input" inputmode="numeric" placeholder="Показник зі слів" style="min-width:0;flex:1"><button class="btn out" data-act="saveReading" data-id="' + p.id + '" style="width:auto;padding:0 16px">Зберегти</button></div></div>' +
         (rd.length ? '<div class="col" style="gap:0">' + rd.map(function (v, i) {
           var nx = rd[i + 1], dd = nx ? Number(v.reading) - Number(nx.reading) : null;
           return '<div class="list-row" style="justify-content:space-between"><div class="col"><b>' + dt(v.ts) + '</b><span class="small mute">' + tm(v.ts) + (v.method ? ' · ' + esc(v.method) : '') + '</span></div><div class="col" style="align-items:flex-end"><b style="font-size:16px">' + fmt(v.reading) + '</b><span class="small mute">' + (dd != null ? (dd >= 0 ? '+' : '') + fmt(dd) : '—') + '</span></div></div>';
         }).join('') + '</div>' : '') +
-        visitsCard(p).replace('class="card"', 'class="col"') + '</details>' +
+        visitsCard(p).replace('class="card"', 'class="col"') + '</div></details>' +
       '<button class="btn sec" data-act="deletePoint" data-id="' + p.id + '" style="color:#B91C1C">Видалити точку (дубль)</button>';
   }
   function saveFind(id) {

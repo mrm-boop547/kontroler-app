@@ -232,3 +232,6 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .vsq.ok{background:#2563EB}
 .compass{position:fixed;right:16px;top:calc(env(safe-area-inset-top,0px) + 330px);z-index:12;width:48px;height:48px;border-radius:24px;border:0;background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.12);display:none;align-items:center;justify-content:center;cursor:pointer}
 .compass svg{transition:transform .1s}
+.fold-card{display:block}
+.fold-body{display:flex;flex-direction:column;gap:14px;padding-top:16px}
+.fold-body .photos:empty{display:none}
