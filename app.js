@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.5';
+  var VERSION = '0.15.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -175,12 +175,16 @@
   function vLabel(v) { v = v === undefined ? village() : v; return v === ALL ? 'Уся дільниця' : v || 'Без села'; }
   function newVillage() { var v = village(); return v === ALL ? null : v; }
   function villagePoints(v) { var t = v || village(), out = []; S.points.forEach(function (p) { if (t === ALL || p.village === t) out.push(p); }); return out; }
+  /* єдине сортування сіл і вулиць: за абеткою (українською), «Без села / Без вулиці» в кінці */
+  function ukSort(a, b) { var na = /^Без /.test(a), nb = /^Без /.test(b); if (na !== nb) return na ? 1 : -1; return String(a).localeCompare(String(b), 'uk', { sensitivity: 'base' }); }
+  /* заголовки-літери для довгих списків: А, Б, В… */
+  function letterHeads(opts) { var last = ''; return opts.map(function (o) { var L = (o.l || '').charAt(0).toUpperCase(); if (/^Без /.test(o.l)) L = '—'; if (L !== last && !o.head) { last = L; return Object.assign({}, o, { head: L }); } last = L; return o; }); }
   function villages() {
     var c = {}; S.points.forEach(function (p) { var k = p.village || 'Без села'; c[k] = (c[k] || 0) + 1; });
     /* села, додані вручну, видно ще до першої точки в них */
     var dv = S.meta.deletedVillages || {};
     (S.meta.extraVillages || []).forEach(function (v) { if (!c[v] && !dv[v]) c[v] = 0; });
-    return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (k) { return { name: k, n: c[k] }; });
+    return Object.keys(c).sort(ukSort).map(function (k) { return { name: k, n: c[k] }; });
   }
   function visitsOf(pid) { return S.visits.filter(function (v) { return v.pointId === pid; }).sort(function (a, b) { return b.ts - a.ts; }); }
   /* останній візит цього місяця + останнє успішне зчитування кожної точки (кеш, скидається при змінах) */
@@ -456,7 +460,7 @@
   function routeCfgSheet() {
     var c = routeCfg(), v = village(), T = { auto: c.auto, limit: c.limit, types: c.types.slice(), streets: (c.streets[v] || []).slice() };
     var streets = {}; if (v !== ALL) villagePoints(v).forEach(function (p) { if (p.status !== 'n' && p.street) streets[p.street] = (streets[p.street] || 0) + 1; });
-    var names = Object.keys(streets).sort(function (a, b) { return streets[b] - streets[a]; });
+    var names = Object.keys(streets).sort(ukSort);
     closeSheet();
     var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov';
     var draw = function () {
@@ -1003,17 +1007,34 @@
       var v = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? (o || 'Не вибрано') : o.l, sub = typeof o === 'string' ? '' : (o.sub || '');
       var on = v === current, hot = typeof o !== 'string' && o.hot;
       var head = typeof o !== 'string' && o.head ? '<div class="small mute" style="padding:6px 4px 0">' + esc(o.head) + '</div>' : '';
-      return head + '<button class="pk-row' + (on ? ' on' : '') + (hot ? ' hot' : '') + '" data-pk="' + i + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
+      return head.replace('<div class="small mute"', '<div class="small mute pk-head"') + '<button class="pk-row' + (on ? ' on' : '') + (hot ? ' hot' : '') + '" data-pk="' + i + '" data-q="' + esc(String(l).toLowerCase()) + '"><span class="col" style="gap:2px;min-width:0"><span>' + esc(l) + '</span>' + (sub ? '<span class="small" style="opacity:.6">' + esc(sub) + '</span>' : '') + '</span>' +
         (on ? '<span class="pk-check">' + icon('check', 16, 3) + '</span>' : '<span class="pk-radio"></span>') + '</button>';
     };
     var pin = extra.pin || 0;
     var ov = document.createElement('div'); ov.id = 'picker'; ov.className = 'pk-ov';
     ov.innerHTML = '<div class="pk-sheet" role="dialog" aria-label="' + esc(title) + '"><div class="pk-grip"></div>' +
-      '<div class="between" style="padding:0 4px;gap:8px"><div class="h2" style="flex-shrink:0">' + esc(title) + '</div>' +
+      '<div class="between" style="padding:0 4px;gap:8px"><div class="h2" style="flex-shrink:0' + (extra.search ? ';display:none' : '') + '">' + esc(title) + '</div>' +
+      (extra.search ? '<label class="pk-search">' + icon('search', 18) + '<input id="pk-q" type="search" placeholder="' + esc(extra.search) + '" autocomplete="off" autocapitalize="sentences"></label>' : '') +
       '<div class="row" style="gap:8px">' + (extra.btn ? '<button class="chip" data-pk="btn" style="height:40px;padding:0 14px;background:#111;color:#fff;border-radius:20px">' + icon('plus', 16, 2.6) + esc(extra.btn.l) + '</button>' : '') +
       '<button class="iconbtn" data-pk="close" aria-label="Закрити" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div></div>' +
       (pin ? '<div class="col" style="gap:6px">' + opts.slice(0, pin).map(row).join('') + '</div>' : '') +
       '<div class="pk-list">' + opts.slice(pin).map(function (o, i) { return row(o, i + pin); }).join('') + '</div></div>';
+    if (extra.search) setTimeout(function () {
+      var q = ov.querySelector('#pk-q'); if (!q) return;
+      if (extra.focus !== false) q.focus();
+      q.oninput = function () {
+        var t = q.value.trim().toLowerCase(), list = ov.querySelector('.pk-list'), shown = 0;
+        ov.querySelectorAll('.pk-list .pk-head').forEach(function (h) { h.style.display = t ? 'none' : ''; });
+        var rows = Array.prototype.slice.call(ov.querySelectorAll('.pk-list .pk-row'));
+        rows.forEach(function (r) {
+          var l = r.getAttribute('data-q') || '', words = l.split(/[\s-]+/);
+          var hit = !t || l.indexOf(t) === 0 ? 2 : words.some(function (w) { return w.indexOf(t) === 0; }) ? 1 : l.indexOf(t) >= 0 ? 0 : -1;
+          r.style.display = hit < 0 ? 'none' : ''; r.style.order = t ? String(2 - hit) : ''; if (hit >= 0) shown++;
+        });
+        var em = ov.querySelector('.pk-empty'); if (em) em.remove();
+        if (!shown) list.insertAdjacentHTML('beforeend', '<div class="pk-empty small mute" style="padding:14px 4px">Нічого не знайдено' + (extra.btn ? ' · натисніть «' + esc(extra.btn.l) + '», щоб додати' : '') + '</div>');
+      };
+    }, 50);
     ov.addEventListener('click', function (e) {
       var b = e.target.closest('[data-pk]');
       if (e.target === ov || (b && b.getAttribute('data-pk') === 'close')) return closeSheet();
@@ -1053,13 +1074,13 @@
     if (p) {
       var a = vs.filter(function (x) { return p.villages.indexOf(x.name) >= 0; }), b = vs.filter(function (x) { return p.villages.indexOf(x.name) < 0; });
       opts = a.map(function (x, i) { var s = st.byV[x.name] || { act: 0, done: 0 }; return { v: x.name, l: x.name, sub: 'залишилось ' + (s.act - s.done) + ' з ' + s.act, hot: true, head: i === 0 ? 'План на ' + monthName().toLowerCase() : '' }; })
-        .concat(b.map(function (x, i) { return { v: x.name, l: x.name, sub: x.n + ' точок', head: i === 0 ? 'Інші села' : '' }; }));
-    } else opts = vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; });
+        .concat(letterHeads(b.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; })));
+    } else opts = letterHeads(vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; }));
     opts = [{ v: ALL, l: 'Уся дільниця', sub: fmt(S.points.size) + ' точок' + (p ? ' · маршрут по селах плану' : ' · усі села разом'), hot: true }].concat(opts);
     openSheet('Населений пункт', opts, village() || 'Без села', function (v) {
       if (v === '__newv') return addVillage(function (n) { setMeta('village', n).then(function () { S.route = null; S.filter = null; S.sel = null; render(); }); });
       setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.filter = null; S.sel = null; render(); });
-    }, { btn: { v: '__newv', l: 'Нове' }, pin: 1 });
+    }, { btn: { v: '__newv', l: 'Нове' }, pin: 1, search: 'Пошук села' });
   }
   function bindVillageSelect() {}
   /* статистика зняття по всій дільниці за поточний цикл (півріччя) */
@@ -1400,7 +1421,7 @@
     var mins = st.map(function (o) { return o.min; }), avg = mins.reduce(function (a, b) { return a + b; }, 0) / (st.length || 1);
     var spread = avg ? (Math.max.apply(null, mins) - Math.min.apply(null, mins)) / avg : 0;
     var streets = {}; villagePoints(SP.v).forEach(function (p) { if (p.status === 'n') return; var k = streetKey(p); var o = streets[k] = streets[k] || { n: 0, left: 0, who: {} }; o.n++; if (!doneThisCycle(p)) o.left++; var j = SP.assign[p.id]; if (j != null) o.who[j] = (o.who[j] || 0) + 1; });
-    var names = Object.keys(streets).filter(Boolean).sort(function (a, b) { return a.localeCompare(b, 'uk'); });
+    var names = Object.keys(streets).filter(Boolean).sort(ukSort);
     var whoOf = function (o) { var ks = Object.keys(o.who); return ks.length === 1 ? +ks[0] : ks.length ? 'mix' : null; };
     el.innerHTML = '<div class="between"><div class="col" style="gap:2px"><b style="font-size:17px">Хто якою вулицею</b><span class="small mute">' + (SP.saved ? 'Збережено' + (sv && sv.by && sv.by !== me().id ? ' · від ' + esc(peerName(sv.by)) : '') : 'Не збережено') + ' · різниця навантаження ' + Math.round(spread * 100) + '%</span></div></div>' +
       '<div class="col" style="gap:6px"><div class="small mute">Хто сьогодні в селі</div><div class="tags">' + SP.crew.map(function (n, i) {
@@ -1758,7 +1779,7 @@
     if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; villagePoints().forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
     var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
-      '<div class="row">' + villageSelect('vsel') + '<button class="pill" data-act="search" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук</button></div>' +
+      '<div class="row">' + villageSelect('vsel') + '<button class="pill" data-act="pickVillageSheet" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук села</button></div>' +
       (S.meta.tilesMin
         ? '<div class="pill tilebar" style="padding:0 4px 0 8px;gap:2px;align-self:flex-start">' + ST_ORDER.map(function (s) {
             return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
@@ -1914,8 +1935,8 @@
     var vs = villages().filter(function (x) { return x.name !== 'Без села'; });
     var hv = village() && village() !== ALL ? village() : null, list = vs.map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' }; });
     var pinned = hv ? list.filter(function (o) { return o.v === hv; }).map(function (o) { return Object.assign({}, o, { head: 'Обране на головній', hot: true }); }) : [];
-    var rest = list.filter(function (o) { return o.v !== hv; }); if (rest.length && pinned.length) rest[0] = Object.assign({}, rest[0], { head: 'Інші села' });
-    openSheet('У яке село', pinned.concat(rest, [{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', function (v) { if (v === '__newv') addVillage(cb); else cb(v); }, { btn: { v: '__newv', l: 'Нове' }, pin: pinned.length });
+    var rest = letterHeads(list.filter(function (o) { return o.v !== hv; }));
+    openSheet('У яке село', pinned.concat(rest, [{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', function (v) { if (v === '__newv') addVillage(cb); else cb(v); }, { btn: { v: '__newv', l: 'Нове' }, pin: pinned.length, search: 'Пошук села' });
   }
   function startAdd(ll, pt) {
     var street = '', house = '';
