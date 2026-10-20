@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.6';
+  var VERSION = '0.15.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1160,7 +1160,7 @@
      Темп рахується за датою створення точок за останні 30 днів → прогноз, коли буде внесено всіх. */
   var TOTAL_DEFAULT = 23659;
   function coverage() {
-    var byA = {}, total = Number(S.meta.totalSubs) || TOTAL_DEFAULT, placed = 0, exact = 0, data = 0, m30 = 0, wk = 0, byV = {};
+    var byA = {}, total = Number(S.meta.totalSubs) || TOTAL_DEFAULT, placed = 0, exact = 0, data = 0, m30 = 0, wk = 0, byV = {}, first = null;
     var t30 = dayKey(Date.now() - 30 * 864e5), t7 = dayKey(Date.now() - 7 * 864e5);
     S.points.forEach(function (p) {
       placed++;
@@ -1169,13 +1169,16 @@
       var k = p.village || 'Без села'; byV[k] = (byV[k] || 0) + 1;
       /* темп рахуємо лише по точках, внесених контролерами в полі; імпорт з MAPS.ME — разове завантаження, не темп */
       if (p.src === 'MAPS.ME' || !p.created) return;
-      if (p.created >= t30) { m30++; var au = p.createdBy || '?'; byA[au] = (byA[au] || 0) + 1; }
+      if (p.created >= t30) { m30++; var au = p.createdBy || '?'; byA[au] = (byA[au] || 0) + 1; if (!first || p.created < first) first = p.created; }
       if (p.created >= t7) wk++;
     });
-    var perDay = m30 / 22, left = Math.max(0, total - placed), days = perDay > 0 ? Math.ceil(left / perDay) : null;
+    /* темп = точки з поля / робочі дні (пн–пт) від першої такої точки за 30 днів до сьогодні включно */
+    var wd = 0; if (first) { var d0 = new Date(first + 'T12:00:00'), d1 = new Date(); d1.setHours(12, 0, 0, 0); for (var dd = new Date(d0); dd <= d1; dd.setDate(dd.getDate() + 1)) if (dd.getDay() !== 0 && dd.getDay() !== 6) wd++; }
+    wd = Math.max(1, wd);
+    var perDay = m30 / wd, left = Math.max(0, total - placed), days = perDay > 0 ? Math.ceil(left / perDay) : null;
     var eta = null; if (days != null && days < 22 * 12 * 5) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
     var need = Math.ceil(left / (21 * 12));
-    return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, perDay: perDay, left: left, eta: eta, days: days, need: need, byV: byV };
+    return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, wd: wd, perDay: perDay, left: left, eta: eta, days: days, need: need, byV: byV };
   }
   /* «Уточнити в полі» — згорнутий рядок усередині блоку локацій: видно лише кількість, деталі по тапу */
   function queueFold() {
@@ -1200,12 +1203,13 @@
       '<div class="col" style="gap:8px;font-size:14px">' + leg('#111', 'Підтверджено в полі', c.exact) + leg('#A1A1AA', 'З MAPS.ME, не перевірено', imp) + leg('#E4E4E7', 'Ще не на карті', c.left) + '</div>' +
 
       sec('Темп внесення в полі') +
-      '<div class="stgrid"><div class="sttile"><span class="small mute">За 7 днів</span><b style="font-size:22px">+' + fmt(c.wk) + '</b></div>' +
-        '<div class="sttile"><span class="small mute">На робочий день</span><b style="font-size:22px">' + c.perDay.toFixed(1).replace('.', ',') + '</b></div></div>' +
-      '<div class="col" style="gap:8px;font-size:14px">' +
-        '<div class="between"><span class="mute">Прогноз при такому темпі</span><b>' + etaTxt + '</b></div>' +
+      '<div class="stgrid"><div class="sttile pace"><span>За 7 днів</span><b>+' + fmt(c.wk) + '</b></div>' +
+        '<div class="sttile pace"><span>На робочий день</span><b>' + c.perDay.toFixed(1).replace('.', ',') + '</b><span style="font-size:12px">за ' + c.wd + ' ' + plural(c.wd, 'робочий день', 'робочі дні', 'робочих днів') + '</span></div></div>' +
+      '<details class="fold"><summary><span class="mute" style="font-size:14px">Прогноз при такому темпі</span><span class="row" style="gap:8px"><b style="font-size:14px">' + etaTxt + '</b>' + icon('down', 16, 2.4) + '</span></summary>' +
+        '<div class="col" style="gap:8px;font-size:14px;padding-top:12px">' +
         '<div class="between"><span class="mute">Щоб закрити за 12 міс.</span><b>≈' + fmt(c.need) + ' на день</b></div>' +
-        '<div class="between"><span class="mute">Це на кожного з ' + crew() + ' контролерів</span><b>≈' + fmt(Math.ceil(c.need / crew())) + ' на день</b></div></div>' +
+        '<div class="between"><span class="mute">Це на кожного з <button class="linkbtn" data-act="crewN" style="color:#111;font-weight:800">' + crew() + '</button> контролерів</span><b>≈' + fmt(Math.ceil(c.need / crew())) + ' на день</b></div>' +
+        '<div class="small mute" style="line-height:1.45">Темп: точки з поля за 30 днів ÷ робочі дні (пн–пт) від першої з них. Прогноз відкладає потрібні робочі дні від сьогодні. 12 міс. = 252 робочі дні. Кількість контролерів можна змінити тапом.</div></div></details>' +
 
       (who.length ? sec('Хто вносив за 30 днів') + '<div class="col" style="gap:8px;font-size:14px">' + who.map(function (k) {
         var nm = k === '?' ? 'невідомо' : peerName(k) === 'я' ? (me().name || 'я') : peerName(k);
@@ -1282,7 +1286,7 @@
   function myIdx(s) { if (!s) return null; var n = me().name, i = n ? s.crew.indexOf(n) : -1; if (i < 0) { var m = (S.meta.splitMine || {})[s.v]; if (m != null) i = m; } return i >= 0 ? i : null; }
   function splitIdx(p) { var s = splitOf(p.village); if (!s) return null; var a = s.assign[p.id]; return a == null ? null : a; }
   function sectorName(i, s) { return (s && s.crew[i]) || 'Контролер ' + (i + 1); }
-  function crew() { return 7; }
+  function crew() { return Number(S.meta.crewN) || 7; }
   function streetKey(p) { return p.street || ''; }
   /* блоки: вулиця цілком; точки без вулиці — квадрати ~150 м; дуже довга вулиця — шматки вздовж ходу */
   function makeUnits(pts, target) {
@@ -2969,6 +2973,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'crewN': var cn = parseInt(prompt('Скільки контролерів працює на дільниці?', crew()), 10); if (cn > 0 && cn < 100) setMeta('crewN', cn).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); var f = document.querySelector('.cv details'); if (f) f.open = true; }); break;
       case 'delVillage': delVillage(el.getAttribute('data-v')); break;
       case 'info': showInfo(el.getAttribute('data-v')); break;
       case 'peerDel': peerDel(el.getAttribute('data-v')); break;
