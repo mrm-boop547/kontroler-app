@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.6';
+  var VERSION = '0.14.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1671,13 +1671,14 @@
     return (cv ? '<div class="vdone' + (cv.result === 'ok' ? ' ok' : '') + '">' + icon('check', 16, 3) + '<span>' + monthName() + ': <b>' + esc(RESNAME[cv.result].toLowerCase()) + '</b> ' + dt(cv.ts) + (cv.reading ? ' · ' + fmt(cv.reading) : '') + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') + '</span>' +
         (undo ? '<button class="chip" data-act="quickUndo" data-id="' + p.id + '">Скасувати</button>' : '') + '</div>' : '') +
       (lqp ? '<div class="vdone">' + icon('check', 16, 3) + '<span>' + esc(addr(lqp)) + ': <b>' + esc(RESNAME[lq.res].toLowerCase()) + '</b></span><button class="chip" data-act="quickUndo" data-id="' + lqp.id + '">Скасувати</button></div>' : '') +
-      '<div class="qgrid">' + b('ok', 'Зчитано', true) + b('none', 'Нема доступу') + b('note', 'Записка') + '<a class="qbtn" href="#visit/' + p.id + '">Інше…</a></div>';
+      '';
   }
   function quickVisit(id, res) {
     var p = S.points.get(id); if (!p) return;
     var wasRoute = routeIndex(id) >= 0;
     var reading = res === 'ok' && $('#q-r') ? $('#q-r').value.replace(/\s/g, '') : '';
     if (reading && !/^\d+(\.\d+)?$/.test(reading)) return toast('Показник: лише цифри');
+    if (res === 'empty' && p.status !== 'n') { p.status = 'n'; savePoint(p); }
     var v = newVisit({ pointId: id, result: res, prof: p.status, reading: reading || null, method: reading ? 'зчитано' : null, note: null,
       pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
     S.quickOk = null;
@@ -1723,8 +1724,8 @@
       '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
       '</div>' + dotHtml(p.status) + '</div>' +
       quickHtml(p, idx) +
-      '<div class="row"><a class="btn sec" href="#card/' + p.id + '" style="flex-grow:1;height:46px;font-size:14px">Відкрити картку ' + icon('arrow', 16, 2.4) + '</a>' +
-      '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
+      '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:52px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
+      '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:52px;height:52px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
       (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
     var qr = $('#q-r'); if (qr) { qr.focus(); qr.onkeydown = function (e) { if (e.key === 'Enter') quickVisit(p.id, 'ok'); }; }
     var rno = $('#rno');
@@ -2208,6 +2209,7 @@
         fld("Пофідерна прив'язка", feederHtml) +
       '</div>' +
       '<button class="btn note-btn" data-act="quick" data-v="note" data-id="' + id + '">Повідомлення про візит</button>' +
+      '<button class="btn sec" data-act="noRead" data-id="' + id + '" style="height:48px">Не вдалося зняти: нема доступу / не живуть</button>' +
       '<button class="btn seals-btn' + (nL && done === nL ? ' done' : '') + '" data-act="rSealsOpen" data-id="' + id + '">Пломби' + (nL ? ' · ' + done + ' з ' + nL : '') + '</button>' +
       '<div id="r-miss" class="miss" style="display:none"></div>' +
       '<button id="r-save" class="btn save-btn" data-act="rSave" data-id="' + id + '">Зберегти</button>' +
@@ -2737,6 +2739,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
       case 'editPoint': openPointEditor(id); break;
       case 'hideDone': setMeta('hideDone', !S.meta.hideDone); renderMap.fitNext = false; render(); break;
       case 'quickUndo': if (S.lastQuick && S.lastQuick.pid === id) { var lq = S.lastQuick; S.lastQuick = null; del('visits', lq.key).then(function () { S.visits = S.visits.filter(function (x) { return x.uid !== lq.uid; }); invalidate(); S.route = computeRoute(); S.sel = id; updateMap(); renderSheet(); refreshDone(); toast('Відмітку скасовано'); }); } break;
