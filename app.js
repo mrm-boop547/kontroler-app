@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.8';
+  var VERSION = '0.16.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1789,20 +1789,16 @@
     if (!S.sel || routeIndex(S.sel) < 0 && !S.points.get(S.sel)) S.sel = r && r.ids[0];
     if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; villagePoints().forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
     var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
-    app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
-      '<div class="row">' + villageSelect('vsel') + '<button class="pill" data-act="pickVillageSheet" style="flex-grow:1;color:#6B6B70;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('search', 18) + 'Пошук села</button></div>' +
-      (S.meta.tilesMin
-        ? '<div class="pill tilebar" style="padding:0 4px 0 8px;gap:2px;align-self:flex-start">' + ST_ORDER.map(function (s) {
-            return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
-          }).join('') + doneChip() + '<button class="tb-item" data-act="toggleTiles" aria-label="Розгорнути статуси">' + icon('down', 16, 2.6) + '</button></div>'
-        : '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">' + ST_ORDER.map(function (s) {
-            return '<button class="ftile' + (S.filter === s ? ' on' : '') + '" data-act="filter" data-st="' + s + '">' + dotHtml(s) + '<b>' + c[s] + '</b><span>' + ST[s].short + '</span></button>';
-          }).join('') + '</div><div class="pill tilebar" style="align-self:flex-start;padding:0 6px">' + doneChip(true) + '</div>') +
-      '<div class="between"><div class="row"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
-      '<button class="pill" data-act="routeCfg" style="height:48px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' + icon('gear', 18) + (routeCfg().auto ? 'Маршрут' : 'Маршрут вимк.') + '</button>' +
-      (S.meta.tilesMin ? '' : '<button class="iconbtn" data-act="toggleTiles" aria-label="Згорнути статуси">' + '<span style="transform:rotate(180deg);display:flex">' + icon('down', 20, 2.6) + '</span></button>') + '</div>' +
-      '<button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button></div>' +
-      '</div><div id="sheet"></div>' + tabs('map');
+    /* Обхід: зверху лише село і тонкий рядок статусів; кнопки карти — праворуч унизу під пальцем; налаштування маршруту — у панелі */
+    app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:8px;align-items:flex-start">' +
+      villageSelect('vsel') +
+      '<div class="pill tilebar" style="padding:0 6px;gap:0;max-width:100%;overflow-x:auto">' + ST_ORDER.map(function (s) {
+        return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
+      }).join('') + '<span class="tb-sep"></span>' + doneChip() + '</div>' +
+      '</div>' +
+      '<div class="fabs" id="fabs"><button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button>' +
+      '<button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button></div>' +
+      '<div id="sheet"></div>' + tabs('map');
     bindVillageSelect('vsel');
     renderSheet();
     var doFit = function () { updateMap(); var sel = S.points.get(S.sel); if (renderMap.fitNext !== false) { fitTo(sel ? [sel] : villagePoints()); } renderMap.fitNext = true; };
@@ -1867,6 +1863,14 @@
   }
   function renderSheet() {
     renderSheetInner(); sheetSwipe($('#sheet') || document.createElement('div'));
+    placeFabs();
+  }
+  /* кнопки карти (шар, моя позиція) і компас тримаємо над нижньою панеллю */
+  function placeFabs() {
+    var f = $('#fabs'), sh = $('#sheet'); if (!f) return;
+    var inner = sh && sh.firstElementChild, top = inner ? inner.getBoundingClientRect().top : window.innerHeight - 120;
+    var b = Math.max(110, window.innerHeight - top + 12); f.style.bottom = b + 'px';
+    var cp = document.querySelector('.compass'); if (cp) { cp.style.top = 'auto'; cp.style.bottom = (b + f.offsetHeight + 10) + 'px'; }
   }
   function renderSheetInner() {
     var el = $('#sheet'); if (!el) return;
@@ -1876,6 +1880,7 @@
       '<a class="btn" href="#bind/new" style="width:auto;flex-shrink:0;height:44px;padding:0 14px;font-size:13px">' + icon('pin', 16) + 'За GPS</a></div></div>'; return; }
     if (!p) {
       var nv = r && !r.ids.length && village() !== ALL ? nextPlanVillage(village()) : null;
+      if (r && r.off) { el.innerHTML = '<div class="sheet mini"><div class="between" style="gap:10px"><div class="small mute" style="padding:4px">Торкніться точки на карті. Маршрут вимкнено</div><button class="iconbtn" data-act="routeCfg" aria-label="Налаштування маршруту" style="width:42px;height:42px;box-shadow:none;background:#F1F1F3;flex-shrink:0">' + icon('gear', 18) + '</button></div></div>'; return; }
       el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">' + (routeCfg().round === '180' ? 'Список ' + NORM() + ' тут порожній.' : 'Планові адреси пройдено. Далі — друге коло по «Списку ' + NORM() + '».') + '</div>' + (routeCfg().round !== '180' && villagePoints().some(in180) ? '<button class="btn out" data-act="round" data-v="180">Почати коло ' + NORM() + ' · ' + villagePoints().filter(in180).length + ' адрес</button>' : '') +
         (nv ? '<button class="btn" data-act="pickVillage" data-v="' + esc(nv) + '" data-stay="1">Наступне село плану: ' + esc(nv) + icon('arrow', 18, 2.4) + '</button>' : '') + '</div>' : ''; return;
     }
@@ -1895,7 +1900,7 @@
       (r ? (r.off ? 'Авто-маршрут вимкнено' : r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) + (r.walk ? ' пішки' : '')) : '') + '</div>' +
       '<div class="row" style="font-size:18px;font-weight:800">' + (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : '') + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span></div>' +
       '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
-      '</div>' + dotHtml(p.status) + '</div>' +
+      '</div>' + (mapMode === 'route' ? '<button class="iconbtn" data-act="routeCfg" aria-label="Налаштування маршруту" style="width:42px;height:42px;box-shadow:none;background:#F1F1F3;flex-shrink:0">' + icon('gear', 18) + '</button>' : dotHtml(p.status)) + '</div>' +
       quickHtml(p, idx) +
       '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:52px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
       '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:52px;height:52px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
@@ -3077,6 +3082,7 @@
     checkUpdate(false, true);
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
     window.addEventListener('online', function () { ghSync(false); });
+    window.addEventListener('resize', function () { placeFabs(); });
     setInterval(function () { if (document.visibilityState === 'visible') ghSync(false); }, 5 * 60 * 1000);
     setInterval(checkUpdate, 10 * 60 * 1000);
   }
