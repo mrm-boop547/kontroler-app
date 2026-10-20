@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.16.1';
+  var VERSION = '0.16.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1806,8 +1806,7 @@
         return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
       }).join('') + '<span class="tb-sep"></span>' + doneChip() + '</div>' +
       '</div>' +
-      '<div class="fabs" id="fabs"><button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button>' +
-      '<button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button></div>' +
+      fabsHtml(true) +
       '<div id="sheet"></div>' + tabs('map');
     bindVillageSelect('vsel');
     renderSheet();
@@ -1876,6 +1875,13 @@
     placeFabs();
   }
   /* кнопки карти (шар, моя позиція) і компас тримаємо над нижньою панеллю */
+  /* однакові кнопки карти праворуч унизу: [налаштування маршруту] · шар · моя позиція */
+  function fabsHtml(route) {
+    var lay = S.meta.layer || 'scheme';
+    return '<div class="fabs" id="fabs">' + (route ? '<button class="iconbtn" data-act="routeCfg" aria-label="Налаштування маршруту"' + (routeCfg().auto ? '' : ' style="color:#A1A1AA"') + '>' + icon('gear', 20) + '</button>' : '') +
+      '<button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button>' +
+      '<button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button></div>';
+  }
   function placeFabs() {
     var f = $('#fabs'), sh = $('#sheet'); if (!f) return;
     var inner = sh && sh.firstElementChild, top = inner ? inner.getBoundingClientRect().top : window.innerHeight - 120;
@@ -1890,7 +1896,7 @@
       '<a class="btn" href="#bind/new" style="width:auto;flex-shrink:0;height:44px;padding:0 14px;font-size:13px">' + icon('pin', 16) + 'За GPS</a></div></div>'; return; }
     if (!p) {
       var nv = r && !r.ids.length && village() !== ALL ? nextPlanVillage(village()) : null;
-      if (r && r.off) { el.innerHTML = '<div class="sheet mini"><div class="between" style="gap:10px"><div class="small mute" style="padding:4px">Торкніться точки на карті. Маршрут вимкнено</div><button class="iconbtn" data-act="routeCfg" aria-label="Налаштування маршруту" style="width:42px;height:42px;box-shadow:none;background:#F1F1F3;flex-shrink:0">' + icon('gear', 18) + '</button></div></div>'; return; }
+      if (r && r.off) { el.innerHTML = '<div class="sheet mini"><div class="between" style="gap:10px"><div class="small mute" style="padding:4px">Торкніться точки на карті. Маршрут вимкнено: увімкнути — шестерня праворуч</div></div></div>'; return; }
       el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">' + (routeCfg().round === '180' ? 'Список ' + NORM() + ' тут порожній.' : 'Планові адреси пройдено. Далі — друге коло по «Списку ' + NORM() + '».') + '</div>' + (routeCfg().round !== '180' && villagePoints().some(in180) ? '<button class="btn out" data-act="round" data-v="180">Почати коло ' + NORM() + ' · ' + villagePoints().filter(in180).length + ' адрес</button>' : '') +
         (nv ? '<button class="btn" data-act="pickVillage" data-v="' + esc(nv) + '" data-stay="1">Наступне село плану: ' + esc(nv) + icon('arrow', 18, 2.4) + '</button>' : '') + '</div>' : ''; return;
     }
@@ -1910,7 +1916,7 @@
       (r ? (r.off ? 'Авто-маршрут вимкнено' : r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) + (r.walk ? ' пішки' : '')) : '') + '</div>' +
       '<div class="row" style="font-size:18px;font-weight:800">' + (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : '') + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span></div>' +
       '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
-      '</div>' + (mapMode === 'route' ? '<button class="iconbtn" data-act="routeCfg" aria-label="Налаштування маршруту" style="width:42px;height:42px;box-shadow:none;background:#F1F1F3;flex-shrink:0">' + icon('gear', 18) + '</button>' : dotHtml(p.status)) + '</div>' +
+      '</div>' + dotHtml(p.status) + '</div>' +
       quickHtml(p, idx) +
       '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:52px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
       '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:52px;height:52px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
@@ -2078,9 +2084,7 @@
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
       '<div class="row"><label class="pill" for="aq" style="flex-grow:1;box-shadow:0 6px 20px rgba(0,0,0,.06);min-width:0">' + icon('search', 18) + '<input id="aq" autocomplete="off" placeholder="Адреса, ПІБ, серійний номер" value="' + esc(AQ) + '" style="border:0;outline:0;background:transparent;width:100%;font-weight:600;min-width:0"></label>' +
         (AQ ? '<button class="iconbtn" data-act="aqClear" aria-label="Очистити пошук">' + icon('close', 18, 2.4) + '</button>' : '') + '</div><div id="aqres"></div><div id="apanel" style="display:flex;flex-direction:column;gap:10px' + (AQ ? ';display:none' : '') + '">' + panel +
-      '<div class="between"><button class="iconbtn" data-act="locate" aria-label="Моя позиція">' + icon('locate') + '</button>' +
-      '<button class="iconbtn" data-act="layer" data-l="' + (lay === 'sat' ? 'scheme' : 'sat') + '" aria-label="' + (lay === 'sat' ? 'Схема' : 'Супутник') + '"' + (lay === 'sat' ? ' style="background:#111;color:#fff"' : '') + '>' + icon('globe', 20) + '</button></div></div>' +
-      '</div><div id="sheet"></div>' + tabs('all');
+      '</div></div>' + fabsHtml(false) + '<div id="sheet"></div>' + tabs('all');
     if (S.sel && shown.indexOf(S.points.get(S.sel)) < 0) S.sel = null;
     renderSheet();
     var fit = function () { updateMap(); if (renderAll.fitNext !== false) fitTo(shown.length ? shown : Array.from(S.points.values())); renderAll.fitNext = true; };
