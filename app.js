@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.4';
+  var VERSION = '0.15.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2905,7 +2905,12 @@
       case 'layer': setLayer(el.getAttribute('data-l')); render(); break;
       case 'skip': S.skipped[S.sel] = 1; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; updateMap(); renderSheet(); toast('Адресу пропущено до кінця дня'); break;
       case 'saveCard': saveCard(id); break;
-      case 'deletePoint': if (confirm('Видалити цю точку? Візити теж зникнуть з карти.')) { S.points.delete(id); S.route = null; var tb = Object.assign({}, S.meta.deleted || {}); tb[id] = Date.now(); setMeta('deleted', tb); del('points', id).then(function () { toast('Точку видалено'); go('#home'); }); } break;
+      case 'deletePoint': if (confirm('Видалити цю точку? Візити теж зникнуть з карти.')) { S.points.delete(id); S.route = null; var tb = Object.assign({}, S.meta.deleted || {}); tb[id] = Date.now(); setMeta('deleted', tb); del('points', id).then(function () {
+          toast('Точку видалено'); if (S.sel === id) S.sel = null; S.lastQuick = null;
+          /* лишаємось там, звідки відкрили картку: Обхід, Мітки, Огляд села… */
+          var st = S.nav || []; st.pop(); while (st.length && st[st.length - 1].indexOf(id) >= 0) st.pop();
+          var prev = st[st.length - 1] || '#map'; renderMap.fitNext = false; if (location.hash === prev) render(); else location.hash = prev;
+        }); } break;
       case 'toggleHist': var h = $('#hist'); h.style.display = h.style.display === 'none' ? 'block' : 'none'; el.querySelector('svg').style.transform = h.style.display === 'none' ? '' : 'rotate(180deg)'; break;
       case 'saveReading': saveReading(id); break;
       case 'res': V.res = el.getAttribute('data-v'); if (V.res === 'empty') V.prof = 'n'; renderVisitKeep(); break;
