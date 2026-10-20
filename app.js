@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.18.1';
+  var VERSION = '0.18.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -206,7 +206,11 @@
   function invalidate() { cycleCache = null; okCache = null; }
   function daysSince(ts) { return Math.floor((Date.now() - ts) / 864e5); }
   /* відвідано в цьому місяці (будь-який результат) — з планового обходу виходить */
-  function doneThisCycle(p) { return !!cycleMap()[p.id]; }
+  /* адреса вже не потребує обходу: зчитана в межах норми (180 днів), навіть якщо минулого разу, або вже відвідана цього місяця.
+     Так у село, куди їздять раз на 2–6 міс., ідемо лише туди, де не зчитали */
+  function doneThisCycle(p) { return readThisCycle(p) || !!cycleMap()[p.id]; }
+  /* стан на карті: 'ok' — зчитано в межах норми; 'v' — цього місяця був, але без показника */
+  function vstate(p) { if (p.status !== 'n' && readThisCycle(p)) return 'ok'; var x = cycleMap()[p.id]; return x && x.result !== 'ok' ? 'v' : x ? 'ok' : null; }
   /* зчитано в межах норми (180 днів) */
   function readThisCycle(p) { var v = okMap()[p.id]; return !!(v && daysSince(v.ts) < NORM()); }
   /* «Список 180»: не зчитано понад норму — або старе зчитування, або цього місяця не потрапили, або позначка з маршрутного листа */
@@ -1784,9 +1788,9 @@
       var num = order[p.id] || 0;
       var dim = p.id === S.sel ? false : mapMode === 'route' ? (S.filter ? p.status !== S.filter : (r && r.off ? false : !num)) : mapMode === 'all' ? false : true;
       var g = { type: 'Point', coordinates: [p.lon, p.lat] };
-      var cvv = cm[p.id]; if (cvv && mapMode === 'route' && !S.filter) dim = false; /* відвідані не гасимо: видно, де вже був */
+      var cvv = vstate(p); if (cvv && mapMode === 'route' && !S.filter) dim = false; /* відвідані не гасимо: видно, де вже був */
       var pr = { id: p.id, off: isOff(p), st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
-      if (cvv) pr.vr = cvv.result === 'ok' ? 'ok' : 'v';
+      var vs0 = vstate(p); if (vs0) pr.vr = vs0;
       feats.push({ type: 'Feature', geometry: g, properties: pr });
       if (!dim || mapMode === 'route') lbl.push({ type: 'Feature', geometry: g, properties: { h: (p.house || '') + (isOff(p) ? ' · відкл.' : ''), a: addr(p) } });
     });
@@ -1877,9 +1881,9 @@
   function refreshDone() { document.querySelectorAll('[data-act=hideDone]').forEach(function (el) { el.outerHTML = doneChip(el.textContent.indexOf('зчитано') >= 0); }); }
   function doneChip(full) {
     var cm = cycleMap(), ok = 0, v = 0;
-    villagePoints().forEach(function (p) { var x = cm[p.id]; if (!x) return; if (x.result === 'ok') ok++; else v++; });
-    return '<button class="tb-item' + (S.meta.hideDone ? ' on' : '') + '" data-act="hideDone" aria-label="Приглушити відвідані"><span class="vsq ok">' + icon('check', 11, 4) + '</span><b>' + ok + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">зчитано</span>' : '') +
-      '<span class="vsq" style="margin-left:8px"></span><b>' + v + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">без показника</span>' : '') + '</button>';
+    villagePoints().forEach(function (p) { var x = vstate(p); if (x === 'ok') ok++; else if (x === 'v') v++; });
+    return '<button class="tb-item' + (S.meta.hideDone ? ' on' : '') + '" data-act="hideDone" aria-label="Приглушити відвідані"><span class="vsq ok">' + icon('check', 11, 4) + '</span><b>' + ok + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">зчитано за ' + NORM() + ' дн.</span>' : '') +
+      '<span class="vsq" style="margin-left:8px"></span><b>' + v + '</b>' + (full ? '<span class="small mute" style="margin-left:2px">без показника цього міс.</span>' : '') + '</button>';
   }
   /* № лічильника і ПІБ (з даних обленерго; після синхронізації заповнюються самі) */
   function shortName(fio) { var w = String(fio || '').trim().split(/\s+/); if (!w[0]) return ''; return w[0] + (w[1] ? ' ' + w[1].charAt(0) + '.' : '') + (w[2] ? ' ' + w[2].charAt(0) + '.' : ''); }
@@ -3231,6 +3235,6 @@
     if (swReg) jobs.push(swReg.update().catch(function () {}));
     Promise.all(jobs).then(go, go); setTimeout(go, 4000);
   }
-  window.__app = { S: S, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; } };
+  window.__app = { S: S, invalidate: function () { invalidate(); }, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; } };
   boot();
 })();
