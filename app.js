@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.2';
+  var VERSION = '0.19.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -3059,9 +3059,9 @@
     download('kontroler-bryhada-' + today() + '.csv', '﻿' + rows.map(function (r) { return r.map(csvCell).join(';'); }).join('\r\n'), 'text/csv;charset=utf-8');
   }
   function brigadeCard() {
-    /* картка завжди на головній: червона, коли є нові проблемні точки; спокійна, коли нових немає */
+    /* картка завжди на головній і завжди в червоному стилі: одразу видно, що це про проблеми */
     var L = brigadeList(), n = L.new.length, sent = L.sent.length;
-    return '<a href="#brigade" class="card" style="gap:6px' + (n ? ';background:#FEF2F2' : '') + '"><div class="row" style="gap:12px;align-items:center"><span class="hico" style="' + (n ? 'background:#FEE2E2;color:#B91C1C' : '') + '">' + icon('alert', 22) + '</span><div class="col" style="flex:1;gap:2px"><span class="small mute" style="font-size:13px">Пломби, ЗКО, несправності</span><b style="font-size:17px">Викликати бригаду' + (n ? ' · ' + n : '') + '</b>' +
+    return '<a href="#brigade" class="card" style="gap:6px;background:#FEF2F2"><div class="row" style="gap:12px;align-items:center"><span class="hico" style="background:#FEE2E2;color:#B91C1C">' + icon('alert', 22) + '</span><div class="col" style="flex:1;gap:2px"><span class="small mute" style="font-size:13px">Пломби, ЗКО, несправності</span><b style="font-size:17px">Викликати бригаду' + (n ? ' · ' + n : '') + '</b>' +
       (!n ? '<span class="small mute">нових немає' + (sent ? ' · передано бригаді ' + sent : '') + '</span>' : sent ? '<span class="small mute">ще передано бригаді ' + sent + '</span>' : '') + '</div>' + icon('right', 18, 2.4) + '</div></a>';
   }
 
