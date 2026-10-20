@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.4';
+  var VERSION = '0.19.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -301,6 +301,9 @@
     });
     toast('Позначено як різні точки'); render();
   }
+  /* спільні налаштування дільниці (план, номери маршрутів, кількість абонентів, контролерів): синхронізуються між телефонами, перемагає новіша зміна */
+  var SHARED = ['plan', 'routeNo', 'vTotals', 'totalSubs', 'crewN'];
+  function shareSet(k, v) { var ts = Object.assign({}, S.meta.sharedTs || {}); ts[k] = Date.now(); return Promise.all([setMeta(k, v), setMeta('sharedTs', ts)]).then(function () { scheduleSync(); }); }
   function savePoint(p) { p.updated = Date.now(); p.by = me().id; scheduleSync(); return put('points', p); }
   function newVisit(o) { o.ts = o.ts || Date.now(); o.by = me().id; o.uid = dev() + '-' + o.ts.toString(36); scheduleSync(); return o; }
 
@@ -771,7 +774,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
+      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -827,6 +830,11 @@
       var dvs = Object.assign({}, S.meta.deletedVillages || {}); Object.keys(d.deletedVillages || {}).forEach(function (v) { if (!dvs[v] || dvs[v] < d.deletedVillages[v]) dvs[v] = d.deletedVillages[v]; }); jobs0.push(setMeta('deletedVillages', dvs));
       var exv = (S.meta.extraVillages || []).filter(function (v) { return !dvs[v]; }); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0 && !dvs[v]) exv.push(v); });
       var brg = Object.assign({}, S.meta.brigade || {}); Object.keys(d.brigade || {}).forEach(function (k) { if (!brg[k] || (d.brigade[k].ts || 0) > (brg[k].ts || 0)) brg[k] = d.brigade[k]; }); jobs0.push(setMeta('brigade', brg));
+      /* спільні налаштування: беремо новіші; план ще й за полем updated (для старих версій) */
+      var sts = Object.assign({}, S.meta.sharedTs || {}), dts = d.sharedTs || {}, sh = d.shared || {}, shCh = false;
+      if (d.plan && !sh.plan) { sh = Object.assign({}, sh, { plan: d.plan }); dts = Object.assign({}, dts, { plan: d.plan.updated || 0 }); }
+      SHARED.forEach(function (k) { if (sh[k] == null) return; var their = dts[k] || 0, mine = sts[k] || (k === 'plan' && S.meta.plan ? S.meta.plan.updated || 0 : 0); if (their > mine) { jobs0.push(setMeta(k, sh[k])); sts[k] = their; shCh = true; } });
+      if (shCh) { jobs0.push(setMeta('sharedTs', sts)); S.route = null; R.shared = true; }
       var jobs = jobs0.concat([setMeta('idAlias', al), setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))]);
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () { resolve(R); }, reject);
@@ -877,7 +885,7 @@
       todo.forEach(function (f) {
         chain = chain.then(function () { return ghReq('/contents/' + f.path, { raw: true }).then(ok).then(function (r) { return r.json(); }).then(function (d) {
           if (d.from && d.from.device === dev()) { seen[f.path] = f.sha; return; }
-          return mergeData(d).then(function (R) { got.vis += R.vis; got.pts += R.newPts + R.updPts; got.from++; seen[f.path] = f.sha; });
+          return mergeData(d).then(function (R) { got.vis += R.vis; got.pts += R.newPts + R.updPts; if (R.shared) got.sh = 1; got.from++; seen[f.path] = f.sha; });
         }); });
       });
       /* 2. відправляємо свій файл */
@@ -892,7 +900,8 @@
       }).then(function () {
         var txt = got.vis || got.pts ? 'Отримано: ' + got.vis + ' відміток, ' + got.pts + ' точок' : 'Синхронізовано, нового від колег немає';
         if (manual || got.vis || got.pts) toast(txt);
-        if (got.vis || got.pts || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheet(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
+        if (got.sh && !manual && !(got.vis || got.pts)) toast('Оновлено план і налаштування дільниці');
+        if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheet(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
       });
     }).catch(fail);
   }
@@ -1314,7 +1323,7 @@
           hd(onV.length ? 'Інші села' : 'Села') + '<div class="card" style="gap:0;padding:6px 12px">' + rowsOf(offV) + '</div>';
       })() + '</div>' + tabs('home');
     document.querySelectorAll('[data-rno]').forEach(function (el) {
-      el.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[el.getAttribute('data-rno')] = el.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
+      el.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[el.getAttribute('data-rno')] = el.value.trim(); shareSet('routeNo', m); toast('Номер маршруту збережено'); };
     });
   }
   /* скидання плану: перший тап питає, другий (протягом 3 с) скидає села і номери маршрутів цього місяця */
@@ -1322,13 +1331,13 @@
     if (!el.classList.contains('warn')) { el.classList.add('warn'); el.lastChild.textContent = 'Точно?'; clearTimeout(planReset._t); planReset._t = setTimeout(function () { if (el.isConnected) { el.classList.remove('warn'); el.lastChild.textContent = 'Скинути'; } }, 3000); return; }
     var old = (S.meta.plan && S.meta.plan.villages) || [], rn = Object.assign({}, S.meta.routeNo || {});
     old.forEach(function (v) { delete rn[v]; });
-    Promise.all([setMeta('plan', { month: monthKey(), villages: [], updated: Date.now() }), setMeta('routeNo', rn)]).then(function () { S.route = null; renderPlan(); toast('План скинуто'); });
+    Promise.all([shareSet('plan', { month: monthKey(), villages: [], updated: Date.now() }), shareSet('routeNo', rn)]).then(function () { S.route = null; renderPlan(); toast('План скинуто'); });
   }
   function planToggle(v) {
     var p = S.meta.plan && S.meta.plan.month === monthKey() ? Object.assign({}, S.meta.plan) : { month: monthKey(), villages: [] };
     p.villages = p.villages.indexOf(v) >= 0 ? p.villages.filter(function (x) { return x !== v; }) : p.villages.concat([v]);
     p.updated = Date.now();
-    setMeta('plan', p).then(function () {
+    shareSet('plan', p).then(function () {
       if (p.villages.length && p.villages.indexOf(village()) < 0) { var nv = nextPlanVillage() || p.villages[0]; setMeta('village', nv); S.route = null; }
       var y = window.scrollY; renderPlan(); window.scrollTo(0, y);
     });
@@ -2020,7 +2029,7 @@
       (idx >= 0 ? '<button class="iconbtn" data-act="skip" aria-label="Пропустити адресу" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('skip') + '</button>' : '') + '</div></div>';
     var qr = $('#q-r'); if (qr) { qr.focus(); qr.onkeydown = function (e) { if (e.key === 'Enter') quickVisit(p.id, 'ok'); }; }
     var rno = $('#rno');
-    if (rno) rno.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[rkey] = rno.value.trim(); setMeta('routeNo', m); toast('Номер маршруту збережено'); };
+    if (rno) rno.onchange = function () { var m = Object.assign({}, S.meta.routeNo || {}); m[rkey] = rno.value.trim(); shareSet('routeNo', m); toast('Номер маршруту збережено'); };
   }
 
   /* ---------- Нова точка тапом по карті ---------- */
@@ -2947,7 +2956,7 @@
       var strip = function (k) { var o = Object.assign({}, S.meta[k] || {}); delete o[name]; return setMeta(k, o); };
       jobs.push(setMeta('deleted', tb), setMeta('deletedVillages', dv), setMeta('extraVillages', (S.meta.extraVillages || []).filter(function (v) { return v !== name; })),
         strip('vTotals'), strip('routeNo'), strip('splits'));
-      if (pl) jobs.push(setMeta('plan', pl));
+      if (pl) jobs.push(shareSet('plan', pl));
       if (S.meta.village === name) jobs.push(setMeta('village', null));
       Promise.all(jobs).then(function () { S.route = null; invalidate(); scheduleSync(); toast('Село «' + name + '» видалено' + (n ? mode === 'all' ? ' разом з ' + n + ' точками' : ', точки в «Без села»' : '')); go('#villages'); });
     };
@@ -3196,7 +3205,7 @@
       case 'pickVillage': var v = el.getAttribute('data-v'), stay = el.getAttribute('data-stay'); setMeta('village', v === 'Без села' ? null : v).then(function () { S.route = null; S.sel = null; S.filter = null; renderMap.fitNext = true; go(stay ? '#map' : '#home'); }); break;
       case 'vEdit': S.vEdit = !S.vEdit; render(); break;
       case 'vEditSave': var vt2 = {}; document.querySelectorAll('[data-vt]').forEach(function (x) { var n = parseInt(x.value, 10); if (n > 0) vt2[x.getAttribute('data-vt')] = n; });
-        var tot = parseInt($('#tot').value, 10); Promise.all([setMeta('vTotals', vt2), setMeta('totalSubs', tot > 0 ? tot : TOTAL_DEFAULT)]).then(function () { S.vEdit = false; toast('Збережено'); render(); }); break;
+        var tot = parseInt($('#tot').value, 10); Promise.all([shareSet('vTotals', vt2), shareSet('totalSubs', tot > 0 ? tot : TOTAL_DEFAULT)]).then(function () { S.vEdit = false; toast('Збережено'); render(); }); break;
       case 'round': var rc = Object.assign({}, S.meta.routeCfg || {}); rc.round = el.getAttribute('data-v'); setMeta('routeCfg', rc).then(function () { S.route = null; S.sel = null; renderMap.fitNext = true; render(); }); break;
       case 'dupMerge': if (confirm('Об\'єднати дві точки в одну? Візити, фото й дані перейдуть у цю картку.')) mergeDup(id, el.getAttribute('data-o')); break;
       case 'dupNo': notDup(id, el.getAttribute('data-o')); break;
@@ -3235,7 +3244,7 @@
       case 'keepAwake': setMeta('keepAwake', S.meta.keepAwake === false).then(function () { syncWake(); var y = window.scrollY; render(); window.scrollTo(0, y); }); break;
       case 'aqVillage': AQ = ''; setMeta('village', el.getAttribute('data-v')).then(function () { S.route = null; S.sel = null; S.filter = null; renderMap.fitNext = true; go('#map'); }); break;
       case 'mapTab': e.preventDefault(); S.sel = null; renderMap.fitNext = false; renderAll.fitNext = false; go('#' + el.getAttribute('data-v')); break;
-      case 'crewN': var cn = parseInt(prompt('Скільки контролерів працює на дільниці?', crew()), 10); if (cn > 0 && cn < 100) setMeta('crewN', cn).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); var f = document.querySelector('.cv details'); if (f) f.open = true; }); break;
+      case 'crewN': var cn = parseInt(prompt('Скільки контролерів працює на дільниці?', crew()), 10); if (cn > 0 && cn < 100) shareSet('crewN', cn).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); var f = document.querySelector('.cv details'); if (f) f.open = true; }); break;
       case 'delVillage': delVillage(el.getAttribute('data-v')); break;
       case 'info': showInfo(el.getAttribute('data-v')); break;
       case 'peerDel': peerDel(el.getAttribute('data-v')); break;
