@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.9';
+  var VERSION = '0.15.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -289,8 +289,8 @@
     });
     toast('Позначено як різні точки'); render();
   }
-  function savePoint(p) { p.updated = Date.now(); p.by = me().id; return put('points', p); }
-  function newVisit(o) { o.ts = o.ts || Date.now(); o.by = me().id; o.uid = dev() + '-' + o.ts.toString(36); return o; }
+  function savePoint(p) { p.updated = Date.now(); p.by = me().id; scheduleSync(); return put('points', p); }
+  function newVisit(o) { o.ts = o.ts || Date.now(); o.by = me().id; o.uid = dev() + '-' + o.ts.toString(36); scheduleSync(); return o; }
 
   /* ---------- GPS ---------- */
   var watchId = null, gpsListeners = [];
@@ -680,7 +680,7 @@
     all('photos').then(function (ph) {
       return Promise.all(ph.map(function (x) { return blobToData(x.blob).then(function (d) { return { pointId: x.pointId, ts: x.ts, kind: x.kind, data: d }; }); }));
     }).then(function (photos) {
-    var meta = Object.keys(S.meta).map(function (k) { return { k: k, v: S.meta[k] }; });
+    var meta = Object.keys(S.meta).filter(function (k) { return k !== 'gh' && k !== 'ghSeen'; }).map(function (k) { return { k: k, v: S.meta[k] }; });
     var data = { version: 2, app: VERSION, exported: new Date().toISOString(), points: Array.from(S.points.values()), visits: S.visits, meta: meta, photos: photos };
     var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -764,6 +764,12 @@
   }
   function mergeSync(d) {
     if (d.from && (d.from.device ? d.from.device === dev() : d.from.id === me().id)) return toast('Це пакет з цього ж телефона');
+    mergeData(d).then(function (R) {
+      toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : '') + (R.newPts ? ', нових на карті ' + R.newPts : '') + (R.dups ? ', можливих дублів ' + R.dups + ' — у «Уточнити в полі»' : ''));
+      go('#me');
+    }, function () { toast('Не вдалося об\'єднати дані'); });
+  }
+  function mergeData(d) { return new Promise(function (resolve, reject) {
     var R = { newPts: 0, updPts: 0, vis: 0, del: 0 }, tomb = Object.assign({}, S.meta.deleted || {});
     var have = {}; S.visits.forEach(function (v) { have[v.uid] = 1; });
     var tx = db.transaction(['points', 'visits'], 'readwrite'), P = tx.objectStore('points'), Vs = tx.objectStore('visits');
@@ -777,7 +783,10 @@
       var p = S.points.get(q.id);
       if (!p) { var dup = findDup(q); if (dup) { q.flags = (q.flags || []).filter(function (f) { return f !== 'dup'; }).concat(['dup']); q.dupOf = dup.p.id; R.dups = (R.dups || 0) + 1; }
         P.put(q); S.points.set(q.id, q); R.newPts++; }
-      else if ((q.updated || 0) > (p.updated || 0)) { P.put(q); S.points.set(q.id, q); R.updPts++; }
+      else if ((q.updated || 0) > (p.updated || 0)) {
+        /* з сервера точки приходять без даних абонента — свої поля (ПІБ, серійний…) не затираємо */
+        if (q.lite && p.fields) q = Object.assign({}, q, { fields: p.fields });
+        P.put(q); S.points.set(q.id, q); R.updPts++; }
     });
     /* перейменування ID колег (змінили табельний): старі записи переводимо на новий ID */
     var al = Object.assign({}, S.meta.idAlias || {}, d.idAlias || {}), fix = function (id) { var g = 0; while (id && al[id] && g++ < 5) id = al[id]; return id; };
@@ -796,12 +805,103 @@
       var exv = (S.meta.extraVillages || []).slice(); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0) exv.push(v); });
       var jobs = [setMeta('idAlias', al), setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
-      Promise.all(jobs).then(load).then(function () {
-        toast((d.from ? d.from.name + ': ' : '') + R.vis + ' візитів, ' + (R.newPts + R.updPts) + ' точок' + (R.del ? ', видалено ' + R.del : '') + (R.newPts ? ', нових на карті ' + R.newPts : '') + (R.dups ? ', можливих дублів ' + R.dups + ' — у «Уточнити в полі»' : ''));
-        go('#me');
-      });
+      Promise.all(jobs).then(load).then(function () { resolve(R); }, reject);
     };
-    tx.onerror = function () { toast('Не вдалося об\'єднати дані'); };
+    tx.onerror = function () { reject(new Error('tx')); };
+  }); }
+
+  /* ---------- синхронізація через інтернет: приватний репозиторій GitHub ----------
+     Кожен телефон пише лише свій файл sync/<контролер>-<пристрій>.json і читає файли колег — конфліктів запису немає.
+     Злиття — ті самі правила, що й при обміні файлами. На сервер ідуть лише адреси, координати, доступ, орієнтир
+     і факт візиту: без ПІБ, телефонів, серійних номерів, показників і фото. */
+  function gh() { var g = S.meta.gh; return g && g.token && g.repo ? g : null; }
+  function ghReq(path, opt) {
+    var g = gh(); opt = opt || {};
+    return fetch('https://api.github.com/repos/' + g.repo + path, { method: opt.method || 'GET', cache: 'no-store',
+      headers: Object.assign({ Authorization: 'Bearer ' + g.token, Accept: opt.raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, opt.body ? { 'Content-Type': 'application/json' } : {}),
+      body: opt.body ? JSON.stringify(opt.body) : undefined });
+  }
+  function b64(txt) { var b = new TextEncoder().encode(txt), s = ''; for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
+  function litePackage() {
+    var d = syncPackage();
+    d.lite = true;
+    d.points = d.points.map(function (p) { var c = Object.assign({}, p); delete c.fields; c.lite = true; return c; });
+    d.visits = d.visits.map(function (v) { return { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; });
+    delete d.splits; return d;
+  }
+  function ghFile() { return 'sync/' + (me().id || 'x') + '-' + dev() + '.json'; }
+  var syncBusy = false, syncTimer = null;
+  function scheduleSync() { if (!gh()) return; clearTimeout(syncTimer); syncTimer = setTimeout(function () { ghSync(false); }, 15000); }
+  function ghSync(manual) {
+    if (!gh() || !me().login) return Promise.resolve();
+    if (!navigator.onLine) { if (manual) toast('Немає інтернету. Синхронізую, коли з\'явиться'); return Promise.resolve(); }
+    if (syncBusy) return Promise.resolve(); syncBusy = true;
+    var seen = Object.assign({}, S.meta.ghSeen || {}), got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st');
+    if (st && manual) st.textContent = 'Синхронізую…';
+    var fail = function (e) {
+      syncBusy = false; var msg = e && e.status === 401 ? 'токен недійсний або прострочений' : e && e.status === 404 ? 'репозиторій не знайдено або токен не має до нього доступу' : 'немає зв\'язку з сервером';
+      setMeta('ghErr', msg); if (manual) toast('Синхронізація: ' + msg); if (st) st.textContent = 'Помилка: ' + msg;
+    };
+    var ok = function (r) { if (!r.ok) { var e = new Error('http'); e.status = r.status; throw e; } return r; };
+    /* 1. забираємо файли колег, які змінились */
+    return ghReq('/contents/sync').then(function (r) { return r.status === 404 ? [] : ok(r).json(); }).then(function (list) {
+      var mySha = null, todo = (Array.isArray(list) ? list : []).filter(function (f) {
+        if (f.path === mine) { mySha = f.sha; return false; }
+        return /\.json$/.test(f.name) && seen[f.path] !== f.sha;
+      });
+      var chain = Promise.resolve();
+      todo.forEach(function (f) {
+        chain = chain.then(function () { return ghReq('/contents/' + f.path, { raw: true }).then(ok).then(function (r) { return r.json(); }).then(function (d) {
+          if (d.from && d.from.device === dev()) { seen[f.path] = f.sha; return; }
+          return mergeData(d).then(function (R) { got.vis += R.vis; got.pts += R.newPts + R.updPts; got.from++; seen[f.path] = f.sha; });
+        }); });
+      });
+      /* 2. відправляємо свій файл */
+      return chain.then(function () {
+        var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(litePackage())) };
+        if (mySha) body.sha = mySha;
+        return ghReq('/contents/' + mine, { method: 'PUT', body: body }).then(ok).then(function (r) { return r.json(); });
+      }).then(function (res) {
+        seen[mine] = res && res.content && res.content.sha;
+        syncBusy = false;
+        return Promise.all([setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now())]);
+      }).then(function () {
+        var txt = got.vis || got.pts ? 'Отримано: ' + got.vis + ' відміток, ' + got.pts + ' точок' : 'Синхронізовано, нового від колег немає';
+        if (manual || got.vis || got.pts) toast(txt);
+        if (got.vis || got.pts || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheet(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
+      });
+    }).catch(fail);
+  }
+  function ghConnect() {
+    var repo = ($('#gh-repo').value || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), token = ($('#gh-tok').value || '').trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return toast('Репозиторій у форматі власник/назва');
+    if (!/^(github_pat_|ghp_)/.test(token)) return toast('Токен має починатися з github_pat_');
+    if (!navigator.onLine) return toast('Потрібен інтернет');
+    toast('Перевіряю доступ…');
+    fetch('https://api.github.com/repos/' + repo, { cache: 'no-store', headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' } }).then(function (r) {
+      if (r.status === 401) throw new Error('Токен не підходить');
+      if (r.status === 404) throw new Error('Репозиторій не знайдено або токен не має до нього доступу');
+      if (!r.ok) throw new Error('Помилка ' + r.status);
+      return r.json();
+    }).then(function (j) {
+      if (j && j.private === false) toast('Увага: репозиторій публічний! Зробіть його приватним');
+      return setMeta('gh', { repo: repo, token: token, since: Date.now() });
+    }).then(function () { setMeta('ghSeen', {}); return ghSync(true); }).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); })
+      .catch(function (e) { toast(e.message || 'Не вдалося підключитись'); });
+  }
+  function ghCard() {
+    var g = gh();
+    if (!g) return '<div class="card" style="gap:12px"><div class="row" style="gap:10px">' + icon('cloud', 22) + '<div class="col"><div class="h2">Синхронізація через інтернет</div><div class="small mute">Адреси й відмітки між телефонами, без файлів</div></div></div>' +
+      '<div class="field"><label for="gh-repo">Репозиторій</label><input id="gh-repo" class="input" value="mrm-boop547/kontroler-data" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
+      '<div class="field"><label for="gh-tok">Токен доступу</label><input id="gh-tok" class="input" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
+      '<button class="btn" data-act="ghConnect">Підключити</button>' +
+      '<div class="small mute" style="line-height:1.5">На сервер ідуть лише адреси, координати, доступ, орієнтир і факт візиту. ПІБ, телефони, серійні номери, показники й фото лишаються тільки на телефоні.</div></div>';
+    var peers = Object.keys(S.meta.ghSeen || {}).filter(function (k) { return k !== ghFile(); }).length;
+    return '<div class="card" style="gap:12px"><div class="row" style="gap:10px">' + icon('cloud', 22) + '<div class="col" style="flex-grow:1"><div class="h2">Синхронізація через інтернет</div><div class="small mute">' + esc(g.repo) + '</div></div></div>' +
+      '<div class="small" id="gh-st" style="font-weight:700;' + (S.meta.ghErr ? 'color:#B91C1C' : '') + '">' + (S.meta.ghErr ? 'Помилка: ' + esc(S.meta.ghErr) : S.meta.ghLast ? 'Остання синхронізація ' + dt(S.meta.ghLast) + ' ' + tm(S.meta.ghLast) + ' · телефонів колег: ' + peers : 'Ще не синхронізовано') + '</div>' +
+      '<button class="btn" data-act="ghSync">' + icon('sync', 18) + 'Синхронізувати зараз</button>' +
+      '<div class="small mute" style="line-height:1.5">Працює сама: при відкритті застосунку, коли з\'являється інтернет і через 15 с після кожної відмітки. Без інтернету все зберігається на телефоні і піде пізніше.</div>' +
+      '<button class="chip" data-act="ghOff" style="align-self:flex-start">Відключити цей телефон</button></div>';
   }
 
   /* ---------- офлайн-карта: векторні тайли всієї дільниці (OpenFreeMap дає їх до z14, далі карта збільшує сама) ---------- */
@@ -2668,7 +2768,7 @@
     var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
     var mine = S.visits.filter(function (v) { return v.by === me().id || !v.by; }).length;
     var sec = function (t) { return '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + t + '</div>'; };
-    var exchange = '<div class="card dark" style="gap:12px"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Поки без сервера: файлом через Telegram чи Google Диск</div></div></div>' +
+    var exchange = '<div class="card dark" style="gap:12px"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="col"><div class="h2">Обмін з колегами</div><div class="small mute">Файлом через Telegram чи Google Диск</div></div></div>' +
         (inMe ? '' : '<a class="list-row" href="#me" style="border:0;padding:0">' + icon('user', 18) + '<b style="flex-grow:1">' + esc(me().name) + (me().tab ? ' · таб. ' + esc(me().tab) : '') + '</b>' + icon('right', 16, 2.4) + '</a>') +
         '<button class="btn" data-act="syncOut" style="background:#fff;color:#111">' + icon('cloud', 18) + 'Надіслати мої дані колегам</button>' +
         '<label class="btn sec" for="imp3" style="background:transparent;color:#fff;border-color:#4A4A4F">Прийняти дані від колеги</label><input id="imp3" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
@@ -2688,7 +2788,7 @@
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
-    return exchange + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
+    return ghCard() + exchange + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
       '<button class="btn sec" data-act="chkUpd">' + icon('sync', 18) + 'Перевірити оновлення · v' + VERSION + '</button>' +
       '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
   }
@@ -2752,6 +2852,9 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'ghConnect': ghConnect(); break;
+      case 'ghSync': ghSync(true); break;
+      case 'ghOff': if (confirm('Відключити синхронізацію на цьому телефоні? Дані на телефоні лишаться.')) Promise.all([setMeta('gh', null), setMeta('ghSeen', {}), setMeta('ghLast', null), setMeta('ghErr', null)]).then(function () { render(); }); break;
       case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
       case 'editPoint': openPointEditor(id); break;
       case 'hideDone': setMeta('hideDone', !S.meta.hideDone); renderMap.fitNext = false; render(); break;
@@ -2836,10 +2939,13 @@
     openDb().then(load).then(function () {
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (ok) { S.meta._persist = ok; });
       render();
+      setTimeout(function () { ghSync(false); }, 2500);
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
     checkUpdate(false, true);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') checkUpdate(); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
+    window.addEventListener('online', function () { ghSync(false); });
+    setInterval(function () { if (document.visibilityState === 'visible') ghSync(false); }, 5 * 60 * 1000);
     setInterval(checkUpdate, 10 * 60 * 1000);
   }
   /* оновлення: version.json завжди з мережі, без кешу; якщо там новіша версія — плашка «Оновити» */
