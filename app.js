@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.16.2';
+  var VERSION = '0.16.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -91,7 +91,7 @@
   function icon(name, size, sw) {
     size = size || 20; sw = sw || 2.2;
     var P = {
-      back: '<path d="M15 18l-6-6 6-6"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+      back: '<path d="M15 18l-6-6 6-6"/>', streets: '<path d="M12 2v20"/><path d="M12 4h6l2.5 2.5L18 9h-6"/><path d="M12 12H6l-2.5 2.5L6 17h6"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
       gear: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
       down: '<path d="M6 9l6 6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', go: '<path d="M7 17L17 7M9 7h8v8"/>',
       check: '<path d="M5 12l5 5 9-10"/>', nav: '<path d="M3 11l18-8-8 18-2-8-8-2z"/>',
@@ -1116,14 +1116,13 @@
   }
   /* на головній: хто якою вулицею в обраному селі */
   function streetsCard() {
-    var v = village();
-    if (!v || v === ALL) return '<a href="#sectors" class="card" style="gap:6px"><div class="between"><b style="font-size:17px">Хто якою вулицею</b>' + icon('right', 18, 2.4) + '</div><span class="small mute">Оберіть село вгорі, щоб розділити вулиці між контролерами</span></a>';
+    var v = village(), ic = '<span class="hico">' + icon('streets', 22) + '</span>';
+    var head = function (sub, title, right) { return '<div class="row" style="gap:12px;align-items:center">' + ic + '<div class="col" style="gap:2px;flex:1;min-width:0">' + (sub ? '<span class="small mute" style="font-size:13px">' + sub + '</span>' : '') + '<b style="font-size:17px">' + title + '</b></div>' + (right || icon('right', 18, 2.4)) + '</div>'; };
+    if (!v || v === ALL) return '<a href="#sectors" class="card" style="gap:8px">' + head('', 'Хто якою вулицею') + '<span class="small mute">Оберіть село вгорі, щоб розділити вулиці між контролерами</span></a>';
     var sv = splitOf(v), mi = myIdx(sv);
-    if (!sv) return '<a href="#sectors" class="card" style="gap:10px"><div class="between"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Вулиці · ' + esc(v) + '</span><b style="font-size:17px">Ще не розподілено</b></div>' +
-      '<span style="width:44px;height:44px;border-radius:22px;background:#111;color:#fff;display:flex;align-items:center;justify-content:center">' + icon('grid', 20) + '</span></div><span class="small mute">Розділити вулиці між тими, хто сьогодні в селі, або сканувати QR колеги</span></a>';
+    if (!sv) return '<a href="#sectors" class="card" style="gap:10px">' + head('Вулиці · ' + esc(v), 'Хто якою вулицею: ще не розподілено') + '<span class="small mute">Розділити вулиці між тими, хто сьогодні в селі, або сканувати QR колеги</span></a>';
     var st = splitStats(v, sv.crew.length, sv.assign);
-    return '<a href="#sectors" class="card" style="gap:10px"><div class="between"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">Вулиці · ' + esc(v) + ' · ' + sv.crew.length + ' контролери</span>' +
-      '<b style="font-size:17px">' + (mi != null ? 'Ваші вулиці: ' + st[mi].streets + ' · ' + st[mi].left + ' адрес чекають' : 'Розподілено, оберіть «Це я»') + '</b></div>' + icon('right', 18, 2.4) + '</div>' +
+    return '<a href="#sectors" class="card" style="gap:10px">' + head('Вулиці · ' + esc(v) + ' · ' + sv.crew.length + ' контролери', mi != null ? 'Ваші вулиці: ' + st[mi].streets + ' · ' + st[mi].left + ' адрес чекають' : 'Розподілено, оберіть «Це я»') +
       '<div class="tags">' + sv.crew.map(function (n, i) { return '<span class="chip" style="background:#fff;border:1.5px solid ' + SEC_COL[i % SEC_COL.length] + '"><span class="dot" style="background:' + SEC_COL[i % SEC_COL.length] + '"></span>' + esc(n) + (i === mi ? ' · я' : '') + ' <span style="opacity:.6">' + st[i].left + '</span></span>'; }).join('') + '</div></a>';
   }
   function counts(ps) { var c = { g: 0, y: 0, r: 0, n: 0 }; ps.forEach(function (p) { c[p.status]++; }); return c; }
@@ -1228,7 +1227,7 @@
     if (!st) return '<a href="#plan" class="card" style="border:1.5px dashed #C4C4C8;background:transparent;gap:6px"><div class="between"><b style="font-size:16px">Задати план на ' + monthName().toLowerCase() + '</b>' + icon('right', 18, 2.4) + '</div>' +
       '<span class="small mute">Відмітьте села з маршрутних листів — обхід і темп рахуватимуться лише по них</span></a>';
     var p = plan();
-    return '<a href="#plan" class="card" style="gap:10px"><div class="between"><div class="col" style="gap:2px"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + p.villages.length + ' сіл</span>' +
+    return '<a href="#plan" class="card" style="gap:10px"><div class="row" style="gap:12px;align-items:center"><span class="hico">' + icon('list', 22) + '</span><div class="col" style="gap:2px;flex:1;min-width:0"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + p.villages.length + ' сіл</span>' +
       '<b style="font-size:20px">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + '</b></div>' + icon('right', 18, 2.4) + '</div>' +
       '<div class="bar" style="height:8px"><span style="flex:' + st.done + ' 1 0;background:#111"></span><span style="flex:' + Math.max(st.left, 0) + ' 1 0;background:#E4E4E7"></span></div>' +
       '<div class="small mute">' + st.days + ' робочих днів до кінця місяця → ≈ <b style="color:#111">' + st.pace + ' адрес на день</b></div></a>';
