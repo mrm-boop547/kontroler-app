@@ -52,7 +52,7 @@ textarea.input{height:84px;padding:12px 14px;font-weight:600;resize:none}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 .tag{height:40px;padding:0 14px;border-radius:20px;border:0;background:var(--row);font-size:13px;font-weight:700}
 .tag.on{background:var(--ink);color:#fff}
-nav.tabs{position:fixed;left:16px;right:16px;bottom:calc(16px + var(--safe-b));height:64px;border-radius:32px;background:#fff;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;padding:0 4px;box-shadow:0 10px 30px rgba(0,0,0,.08);z-index:20}
+nav.tabs{position:fixed;left:16px;right:16px;bottom:calc(16px + var(--safe-b));height:64px;border-radius:32px;background:#fff;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;padding:0 4px;box-shadow:0 10px 30px rgba(0,0,0,.08);z-index:20}
 nav.tabs a{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--mute);font-size:11px;font-weight:600}
 nav.tabs a.on{height:52px;border-radius:26px;background:var(--ink);color:#fff;flex-direction:row;justify-content:center;gap:6px;font-size:12px;font-weight:700}
 #map{position:fixed;inset:0}
@@ -260,3 +260,13 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .sync-badge span{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:#2563EB;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;padding:0 5px}
 .sync-badge.off{color:#A1A1AA}
 .sync-badge.off span{background:#71717A}
+.mseg{display:flex;background:#fff;border-radius:24px;padding:4px;box-shadow:0 6px 20px rgba(0,0,0,.08);flex-shrink:0}
+.mseg a{display:flex;align-items:center;gap:5px;height:40px;padding:0 12px;border-radius:20px;font-size:13px;font-weight:800;color:#52525B;text-decoration:none}
+.mseg a.on{background:#111;color:#fff}
+.subj summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px}
+.subj summary::-webkit-details-marker{display:none}
+.subj[open] summary>svg{transform:rotate(180deg)}
+.mapui .between>.vsel{flex:1 1 auto;min-width:0;max-width:calc(100% - 158px)}
+.mseg a{padding:0 10px;font-size:12.5px;gap:4px}
+.mapui .between>.vsel{padding:0 14px 0 18px;gap:6px;font-size:17px;height:52px}
+.mapui .between>.vsel .vsel-ic{display:none}

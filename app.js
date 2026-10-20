@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.17.0';
+  var VERSION = '0.18.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -529,7 +529,10 @@
   /* «Назад» — туди, звідки прийшли в застосунку (власна історія), а не вихід із застосунку */
   function goBack() { var st = S.nav || []; st.pop(); var prev = st[st.length - 1] || '#home'; if (prev === location.hash) prev = '#home'; location.hash = prev; }
   function tabs(active) {
-    var t = [['home', 'Головна', 'home'], ['villages', 'Огляд', 'chart'], ['map', 'Обхід', 'map'], ['all', 'Мітки', 'pin'], ['me', 'Я', 'user']];
+    /* одна вкладка «Карта» замість «Обхід» і «Мітки»: всередині перемикач Маршрут / Усі точки */
+    var mt = S.meta.mapTab === 'all' ? 'all' : 'map';
+    var t = [['home', 'Головна', 'home'], ['villages', 'Огляд', 'chart'], [mt, 'Карта', 'map'], ['me', 'Я', 'user']];
+    if (active === 'all') active = mt;
     return '<nav class="tabs">' + t.map(function (x) {
       var on = x[0] === active;
       return '<a href="#' + x[0] + '" class="' + (on ? 'on' : '') + '">' + icon(x[2], on ? 18 : 20) + x[1] + '</a>';
@@ -576,7 +579,7 @@
     var peers = Object.assign({}, S.meta.peers || {}); delete peers[u.id];
     (S.meta.users || []).forEach(function (x) { if (x.id !== u.id) peers[x.id] = Object.assign({ last: null, visits: 0 }, peers[x.id] || {}, { name: x.name, local: true }); });
     jobs.push(setMeta('peers', peers));
-    Promise.all(jobs).then(function () { invalidate(); S.route = null; toast('Вітаю, ' + u.name.split(' ').slice(-1)[0]); go('#home'); });
+    Promise.all(jobs).then(function () { invalidate(); S.route = null; toast('Вітаю, ' + u.name.split(' ').slice(-1)[0]); go('#home'); setTimeout(function () { ghSync(false); }, 1500); });
   }
   function loginSubmit() {
     var n = ($('#lg-n').value || '').trim().replace(/\s+/g, ' '), t = ($('#lg-t').value || '').replace(/\D/g, '');
@@ -642,8 +645,13 @@
     app.innerHTML = '<div class="screen"><div class="empty">' +
       '<h1 class="h1">Карта контролера</h1>' +
       '<p class="mute" style="margin:0;font-weight:600;line-height:1.5">Даних на цьому телефоні ще немає. Завантажте файл з точками (points.json) або резервну копію.</p>' +
-      '<label class="btn" for="imp">Завантажити файл</label><input id="imp" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
-      '<div class="small mute">Версія ' + VERSION + '. Усі дані зберігаються лише на цьому пристрої.</div>' +
+      '<label class="btn sec" for="imp">Завантажити файл</label><input id="imp" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
+      '<div class="card" style="gap:10px;text-align:left;width:100%"><div class="h2" style="font-size:16px">Новий контролер? Підключіться до спільної бази</div>' +
+        '<div class="small mute" style="line-height:1.45">Токен дає старший контролер. Карта дільниці і відмітки колег завантажаться самі.</div>' +
+        '<input id="gh-repo" class="input" value="mrm-boop547/kontroler-data" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Репозиторій">' +
+        '<input id="gh-tok" class="input" type="password" placeholder="Токен github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Токен">' +
+        '<button class="btn" data-act="ghJoin">Підключитися</button></div>' +
+      '<div class="small mute">Версія ' + VERSION + '</div>' +
       '</div></div>';
     $('#imp').onchange = importFile;
   }
@@ -889,9 +897,10 @@
         '<p>На сервер ідуть лише адреси, координати, доступ, орієнтир і факт візиту. ПІБ, телефони, серійні номери, показники й фото лишаються тільки на телефоні.</p>' +
         '<p><b>Без інтернету.</b> «Надіслати» відкриває меню Android: вибери Quick Share (Обмін поблизу) або Bluetooth. Колега приймає файл кнопкою «Прийняти».</p>' +
         '<p>Обидва способи безпечно поєднуються: відмітки лише додаються, з двох версій точки лишається новіша, повтор нічого не дублює.</p>' +
+        '<p><b>Новий контролер.</b> Достатньо токена: на першому екрані «Підключитися до спільної бази». Карта береться з бази точок на сервері; оновлюй її кнопкою нижче після великих змін (нові села, імпорт).</p>' +
         '<p><b>Колеги.</b> Хрестик прибирає контролера зі списку (звільнився, тестовий акаунт) і видаляє його файл із сервера. Його відмітки в історії лишаються. Якщо він знову надішле дані, повернеться в список.</p>' +
         (g ? '<p class="mute">Репозиторій: ' + esc(g.repo) + ' · відмічено ' + fmt(S.visits.filter(function (v) { return v.by === me().id; }).length) + ' моїх · надіслано ' + (S.meta.lastSyncOut ? dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '—') + '</p>' : ''),
-        g ? '<button class="btn sec" data-act="ghOff" style="color:#B91C1C">Відключити цей телефон від сервера</button>' : '');
+        g ? '<button class="btn sec" data-act="ghBase">Оновити базу точок для нових контролерів</button><button class="btn sec" data-act="ghOff" style="color:#B91C1C">Відключити цей телефон від сервера</button>' : '');
     }
   }
   /* прибрати контролера: зі списку колег і (якщо підключено) його файли з сервера; відмітки в історії лишаються */
@@ -911,6 +920,40 @@
         });
       });
     });
+  }
+  /* база точок для нових контролерів: лише адреси й координати, без даних абонентів */
+  function basePoints() { var out = []; S.points.forEach(function (p) { var c = Object.assign({}, p); delete c.fields; delete c.dupOf; c.lite = true; out.push(c); }); return out; }
+  function ghBaseUpload() {
+    if (!gh() || !navigator.onLine) return toast('Потрібні інтернет і підключення до сервера');
+    if (!confirm('Оновити базу точок на сервері (' + fmt(S.points.size) + ' точок, без ПІБ і серійних)? Нові контролери почнуть з неї.')) return;
+    toast('Відправляю базу…');
+    var body = { message: 'base ' + new Date().toISOString(), content: b64(JSON.stringify({ type: 'kontroler-base', v: 1, exported: Date.now(), by: me().name, points: basePoints(), extraVillages: S.meta.extraVillages || [], vTotals: S.meta.vTotals || {}, totalSubs: S.meta.totalSubs || null })) };
+    ghReq('/contents/base/points.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (j && j.sha) body.sha = j.sha;
+      return ghReq('/contents/base/points.json', { method: 'PUT', body: body });
+    }).then(function (r) { if (!r.ok) throw new Error(r.status); toast('Базу оновлено: ' + fmt(S.points.size) + ' точок'); setMeta('ghBase', Date.now()); })
+      .catch(function (e) { toast('Не вдалося: ' + (e.message || 'помилка')); });
+  }
+  function ghJoin() {
+    var repo = ($('#gh-repo').value || '').trim(), token = ($('#gh-tok').value || '').trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return toast('Репозиторій у форматі власник/назва');
+    if (!/^(github_pat_|ghp_)/.test(token)) return toast('Токен має починатися з github_pat_');
+    if (!navigator.onLine) return toast('Потрібен інтернет');
+    toast('Завантажую карту дільниці…');
+    fetch('https://api.github.com/repos/' + repo + '/contents/base/points.json', { cache: 'no-store', headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28' } })
+      .then(function (r) {
+        if (r.status === 401) throw new Error('Токен не підходить');
+        if (r.status === 404) throw new Error('На сервері ще немає бази точок. Попросіть старшого: «Я» → Синхронізація → ⓘ → «Оновити базу»');
+        if (!r.ok) throw new Error('Помилка ' + r.status);
+        return r.json();
+      }).then(function (d) {
+        var pts = d.points || []; if (!pts.length) throw new Error('База порожня');
+        var meta = [{ k: 'gh', v: { repo: repo, token: token, since: Date.now() } }, { k: 'ghSeen', v: {} }];
+        if (d.extraVillages) meta.push({ k: 'extraVillages', v: d.extraVillages });
+        if (d.vTotals) meta.push({ k: 'vTotals', v: d.vTotals });
+        if (d.totalSubs) meta.push({ k: 'totalSubs', v: d.totalSubs });
+        return bulkReplace(pts, [], meta).then(load).then(function () { toast('Завантажено ' + fmt(pts.length) + ' точок. Тепер увійдіть'); go('#home'); });
+      }).catch(function (e) { toast(e.message || 'Не вдалося підключитись'); });
   }
   function ghConnect() {
     var repo = ($('#gh-repo').value || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), token = ($('#gh-tok').value || '').trim();
@@ -1798,8 +1841,9 @@
     if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; villagePoints().forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
     var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
     /* Обхід: зверху лише село і тонкий рядок статусів; кнопки карти — праворуч унизу під пальцем; налаштування маршруту — у панелі */
+    setMeta('mapTab', 'map');
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:8px;align-items:flex-start">' +
-      villageSelect('vsel') +
+      '<div class="between" style="width:100%;gap:8px">' + villageSelect('vsel') + mapSeg('map') + '</div>' +
       '<div class="pill tilebar" style="padding:0 6px;gap:0;max-width:100%;overflow-x:auto">' + ST_ORDER.map(function (s) {
         return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
       }).join('') + '<span class="tb-sep"></span>' + doneChip() + '</div>' +
@@ -1894,6 +1938,9 @@
     return '<button class="iconbtn sync-badge' + (off ? ' off' : '') + '" data-act="ghSync" aria-label="' + (off ? 'Офлайн' : 'Синхронізувати') + '">' + icon('cloud', 18) + (n ? '<span>' + n + '</span>' : '') + '</button>';
   }
   function refreshSyncBadge() { var f = $('#fabs'); if (!f) return; var old = f.querySelector('.sync-badge'); if (old) old.remove(); var h = syncBadge(); if (h) f.insertAdjacentHTML('afterbegin', h); placeFabs(); }
+  function mapSeg(cur) {
+    return '<div class="mseg" role="tablist"><a href="#map" class="' + (cur === 'map' ? 'on' : '') + '" data-act="mapTab" data-v="map">' + icon('nav', 16) + 'Маршрут</a><a href="#all" class="' + (cur === 'all' ? 'on' : '') + '" data-act="mapTab" data-v="all">' + icon('pin', 16) + 'Усі</a></div>';
+  }
   function fabsHtml(route) {
     var lay = S.meta.layer || 'scheme';
     return '<div class="fabs" id="fabs">' + syncBadge() + (route ? '<button class="iconbtn" data-act="routeCfg" aria-label="Налаштування маршруту"' + (routeCfg().auto ? '' : ' style="color:#A1A1AA"') + '>' + icon('gear', 20) + '</button>' : '') +
@@ -2073,9 +2120,11 @@
     var sh = $('#sheet'); if (sh) sh.style.display = AQ ? 'none' : '';
     var ap = $('#apanel'); if (ap) ap.style.display = AQ ? 'none' : 'flex';
     if (!AQ) { box.innerHTML = ''; return; }
-    var r = searchPoints(AQ, 8);
-    box.innerHTML = '<div class="card" style="padding:6px 14px;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.08);max-height:46vh;overflow-y:auto">' +
-      (r.list.length ? r.list.map(function (p) {
+    var r = searchPoints(AQ, 8), ql = AQ.toLowerCase();
+    var vs = villages().filter(function (v) { return v.name !== 'Без села' && v.name.toLowerCase().split(/[\s-]+/).concat([v.name.toLowerCase()]).some(function (w) { return w.indexOf(ql) === 0; }); }).slice(0, 4);
+    var vh = vs.map(function (v) { return '<button class="list-row" data-act="aqVillage" data-v="' + esc(v.name) + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + icon('village', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(v.name) + '</b><span class="small mute">село · ' + v.n + ' точок · відкрити маршрут</span></div>' + icon('right', 16, 2.4) + '</button>'; }).join('');
+    box.innerHTML = '<div class="card" style="padding:6px 14px;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.08);max-height:46vh;overflow-y:auto">' + vh +
+      (r.list.length || vs.length ? r.list.map(function (p) {
         return '<button class="list-row" data-act="aqPick" data-id="' + p.id + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div><span class="small">' + fdist(dist(r.ref, p)) + '</span></button>';
       }).join('') + (r.total > 8 ? '<div class="small mute" style="padding:8px 0">Ще ' + (r.total - 8) + ' — уточніть запит</div>' : '')
         : '<div class="small mute" style="padding:12px 0">Нічого не знайдено. Торкніться карти там, де лічильник, щоб додати точку.</div>') + '</div>';
@@ -2089,7 +2138,7 @@
       return '<button class="chip fchip' + (on ? ' on' : '') + '" data-act="allF" data-g="' + grp + '" data-v="' + v + '">' + (dot ? dotHtml(v) : '') + label + ' <span style="opacity:.6">' + fmt(n) + '</span></button>';
     };
     var panel = S.meta.allMin !== false
-      ? '<button class="pill tilebar" data-act="toggleAll" style="align-self:flex-start">' + icon('grid', 16) + 'Фільтри' + (F.st.length + F.cy.length + (F.mine || F.who ? 1 : 0) ? ' · ' + (F.st.length + F.cy.length) : '') + ' · ' + fmt(shown.length) + icon('down', 16, 2.6) + '</button>'
+      ? '<div class="between" style="gap:8px"><button class="pill tilebar" data-act="toggleAll">' + icon('grid', 16) + 'Фільтри' + (F.st.length + F.cy.length + (F.mine || F.who ? 1 : 0) ? ' · ' + (F.st.length + F.cy.length) : '') + ' · ' + fmt(shown.length) + icon('down', 16, 2.6) + '</button>' + mapSeg('all') + '</div>'
       : '<div class="card" style="padding:12px;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.06)">' +
         '<div class="small mute">Доступ</div><div class="tags">' + ST_ORDER.map(function (s) { return chip('st', s, ST[s].short, cs[s], true); }).join('') + '</div>' +
         '<div class="small mute">Норма ' + NORM() + ' днів</div><div class="tags">' + CY.map(function (c) { return chip('cy', c[0], c[1], cc[c[0]]); }).join('') + '</div>' +
@@ -2100,8 +2149,9 @@
         (F.st.length + F.cy.length + (F.mine || F.who ? 1 : 0) ? '<button class="chip" data-act="allReset">Скинути</button>' : '') +
         '<button class="chip" data-act="toggleAll" aria-label="Згорнути фільтри"><span style="transform:rotate(180deg);display:flex">' + icon('down', 16, 2.6) + '</span></button></span></div></div>';
     var lay = S.meta.layer || 'scheme';
+    setMeta('mapTab', 'all');
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
-      '<div class="row"><label class="pill" for="aq" style="flex-grow:1;box-shadow:0 6px 20px rgba(0,0,0,.06);min-width:0">' + icon('search', 18) + '<input id="aq" autocomplete="off" placeholder="Адреса, ПІБ, серійний номер" value="' + esc(AQ) + '" style="border:0;outline:0;background:transparent;width:100%;font-weight:600;min-width:0"></label>' +
+      '<div class="row"><label class="pill" for="aq" style="flex-grow:1;box-shadow:0 6px 20px rgba(0,0,0,.06);min-width:0">' + icon('search', 18) + '<input id="aq" autocomplete="off" placeholder="Село, адреса, ПІБ, № лічильника" value="' + esc(AQ) + '" style="border:0;outline:0;background:transparent;width:100%;font-weight:600;min-width:0"></label>' +
         (AQ ? '<button class="iconbtn" data-act="aqClear" aria-label="Очистити пошук">' + icon('close', 18, 2.4) + '</button>' : '') + '</div><div id="aqres"></div><div id="apanel" style="display:flex;flex-direction:column;gap:10px' + (AQ ? ';display:none' : '') + '">' + panel +
       '</div></div>' + fabsHtml(false) + '<div id="sheet"></div>' + tabs('all');
     if (S.sel && shown.indexOf(S.points.get(S.sel)) < 0) S.sel = null;
@@ -2399,11 +2449,13 @@
     app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
       (isCard ? cardTop(p) + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
       '<div class="card visit">' +
-        '<div class="kvs">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
+        /* дані абонента згорнуті в один рядок: ПІБ і № лічильника видно одразу, решта по тапу */
+        '<details class="subj"' + (R.subjOpen ? ' open' : '') + '><summary><div class="col" style="flex:1;min-width:0;gap:2px"><b style="font-size:16px">' + esc(f.fio || 'Абонент: немає даних') + '</b><span class="ids"><span class="ids-n">№ ' + esc(serial || '—') + '</span>' + (f.mtype ? '<span class="small mute">' + esc(f.mtype) + '</span>' : '') + '</span></div>' + icon('down', 18, 2.4) + '</summary>' +
+        '<div class="kvs" style="padding-top:8px">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
           (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:700">' + esc(f.phone) + '</a></div>' : row('Телефон', '—')) +
           row('Серійний номер', '<span class="mono">' + esc(serial || '—') + '</span>') + row('Тип', esc(f.mtype || '—')) + row('Статус установки', esc(f.instStatus || '—')) +
           row('Розміщення', esc(f.placement || '—')) + row('Місце прилада', esc(f.devicePlace || '—')) +
-          '<div class="kv" style="align-items:center"><span>Сигнал тривоги на лічильнику</span>' + pickBtn('alarm', F.alarm) + '</div></div>' +
+          '<div class="kv" style="align-items:center"><span>Сигнал тривоги на лічильнику</span>' + pickBtn('alarm', F.alarm) + '</div></div></details>' +
 
         '<div class="v-sec">Показники</div>' +
         '<label for="r-val" class="v-lab">Загальний (попередній: ' + (st.sys ? fmt(st.sys.v) : '—') + ')</label>' +
@@ -2578,7 +2630,7 @@
     var nums = document.querySelectorAll('.rnum');
     [st.serialOk, st.has && (!st.lower || !!R.photo), st.sealsOk].forEach(function (d, i) { if (nums[i]) { nums[i].classList.toggle('done', d); nums[i].innerHTML = d ? icon('check', 16, 3) : i + 1; } });
   }
-  function readKeep() { readCollect(); var y = window.scrollY; renderRead(R.id); window.scrollTo(0, y); }
+  function readKeep() { var sj = document.querySelector('.subj'); if (sj) R.subjOpen = sj.open; readCollect(); var y = window.scrollY; renderRead(R.id); window.scrollTo(0, y); }
   function readAction(a, el) {
     var i = +el.getAttribute('data-i');
     if (a === 'rSerial') { var v = el.getAttribute('data-v'); R.serial = R.serial === v ? null : v; return readKeep(); }
@@ -3035,11 +3087,15 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'aqVillage': AQ = ''; setMeta('village', el.getAttribute('data-v')).then(function () { S.route = null; S.sel = null; S.filter = null; renderMap.fitNext = true; go('#map'); }); break;
+      case 'mapTab': e.preventDefault(); S.sel = null; renderMap.fitNext = false; renderAll.fitNext = false; go('#' + el.getAttribute('data-v')); break;
       case 'crewN': var cn = parseInt(prompt('Скільки контролерів працює на дільниці?', crew()), 10); if (cn > 0 && cn < 100) setMeta('crewN', cn).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); var f = document.querySelector('.cv details'); if (f) f.open = true; }); break;
       case 'delVillage': delVillage(el.getAttribute('data-v')); break;
       case 'info': showInfo(el.getAttribute('data-v')); break;
       case 'peerDel': peerDel(el.getAttribute('data-v')); break;
       case 'ghConnect': ghConnect(); break;
+      case 'ghJoin': ghJoin(); break;
+      case 'ghBase': closeSheet(); ghBaseUpload(); break;
       case 'ghSync': ghSync(true); break;
       case 'ghOff': closeSheet(); if (confirm('Відключити синхронізацію на цьому телефоні? Дані на телефоні лишаться.')) Promise.all([setMeta('gh', null), setMeta('ghSeen', {}), setMeta('ghLast', null), setMeta('ghErr', null)]).then(function () { render(); }); break;
       case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
