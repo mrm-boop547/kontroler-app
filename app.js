@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.14.5';
+  var VERSION = '0.14.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1446,12 +1446,22 @@
     el.style.display = on ? 'block' : 'none';
     if (on && !map) initMap();
     if (on && map) setTimeout(function () { map.resize(); }, 30);
+    if (map && map.__syncComp) map.__syncComp();
   }
   function initMap() {
     var start = centroid(villagePoints().length ? villagePoints() : Array.from(S.points.values()));
     map = new maplibregl.Map({ container: 'map', style: MAP_STYLE(S.meta.layer || 'scheme'), center: [start.lon, start.lat], zoom: 15.5,
-      attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
-    map.touchZoomRotate.disableRotation();
+      attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: true, touchPitch: false, maxPitch: 0 });
+    /* обертання двома пальцями (і правою кнопкою миші); нахил вимкнено. Коли карту повернуто — з'являється компас, тап повертає північ угору */
+    var comp = document.createElement('button'); comp.className = 'compass'; comp.setAttribute('aria-label', 'Північ угору');
+    comp.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24"><path d="M12 2l4 10h-8z" fill="#DC2626"/><path d="M12 22l-4-10h8z" fill="#A1A1AA"/></svg>';
+    comp.onclick = function () { map.easeTo({ bearing: 0, duration: 400 }); };
+    document.body.appendChild(comp);
+    var syncComp = function () {
+      var bng = map.getBearing(), vis = Math.abs(bng) > 1 && document.getElementById('map').style.display !== 'none';
+      comp.style.display = vis ? 'flex' : 'none'; comp.firstChild.style.transform = 'rotate(' + (-bng) + 'deg)';
+    };
+    map.on('rotate', syncComp); map.on('moveend', syncComp); syncComp(); map.__syncComp = syncComp;
     map.on('style.load', addLayers);
     /* підстраховка: якщо після зміни шару наші точки зникли, повертаємо їх */
     map.on('styledata', function () { if (map.isStyleLoaded() && !map.getLayer('pts')) addLayers(); });
