@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.15.3';
+  var VERSION = '0.15.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -178,7 +178,8 @@
   function villages() {
     var c = {}; S.points.forEach(function (p) { var k = p.village || 'Без села'; c[k] = (c[k] || 0) + 1; });
     /* села, додані вручну, видно ще до першої точки в них */
-    (S.meta.extraVillages || []).forEach(function (v) { if (!c[v]) c[v] = 0; });
+    var dv = S.meta.deletedVillages || {};
+    (S.meta.extraVillages || []).forEach(function (v) { if (!c[v] && !dv[v]) c[v] = 0; });
     return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (k) { return { name: k, n: c[k] }; });
   }
   function visitsOf(pid) { return S.visits.filter(function (v) { return v.pointId === pid; }).sort(function (a, b) { return b.ts - a.ts; }); }
@@ -750,7 +751,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
+      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -798,13 +799,14 @@
     if (d.idAlias) S.visits.forEach(function (v) { var nb = fix(v.by); if (nb !== v.by) { v.by = nb; if (v.id != null) Vs.put(v); } });
     if (d.idAlias) S.points.forEach(function (p) { var a1 = fix(p.by), a2 = fix(p.createdBy); if (a1 !== p.by || a2 !== p.createdBy) { p.by = a1; p.createdBy = a2; P.put(p); } });
     tx.oncomplete = function () {
-      var peers = Object.assign({}, S.meta.peers || {});
+      var peers = Object.assign({}, S.meta.peers || {}), jobs0 = [];
       Object.keys(al).forEach(function (o) { if (peers[o] && !peers[al[o]]) peers[al[o]] = peers[o]; delete peers[o]; });
       var hid = S.meta.peersHidden || {};
       Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k] && !hid[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from && d.from.id !== me().id && (!hid[d.from.id] || (d.exported || 0) > hid[d.from.id])) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
-      var exv = (S.meta.extraVillages || []).slice(); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0) exv.push(v); });
-      var jobs = [setMeta('idAlias', al), setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))];
+      var dvs = Object.assign({}, S.meta.deletedVillages || {}); Object.keys(d.deletedVillages || {}).forEach(function (v) { if (!dvs[v] || dvs[v] < d.deletedVillages[v]) dvs[v] = d.deletedVillages[v]; }); jobs0.push(setMeta('deletedVillages', dvs));
+      var exv = (S.meta.extraVillages || []).filter(function (v) { return !dvs[v]; }); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0 && !dvs[v]) exv.push(v); });
+      var jobs = jobs0.concat([setMeta('idAlias', al), setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))]);
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () { resolve(R); }, reject);
     };
@@ -2762,8 +2764,36 @@
       (q ? '<a class="card" href="#queue" style="gap:4px"><div class="between"><b>Уточнити в полі</b><span class="numbadge" style="background:#F59E0B;color:#111">' + q + '</span></div><span class="small mute">Без вулиці, номера, можливі дублі</span></a>' : '') +
       '<div class="card" style="gap:0;padding:8px 16px"><div class="between" style="padding:6px 0 8px"><div class="h2" style="font-size:16px">Вулиці · ' + streets.length + '</div><span class="small mute">зчитано</span></div>' + streets.map(function (k) { var o = st[k], a2 = o.n - o.c.n;
         return '<div class="list-row" style="flex-direction:column;align-items:stretch;gap:6px"><div class="between"><b style="font-size:15px">' + esc(k) + '</b><span class="small"><b>' + pct(o.rd, a2) + '%</b> <span class="mute">· ' + o.n + ' точок</span></span></div><div class="bar" style="height:6px">' + ST_ORDER.map(function (s2) { return seg(o.c, s2); }).join('') + '</div></div>'; }).join('') + '</div>' +
-      (none ? '' : '<button class="btn" data-act="pickVillage" data-v="' + esc(name) + '" data-stay="1">' + icon('map', 18) + 'Відкрити на карті</button>') +
+      (none ? '' : '<button class="btn" data-act="pickVillage" data-v="' + esc(name) + '" data-stay="1">' + icon('map', 18) + 'Відкрити на карті</button>' +
+        '<button class="btn sec" data-act="delVillage" data-v="' + esc(name) + '" style="color:#B91C1C">Видалити населений пункт</button>') +
       '</div>' + tabs('villages');
+  }
+  /* видалення села: 1) вибір, що робити з точками; 2) підтвердження введенням назви */
+  function delVillage(name) {
+    var ps = villagePoints(name), n = ps.length;
+    var step2 = function (mode) {
+      var typed = prompt('Друге підтвердження.\n' + (mode === 'all' ? 'Буде видалено село «' + name + '» і ' + n + ' точок разом з ним. Це не можна скасувати.' : 'Село «' + name + '» буде видалено, ' + n + ' точок перейдуть у «Без села».') + '\n\nВведіть назву села, щоб підтвердити:');
+      if (typed == null) return;
+      if (typed.trim().toLowerCase() !== name.toLowerCase()) return toast('Назва не збігається, нічого не видалено');
+      var jobs = [], tb = Object.assign({}, S.meta.deleted || {}), now = Date.now();
+      ps.forEach(function (p) {
+        if (mode === 'all') { tb[p.id] = now; S.points.delete(p.id); jobs.push(del('points', p.id)); }
+        else { p.village = null; p.flags = (p.flags || []).filter(function (f) { return f !== 'no_village'; }).concat(['no_village']); jobs.push(savePoint(p)); }
+      });
+      var dv = Object.assign({}, S.meta.deletedVillages || {}); dv[name] = now;
+      var pl = S.meta.plan ? Object.assign({}, S.meta.plan, { villages: (S.meta.plan.villages || []).filter(function (v) { return v !== name; }), updated: now }) : null;
+      var strip = function (k) { var o = Object.assign({}, S.meta[k] || {}); delete o[name]; return setMeta(k, o); };
+      jobs.push(setMeta('deleted', tb), setMeta('deletedVillages', dv), setMeta('extraVillages', (S.meta.extraVillages || []).filter(function (v) { return v !== name; })),
+        strip('vTotals'), strip('routeNo'), strip('splits'));
+      if (pl) jobs.push(setMeta('plan', pl));
+      if (S.meta.village === name) jobs.push(setMeta('village', null));
+      Promise.all(jobs).then(function () { S.route = null; invalidate(); scheduleSync(); toast('Село «' + name + '» видалено' + (n ? mode === 'all' ? ' разом з ' + n + ' точками' : ', точки в «Без села»' : '')); go('#villages'); });
+    };
+    if (!n) return step2('empty');
+    openSheet('Видалити «' + name + '»', [
+      { v: 'move', l: 'Видалити село, точки залишити', sub: n + ' точок перейдуть у «Без села», їх можна буде перенести в інше село' },
+      { v: 'all', l: 'Видалити село разом з ' + n + ' точками', sub: 'точки зникнуть з карти в усіх після синхронізації' }
+    ], null, function (v) { step2(v); });
   }
   function renderVillageTotals(vs, vt) {
     app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="vEdit" aria-label="Готово">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Абонентів по селах</h1></div>' +
@@ -2913,6 +2943,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'delVillage': delVillage(el.getAttribute('data-v')); break;
       case 'info': showInfo(el.getAttribute('data-v')); break;
       case 'peerDel': peerDel(el.getAttribute('data-v')); break;
       case 'ghConnect': ghConnect(); break;
