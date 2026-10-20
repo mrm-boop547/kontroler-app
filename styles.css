@@ -276,3 +276,5 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .mapui .between>.pill.mrow-l{white-space:nowrap;overflow:hidden;gap:8px;padding:0 16px;font-size:15px}
 .mapui .between>.pill.mrow-l>span:last-child{margin-left:auto}
 .mapui .between>.pill.mrow-l>svg{flex-shrink:0}
+.me-row{display:flex;flex-direction:column;align-items:flex-start;gap:12px;width:100%;margin:8px 0 6px;padding:14px 16px;border:0;border-radius:18px;background:#111;color:#fff;text-align:left;font:inherit;cursor:pointer}
+.me-tag{background:#fff;color:#111;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:800}

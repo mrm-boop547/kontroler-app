@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.3';
+  var VERSION = '0.19.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1635,11 +1635,17 @@
         '<div class="grid3"><div class="col"><b style="font-size:18px">' + (R.days ? (R.total / R.days).toFixed(0) : 0) + '</b><span class="small mute">адрес / день</span></div><div class="col"><b style="font-size:18px">' + (R.hours ? (R.total / R.hours).toFixed(1).replace('.', ',') : '—') + '</b><span class="small mute">адрес / год</span></div>' +
         '<div class="col"><b style="font-size:18px">' + R.km.toFixed(1).replace('.', ',') + '</b><span class="small mute">км між адресами</span></div></div></div>' +
       '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">адреси · зчитано · нові точки</span></div>' +
-        (R.who.length ? R.who.map(function (w) {
+        /* мій рядок — першим і виділеним, з підписами чисел; навіть якщо відміток ще немає */
+        (function () { var mid = me().id, mw = R.who.filter(function (w) { return w.id === mid; })[0] || { id: mid, v: 0, ok: 0, pts: 0, miss: 0, note: 0 };
+          var stat = function (n, l) { return '<div class="col" style="gap:0"><b style="font-size:24px;line-height:1.1">' + fmt(n) + '</b><span style="font-size:12px;color:#A1A1AA">' + l + '</span></div>'; };
+          return '<button class="me-row" data-act="whoMap" data-v="' + esc(mid) + '"><div class="between" style="width:100%"><span class="row" style="gap:8px">' + icon('user', 18) + '<b style="font-size:16px">' + esc(me().name || 'Я') + '</b><span class="me-tag">це ви</span></span>' + icon('right', 14, 2.4) + '</div>' +
+            '<div class="grid3" style="width:100%">' + stat(mw.v, 'адрес') + stat(mw.ok, 'зчитано · ' + pct(mw.ok, mw.v) + '%') + stat(mw.pts, 'нові точки') + '</div>' +
+            ((mw.miss || mw.note) ? '<span style="font-size:13px;color:#A1A1AA">' + [mw.miss ? 'нема доступу ' + mw.miss : '', mw.note ? 'записок ' + mw.note : ''].filter(Boolean).join(' · ') + '</span>' : '') + '</button>'; })() +
+        (R.who.filter(function (w) { return w.id !== me().id; }).length ? R.who.filter(function (w) { return w.id !== me().id; }).map(function (w) {
           return '<button class="list-row" data-act="whoMap" data-v="' + esc(w.id) + '" style="border-left:0;border-right:0;border-bottom:0;background:none;width:100%;text-align:left;padding:10px 0">' + icon('user', 18) +
             '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(whoName(w.id)) + '</b><span class="small mute">' + pct(w.ok, w.v) + '% зчитано' + (w.note ? ' · візитів ' + w.note : '') + (w.miss ? ' · нема доступу ' + w.miss : '') + '</span></div>' +
             '<b style="width:36px;text-align:right">' + w.v + '</b><b style="width:36px;text-align:right">' + w.ok + '</b><b style="width:36px;text-align:right">' + w.pts + '</b>' + icon('right', 14, 2.4) + '</button>';
-        }).join('') : '<div class="small mute" style="padding:8px 0">За цей період ще немає відміток. Відмітки колег з\'являються після синхронізації («Я» → «Синхронізація»).</div>') + '</div>' +
+        }).join('') : '<div class="small mute" style="padding:8px 0">Відміток колег за цей період немає. Вони з\'являються після синхронізації («Я» → «Синхронізація»).</div>') + '</div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Результати обходу</div>' + RESULTS.map(function (r) {
         var n = R[r[0]] || 0; return '<div class="between"><span>' + r[1] + '</span><span class="row"><span style="width:110px;height:8px;border-radius:4px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(n, R.total) + '%;background:' + (r[0] === 'ok' ? '#16A34A' : r[0] === 'empty' ? '#A1A1AA' : r[0] === 'note' ? '#111111' : '#F59E0B') + '"></span></span><b style="width:40px;text-align:right">' + n + '</b></span></div>';
       }).join('') + '</div>' +
