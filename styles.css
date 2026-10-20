@@ -270,3 +270,9 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .mseg a{padding:0 10px;font-size:12.5px;gap:4px}
 .mapui .between>.vsel{padding:0 14px 0 18px;gap:6px;font-size:17px;height:52px}
 .mapui .between>.vsel .vsel-ic{display:none}
+.mapui .between>.mrow-l{height:48px;flex:1 1 auto;min-width:0;max-width:calc(100% - 158px);box-sizing:border-box;justify-content:flex-start}
+.mapui .between>.vsel.mrow-l{font-size:16px;box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.mapui .mseg{height:48px;box-sizing:border-box;align-items:center}
+.mapui .between>.pill.mrow-l{white-space:nowrap;overflow:hidden;gap:8px;padding:0 16px;font-size:15px}
+.mapui .between>.pill.mrow-l>span:last-child{margin-left:auto}
+.mapui .between>.pill.mrow-l>svg{flex-shrink:0}
