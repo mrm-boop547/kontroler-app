@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.18.2';
+  var VERSION = '0.19.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -91,7 +91,7 @@
   function icon(name, size, sw) {
     size = size || 20; sw = sw || 2.2;
     var P = {
-      back: '<path d="M15 18l-6-6 6-6"/>', streets: '<path d="M12 2v20"/><path d="M12 4h6l2.5 2.5L18 9h-6"/><path d="M12 12H6l-2.5 2.5L6 17h6"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+      back: '<path d="M15 18l-6-6 6-6"/>', alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>', streets: '<path d="M12 2v20"/><path d="M12 4h6l2.5 2.5L18 9h-6"/><path d="M12 12H6l-2.5 2.5L6 17h6"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
       gear: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
       down: '<path d="M6 9l6 6 6-6"/>', right: '<path d="M9 18l6-6-6-6"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', go: '<path d="M7 17L17 7M9 7h8v8"/>',
       check: '<path d="M5 12l5 5 9-10"/>', nav: '<path d="M3 11l18-8-8 18-2-8-8-2z"/>',
@@ -525,10 +525,11 @@
     if (!S.points.size && name !== 'settings') return renderEmpty();
     /* без входу контролера працювати не можна: кожен візит і кожна точка записуються на когось */
     if (!me().login && name !== 'settings') return renderLogin();
-    var f = { home: renderHome, map: renderMap, all: renderAll, card: renderRead, visit: function (id) { location.replace('#card/' + id); }, read: renderRead, village: renderVillage, bind: renderBind, villages: renderVillages,
+    var f = { home: renderHome, map: renderMap, all: renderAll, card: renderRead, visit: function (id) { location.replace('#card/' + id); }, read: renderRead, village: renderVillage, brigade: renderBrigade, bind: renderBind, villages: renderVillages,
       list: function () { S.focusSearch = true; location.replace('#all'); }, profile: renderProfile, queue: renderQueue, settings: renderSettings, me: renderMe, login: renderLogin, plan: renderPlan, sectors: renderSectors, report: renderReport }[name] || renderHome;
     f(arg);
     window.scrollTo(0, 0);
+    syncWake();
   }
   /* «Назад» — туди, звідки прийшли в застосунку (власна історія), а не вихід із застосунку */
   function goBack() { var st = S.nav || []; st.pop(); var prev = st[st.length - 1] || '#home'; if (prev === location.hash) prev = '#home'; location.hash = prev; }
@@ -770,7 +771,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
+      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -825,6 +826,7 @@
       if (d.from && d.from.id !== me().id && (!hid[d.from.id] || (d.exported || 0) > hid[d.from.id])) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
       var dvs = Object.assign({}, S.meta.deletedVillages || {}); Object.keys(d.deletedVillages || {}).forEach(function (v) { if (!dvs[v] || dvs[v] < d.deletedVillages[v]) dvs[v] = d.deletedVillages[v]; }); jobs0.push(setMeta('deletedVillages', dvs));
       var exv = (S.meta.extraVillages || []).filter(function (v) { return !dvs[v]; }); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0 && !dvs[v]) exv.push(v); });
+      var brg = Object.assign({}, S.meta.brigade || {}); Object.keys(d.brigade || {}).forEach(function (k) { if (!brg[k] || (d.brigade[k].ts || 0) > (brg[k].ts || 0)) brg[k] = d.brigade[k]; }); jobs0.push(setMeta('brigade', brg));
       var jobs = jobs0.concat([setMeta('idAlias', al), setMeta('extraVillages', exv), setMeta('peers', peers), setMeta('deleted', tomb), setMeta('merged', Object.assign({}, S.meta.merged || {}, d.merged || {}))]);
       var sp = Object.assign({}, S.meta.splits || {}); Object.keys(d.splits || {}).forEach(function (v) { var x = d.splits[v]; if (!sp[v] || (x.made || 0) > (sp[v].made || 0)) sp[v] = x; }); jobs.push(setMeta('splits', sp));
       Promise.all(jobs).then(load).then(function () { resolve(R); }, reject);
@@ -848,7 +850,7 @@
     var d = syncPackage();
     d.lite = true;
     d.points = d.points.map(function (p) { var c = Object.assign({}, p); delete c.fields; c.lite = true; return c; });
-    d.visits = d.visits.map(function (v) { return { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; });
+    d.visits = d.visits.map(function (v) { var c = { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; if (v.form || v.sealList || v.br) c.br = visitWhy(v); return c; });
     delete d.splits; return d;
   }
   function ghFile() { return 'sync/' + (me().id || 'x') + '-' + dev() + '.json'; }
@@ -1193,9 +1195,11 @@
         '<span style="width:52px;height:52px;border-radius:26px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + icon('go', 22, 2.4) + '</span></div>' +
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
         '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
+      brigadeCard() +
       streetsCard() +
       planCard() +
       statusList() +
+      installCard(true) +
       (needBackup ? '<button class="btn sec" data-act="backup">' + icon('cloud', 18) + 'Зробити резервну копію даних</button>' : '') +
       '</div>' + tabs('home');
     bindVillageSelect('vsel');
@@ -2877,10 +2881,11 @@
     var q = queuePoints().length;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Огляд</h1></div>' +
-      '<div class="grid2 tools"><a href="#plan" class="tool dark">' + icon('list', 22) + '<b>План</b><span>села на місяць</span></a>' +
-        '<a href="#report" class="tool dark">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a></div>' +
-      districtCard() +
       coverageCard(true) +
+      '<div class="grid2 tools">' +
+        '<a href="#report" class="tool dark">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a>' +
+        '<a href="#brigade" class="tool dark">' + icon('alert', 22) + '<b>Бригада</b><span>' + (function () { var n = brigadeList().new.length; return n ? n + ' нових' : 'проблемні точки'; })() + '</span></a></div>' +
+      districtCard() +
 
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села за абеткою · % праворуч — зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
@@ -2971,6 +2976,111 @@
       }).join('') + '</div>' + tabs('villages');
   }
 
+  /* ---------- Бригада: проблемні точки після обходу ----------
+     Причини беруться з останньої відмітки з показником (пломби, ЗКО, сигнал тривоги, примітка) і з даних точки.
+     Стан задачі: нова → передано бригаді → виконано. Якщо після «виконано» знову знайшли проблему — задача повертається як нова. */
+  var BR_NOTES = ['Самовільне підключення', 'Не працює 1-ф лічильник', 'Не працює 3-ф лічильник', 'Відсутня/порушена пломба ДП на лічильнику', 'Відсутня/порушена пломба постачальника на клемній', 'Відсутня/порушена пломба постачальника на ввідному'];
+  /* причини з однієї відмітки (і для синхронізації: йдуть на сервер без ПІБ і показників) */
+  function visitWhy(v) {
+    if (!v) return []; if (v.br) return v.br.slice();
+    var why = []; (v.sealList || []).forEach(function (x) { if (x.st === 'Відсутня' || x.st === 'Пошкоджена') why.push('Пломба ' + x.st.toLowerCase() + (x.n ? ' ' + x.n : '') + (x.place ? ' (' + x.place.toLowerCase() + ')' : '')); });
+    var fm = v.form || {}; if (fm.zko && fm.zko !== 'Без зауважень') why.push('ЗКО: ' + fm.zko.toLowerCase()); if (fm.alarm === 'Так') why.push('Сигнал тривоги на лічильнику');
+    var nt = (fm.noteSel || '') + ' ' + (v.note || ''); BR_NOTES.forEach(function (n) { if (nt.indexOf(n) >= 0 && why.indexOf(n) < 0) why.push(n); });
+    return why;
+  }
+  function brigadeIssue(p) {
+    var f = p.fields || {}, vs = visitsOf(p.id).filter(function (v) { return v.form || v.sealList || v.br; }), v = vs[0], why = [];
+    if (v) { why = visitWhy(v); return why.length ? { p: p, why: why, ts: v.ts, by: v.by } : null; }
+    var L = v && v.sealList ? v.sealList : (f.sealList || []);
+    L.forEach(function (x) { if (x.st === 'Відсутня' || x.st === 'Пошкоджена') why.push('Пломба ' + x.st.toLowerCase() + (x.n ? ' ' + x.n : '') + (x.place ? ' (' + x.place.toLowerCase() + ')' : '')); });
+    if (!why.length && /Відсутня|Пошкоджена/.test(f.seals || '')) why.push(f.seals);
+    var zko = (v && v.form && v.form.zko) || f.zko; if (zko && zko !== 'Без зауважень') why.push('ЗКО: ' + zko.toLowerCase());
+    var al = (v && v.form && v.form.alarm) || f.alarm; if (al === 'Так') why.push('Сигнал тривоги на лічильнику');
+    var nt = ((v && v.form && v.form.noteSel) || '') + ' ' + ((v && v.note) || ''); BR_NOTES.forEach(function (n) { if (nt.indexOf(n) >= 0 && why.indexOf(n) < 0) why.push(n); });
+    if (!why.length) return null;
+    return { p: p, why: why, ts: v ? v.ts : (p.updated || 0), by: v ? v.by : p.by };
+  }
+  function brigadeList() {
+    var st = S.meta.brigade || {}, out = { new: [], sent: [], done: [] };
+    S.points.forEach(function (p) {
+      var it = brigadeIssue(p); if (!it) return;
+      var s = st[p.id];
+      if (!s || it.ts > s.ts) out.new.push(it); else { it.state = s; (s.st === 'done' ? out.done : out.sent).push(it); }
+    });
+    ['new', 'sent', 'done'].forEach(function (k) { out[k].sort(function (a, b) { return ukSort(a.p.village || 'Без села', b.p.village || 'Без села') || (b.ts - a.ts); }); });
+    return out;
+  }
+  var BRT = 'new';
+  function renderBrigade() {
+    var L = brigadeList(), list = L[BRT], seg = [['new', 'Нові'], ['sent', 'Передано'], ['done', 'Виконано']];
+    var g = {}; list.forEach(function (it) { var k = it.p.village || 'Без села'; (g[k] = g[k] || []).push(it); });
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col"><div class="small mute">Пломби, ЗКО, несправності</div><h1 class="h1" style="font-size:24px">Викликати бригаду</h1></div></div>' +
+      '<div class="seg segw" style="background:#fff;box-shadow:none;height:48px">' + seg.map(function (t) { return '<button data-act="brT" data-v="' + t[0] + '" class="' + (BRT === t[0] ? 'on' : '') + '" style="height:40px">' + t[1] + ' · ' + L[t[0]].length + '</button>'; }).join('') + '</div>' +
+      (list.length ? Object.keys(g).sort(ukSort).map(function (k) {
+        return '<div class="small mute" style="padding:6px 4px 0;font-size:13px;font-weight:700">' + esc(k) + ' · ' + g[k].length + '</div><div class="card" style="gap:0;padding:4px 16px">' + g[k].map(function (it) {
+          var p = it.p;
+          return '<div class="list-row" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px 0">' +
+            '<a class="between" href="#card/' + p.id + '" style="color:inherit;text-decoration:none"><div class="col" style="min-width:0;gap:2px"><b style="font-size:16px">' + esc(addr(p)) + '</b><span class="small mute">' + (p.fields && p.fields.serial ? '№ ' + esc(p.fields.serial) + ' · ' : '') + (it.ts ? dt(it.ts) : '') + (it.by ? ' · ' + esc(whoName(it.by)) : '') + '</span></div>' + icon('right', 16, 2.4) + '</a>' +
+            '<div class="tags">' + it.why.map(function (w) { return '<span class="chip" style="background:#FEE2E2;color:#991B1B;height:auto;min-height:28px;white-space:normal;padding:4px 10px">' + esc(w) + '</span>'; }).join('') + '</div>' +
+            (BRT === 'new' ? '<button class="btn sec" data-act="brSet" data-v="sent" data-id="' + p.id + '" style="height:44px">Передано бригаді</button>' :
+             BRT === 'sent' ? '<div class="grid2" style="gap:8px"><button class="btn" data-act="brSet" data-v="done" data-id="' + p.id + '" style="height:44px">Виконано</button><button class="btn sec" data-act="brSet" data-v="" data-id="' + p.id + '" style="height:44px">Повернути в нові</button></div>' :
+             '<div class="small mute">Виконано ' + dt(it.state.ts) + (it.state.by ? ' · ' + esc(whoName(it.state.by)) : '') + '</div>') + '</div>';
+        }).join('') + '</div>';
+      }).join('') : '<div class="card"><div class="small mute" style="padding:8px 0">' + (BRT === 'new' ? 'Нових проблемних точок немає. Вони з\'являються самі, коли під час зчитування відмічено відсутню чи пошкоджену пломбу, зауваження до ЗКО, сигнал тривоги або несправність лічильника.' : 'Порожньо') + '</div></div>') +
+      (list.length && BRT !== 'done' ? '<div class="grid2" style="gap:8px"><button class="btn sec" data-act="brShare">Надіслати список</button><button class="btn sec" data-act="brCsv">Таблиця Excel</button></div>' : '') +
+      '</div>' + tabs('villages');
+  }
+  function brSet(id, st) {
+    var m = Object.assign({}, S.meta.brigade || {});
+    if (!st) delete m[id]; else m[id] = { st: st, ts: Date.now(), by: me().id };
+    setMeta('brigade', m).then(function () { scheduleSync(); toast(st === 'sent' ? 'Позначено: передано бригаді' : st === 'done' ? 'Позначено: виконано' : 'Повернуто в нові'); var y = window.scrollY; render(); window.scrollTo(0, y); });
+  }
+  function brText() {
+    var L = brigadeList()[BRT];
+    return 'Викликати бригаду · ' + dt(Date.now()) + ' · ' + L.length + ' адрес\n\n' + L.map(function (it, i) {
+      var f = it.p.fields || {};
+      return (i + 1) + '. ' + (it.p.village || 'Без села') + ', ' + addr(it.p) + (f.serial ? ' · № ' + f.serial : '') + '\n   ' + it.why.join('; ');
+    }).join('\n');
+  }
+  function brShare() {
+    var t = brText();
+    if (navigator.share) navigator.share({ title: 'Викликати бригаду', text: t }).catch(function () {});
+    else if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { toast('Список скопійовано'); });
+  }
+  function brCsv() {
+    var rows = [['Село', 'Адреса', '№ лічильника', 'ПІБ', 'Причини', 'Дата', 'Хто', 'Стан']];
+    brigadeList()[BRT].forEach(function (it) { var f = it.p.fields || {}; rows.push([it.p.village || '', addr(it.p), f.serial || '', f.fio || '', it.why.join('; '), it.ts ? dt(it.ts) : '', it.by ? whoName(it.by) : '', BRT === 'new' ? 'нова' : BRT === 'sent' ? 'передано' : 'виконано']); });
+    download('kontroler-bryhada-' + today() + '.csv', '﻿' + rows.map(function (r) { return r.map(csvCell).join(';'); }).join('\r\n'), 'text/csv;charset=utf-8');
+  }
+  function brigadeCard() {
+    var n = brigadeList().new.length; if (!n) return '';
+    return '<a href="#brigade" class="card" style="gap:6px;background:#FEF2F2"><div class="row" style="gap:12px;align-items:center"><span class="hico" style="background:#FEE2E2;color:#B91C1C">' + icon('alert', 22) + '</span><div class="col" style="flex:1;gap:2px"><span class="small mute" style="font-size:13px">Пломби, ЗКО, несправності</span><b style="font-size:17px">Викликати бригаду · ' + n + '</b></div>' + icon('right', 18, 2.4) + '</div></a>';
+  }
+
+  /* ---------- екран не гасне під час обходу (Wake Lock) ---------- */
+  var wakeLock = null;
+  function wantAwake() { return document.visibilityState === 'visible' && /^#(map|all|card|read|bind)/.test(location.hash || '') && S.meta.keepAwake !== false; }
+  function syncWake() {
+    if (!('wakeLock' in navigator)) return;
+    if (wantAwake()) { if (!wakeLock) navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; l.addEventListener('release', function () { wakeLock = null; }); }).catch(function () {}); }
+    else if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+  }
+
+  /* ---------- встановлення як застосунок ---------- */
+  var installEvt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; if (/^#(home|me)?$/.test(location.hash || '')) { var y = window.scrollY; render(); window.scrollTo(0, y); } });
+  window.addEventListener('appinstalled', function () { installEvt = null; setMeta('installed', Date.now()); toast('Застосунок встановлено'); });
+  function isStandalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+  function installCard(compact) {
+    if (isStandalone()) return '';
+    if (compact && S.meta.installHide) return '';
+    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (!installEvt && !ios && compact) return '';
+    return '<div class="card" style="gap:10px"><div class="row" style="gap:12px;align-items:center"><span class="hico">' + icon('home', 22) + '</span><div class="col" style="flex:1;gap:2px"><b style="font-size:16px">Встановити на телефон</b><span class="small mute">Іконка на головному екрані, на весь екран, без браузера</span></div>' +
+      (compact ? '<button class="seal-x" data-act="installHide" aria-label="Сховати">' + icon('close', 14, 2.4) + '</button>' : '') + '</div>' +
+      (installEvt ? '<button class="btn" data-act="install">Встановити</button>' : ios ? '<div class="small" style="line-height:1.5">У Safari: кнопка «Поділитися» ⬆️ → «На початковий екран».</div>' : '<div class="small" style="line-height:1.5">У Chrome: меню ⋮ → «Додати на головний екран» або «Встановити застосунок».</div>') + '</div>';
+  }
+
   /* ---------- Список / пошук ---------- */
   var LQ = '';
   function renderList() {
@@ -3029,7 +3139,8 @@
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
-    return syncCard + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
+    var phone = installCard(false) + '<div class="card" style="gap:8px"><button class="opt' + (S.meta.keepAwake !== false ? ' on' : '') + '" data-act="keepAwake" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="col" style="gap:2px;text-align:left"><b style="font-size:15px">Екран не гасне під час обходу</b><small>на карті і в картці абонента</small></span><span class="sw' + (S.meta.keepAwake !== false ? ' on' : '') + '"></span></button></div>';
+    return syncCard + phone + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
       '<button class="btn sec" data-act="chkUpd">' + icon('sync', 18) + 'Перевірити оновлення · v' + VERSION + '</button>' +
       '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
   }
@@ -3101,6 +3212,13 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'brT': BRT = el.getAttribute('data-v'); render(); break;
+      case 'brSet': brSet(id, el.getAttribute('data-v')); break;
+      case 'brShare': brShare(); break;
+      case 'brCsv': brCsv(); break;
+      case 'install': if (installEvt) { installEvt.prompt(); installEvt.userChoice.then(function () { installEvt = null; render(); }); } break;
+      case 'installHide': setMeta('installHide', true).then(render); break;
+      case 'keepAwake': setMeta('keepAwake', S.meta.keepAwake === false).then(function () { syncWake(); var y = window.scrollY; render(); window.scrollTo(0, y); }); break;
       case 'aqVillage': AQ = ''; setMeta('village', el.getAttribute('data-v')).then(function () { S.route = null; S.sel = null; S.filter = null; renderMap.fitNext = true; go('#map'); }); break;
       case 'mapTab': e.preventDefault(); S.sel = null; renderMap.fitNext = false; renderAll.fitNext = false; go('#' + el.getAttribute('data-v')); break;
       case 'crewN': var cn = parseInt(prompt('Скільки контролерів працює на дільниці?', crew()), 10); if (cn > 0 && cn < 100) setMeta('crewN', cn).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); var f = document.querySelector('.cv details'); if (f) f.open = true; }); break;
@@ -3200,7 +3318,7 @@
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
     checkUpdate(false, true);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
+    document.addEventListener('visibilitychange', function () { syncWake(); if (document.visibilityState === 'visible') { checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
     window.addEventListener('online', function () { refreshSyncBadge(); ghSync(false); });
     window.addEventListener('offline', function () { refreshSyncBadge(); });
     window.addEventListener('resize', function () { placeFabs(); });
