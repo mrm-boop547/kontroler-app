@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.7';
+  var VERSION = '0.19.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2064,6 +2064,8 @@
     var v = Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
     return { v: v, how: 'за сусідніми точками, найближча ' + Math.round(near[0].d) + ' м' };
   }
+  /* номер будинку: цифрова клавіатура + кнопки для літер і дробу (6а, 2/1), клавіатура не ховається */
+  function houseKeys(id) { return '<div class="hkeys" data-for="' + id + '">' + ['а', 'б', 'в', 'г', 'д', '/'].map(function (t) { return '<button type="button" class="hk" data-t="' + t + '">' + t + '</button>'; }).join('') + '<button type="button" class="hk hk-abc" data-t="abc">абв</button></div>'; }
   function villageRow(cur, how, act) {
     return '<button type="button" class="input selbtn" data-act="' + act + '" style="height:56px"><span class="col" style="gap:1px;align-items:flex-start;min-width:0"><span class="small mute" style="font-size:11px">Село' + (how ? ' · ' + esc(how) : '') + '</span>' +
       '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">' + esc(cur || 'Без села') + '</span></span>' + icon('down', 18, 2.4) + '</button>';
@@ -2111,7 +2113,7 @@
   function renderAddSheet(el) {
     var a = S.adding;
     el.innerHTML = '<div class="sheet"><div class="between"><div class="h2">Нова точка тут</div><button class="iconbtn" data-act="addCancel" aria-label="Скасувати" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
-      '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="ad-s" class="input" placeholder="Вулиця" value="' + esc(a.street) + '"><input id="ad-h" class="input" placeholder="Будинок" value="' + esc(a.house) + '"></div>' +
+      '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="ad-s" class="input" placeholder="Вулиця" value="' + esc(a.street) + '"><input id="ad-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" placeholder="Будинок" value="' + esc(a.house) + '"></div>' +
       '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (a.st === s ? ' on' : '') + '" data-act="addSt" data-v="' + s + '" style="min-height:44px;align-items:center;padding:6px 4px">' + dotHtml(s) + '<small style="opacity:1;font-weight:700">' + ST[s].short + '</small></button>';
       }).join('') + '</div>' +
@@ -2252,7 +2254,7 @@
         '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
       '<div class="card"><div class="between"><div class="h2">Адреса на карті</div><span class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</span></div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
-        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
+        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(p.house || '') + '"></div></div>' +
         '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
       '</div>' +
       '<button class="btn" data-act="saveCard" data-id="' + p.id + '">Зберегти</button>' +
@@ -2568,7 +2570,7 @@
         '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
         '<div class="v-sec" style="text-align:left;font-size:15px">Адреса на карті</div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
-        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" value="' + esc(p.house || '') + '"></div></div>' +
+        '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(p.house || '') + '"></div></div>' +
         '<a class="btn sec" href="#bind/' + p.id + '" style="justify-content:space-between;padding:0 14px;gap:10px"><span class="row" style="gap:8px;white-space:nowrap">' + icon('pin', 18) + 'Уточнити розташування</span><span class="small mute" style="text-align:right">' + (p.acc ? '±' + Math.round(p.acc) + ' м · ' : '') + esc(p.src || '') + '</span></a>' +
         '<div class="small mute">Вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</div>' +
         '<button class="btn" data-act="saveFind" data-id="' + p.id + '">Зберегти орієнтир і адресу</button></div></details>';
@@ -2617,7 +2619,7 @@
           '<div class="small mute">На карті й у назві з\'явиться «(відключено)». Знімати так само: фото лічильника і актуальний показник.</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Адреса</div>' +
           '<div class="field"><label>Село</label><button type="button" class="input selbtn" data-pe="v"><span class="' + (E.v ? '' : 'mute') + '">' + esc(E.v || 'Без села') + '</span>' + icon('down', 18, 2.4) + '</button></div>' +
-          '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="pe-s">Вулиця</label><input id="pe-s" class="input" value="' + esc(keep.s) + '"></div><div class="field"><label for="pe-h">Будинок</label><input id="pe-h" class="input" value="' + esc(keep.h) + '"></div></div></div>' +
+          '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="pe-s">Вулиця</label><input id="pe-s" class="input" value="' + esc(keep.s) + '"></div><div class="field"><label for="pe-h">Будинок</label><input id="pe-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(keep.h) + '"></div></div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Мітки</div><div class="tags">' + TAGS.map(function (t) { return '<button class="tag' + (E.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-pe="tag" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Як знайти</div><textarea id="pe-n" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(keep.n) + '</textarea>' +
           '<button class="btn sec" data-pe="bind" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Пересунути точку на карті</span><span class="small mute">' + esc(p.src || '') + '</span></button></div>' +
@@ -2851,7 +2853,7 @@
         : '<div class="small" style="line-height:1.5;font-weight:600">Посуньте карту так, щоб чорна мітка стала на будинок або місце лічильника. На супутнику видно дахи й хвіртки.' +
           (p && p.src ? '<br><span class="mute">Зараз: ' + esc(p.src === 'MAPS.ME' ? 'мітка з MAPS.ME' : p.src) + (p.acc ? ' ±' + Math.round(p.acc) + ' м' : '') + '</span>' : '') + '</div>') +
       (p ? '' : villageRow(bindVillage().v, B.vSet ? 'вибрано вручну' : bindVillage().how, 'bindVillage')) +
-      (p ? '' : '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="nb-s" class="input" placeholder="Вулиця" value="' + esc(keep.s) + '"><input id="nb-h" class="input" placeholder="Будинок" value="' + esc(keep.h) + '"></div>') +
+      (p ? '' : '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="nb-s" class="input" placeholder="Вулиця" value="' + esc(keep.s) + '"><input id="nb-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" placeholder="Будинок" value="' + esc(keep.h) + '"></div>') +
       '<button class="btn" id="bindBtn" data-act="doBind">' + icon('pin') + (B.mode === 'gps' ? 'Прив\'язати за GPS' : 'Зберегти тут') + '</button>';
     renderBindAcc();
   }
@@ -3357,6 +3359,20 @@
     window.addEventListener('online', function () { refreshSyncBadge(); ghSync(false); });
     window.addEventListener('offline', function () { refreshSyncBadge(); });
     window.addEventListener('resize', function () { placeFabs(); });
+    /* поле «Будинок»: під рядком з'являються кнопки а б в г д / (поки поле у фокусі); «абв» — звичайна клавіатура */
+    document.addEventListener('focusin', function (e) {
+      var inp = e.target; if (!inp.matches || !inp.matches('[data-house]')) return;
+      var row = inp.closest('.grid2'); if (!row) return;
+      var nx = row.nextElementSibling; if (!nx || !nx.classList.contains('hkeys')) row.insertAdjacentHTML('afterend', houseKeys(inp.id));
+    });
+    document.addEventListener('pointerdown', function (e) {
+      var b = e.target.closest && e.target.closest('.hk'); if (!b) return;
+      e.preventDefault();
+      var inp = document.getElementById(b.parentNode.getAttribute('data-for')); if (!inp) return;
+      var t = b.getAttribute('data-t');
+      if (t === 'abc') { inp.setAttribute('inputmode', inp.getAttribute('inputmode') === 'numeric' ? 'text' : 'numeric'); b.textContent = inp.getAttribute('inputmode') === 'numeric' ? 'абв' : '123'; inp.blur(); setTimeout(function () { inp.focus(); }, 30); return; }
+      inp.value = inp.value + t; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.focus();
+    });
     setInterval(function () { if (document.visibilityState === 'visible') ghSync(false); }, 5 * 60 * 1000);
     setInterval(checkUpdate, 10 * 60 * 1000);
   }

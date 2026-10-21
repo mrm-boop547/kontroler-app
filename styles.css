@@ -278,3 +278,10 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .mapui .between>.pill.mrow-l>svg{flex-shrink:0}
 .me-row{display:flex;flex-direction:column;align-items:flex-start;gap:12px;width:100%;margin:8px 0 6px;padding:14px 16px;border:0;border-radius:18px;background:#111;color:#fff;text-align:left;font:inherit;cursor:pointer}
 .me-tag{background:#fff;color:#111;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:800}
+.hkeys{display:none;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.grid2:focus-within+.hkeys,.hkeys:focus-within{display:flex}
+.hk{min-width:44px;height:40px;border:0;border-radius:12px;background:#F1F1F3;font:inherit;font-size:17px;font-weight:800;color:#111;padding:0 10px;cursor:pointer}
+.hk-abc{background:#111;color:#fff;font-size:14px}
+.hkeys{flex-wrap:nowrap;gap:5px}
+.hk{min-width:0;flex:1 1 0;height:42px;padding:0 4px}
+.hk-abc{flex:1.4 1 0}
