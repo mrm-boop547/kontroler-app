@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.6';
+  var VERSION = '0.19.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2052,7 +2052,10 @@
     return best;
   }
   /* село для нової точки: більшість серед 7 найближчих точок у радіусі 1,5 км; поруч нікого — вибране зараз село */
+  /* село для нової точки: якщо на головній/карті вибрано конкретне село — завжди воно (ти ходиш саме по ньому);
+     вгадування за сусідніми точками — лише коли вибрано «Уся дільниця» */
   function guessVillage(pos) {
+    var sel = newVillage(); if (sel) return { v: sel, how: 'вибране село' };
     var near = [];
     S.points.forEach(function (q) { if (!q.village) return; var d = dist(pos, q); if (d < 1500) near.push({ v: q.village, d: d }); });
     near.sort(function (a, b) { return a.d - b.d; }); near = near.slice(0, 7);
