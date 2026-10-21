@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.8';
+  var VERSION = '0.19.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -463,7 +463,7 @@
         res.forEach(function (j) { (j.trip.legs || []).forEach(function (l) { coords = coords.concat(decode6(l.shape)); }); meters += (j.trip.summary.length || 0) * 1000; });
         r.ids = ids; r.meters = meters; r.walk = coords; r.walkDone = true; r.key = routeKey(r);
         setMeta('lastWalk', { key: r.key, coords: coords, meters: meters });
-        if (location.hash === '#map') { updateMap(); renderSheet(); }
+        if (location.hash === '#map') { updateMap(); renderSheetSoft(); }
       });
     }).catch(function () { if (!S.walkWarned && location.hash === '#map') { S.walkWarned = 1; toast('Пішохідний маршрут недоступний, показано напряму'); } });
   }
@@ -901,7 +901,7 @@
         var txt = got.vis || got.pts ? 'Отримано: ' + got.vis + ' відміток, ' + got.pts + ' точок' : 'Синхронізовано, нового від колег немає';
         if (manual || got.vis || got.pts) toast(txt);
         if (got.sh && !manual && !(got.vis || got.pts)) toast('Оновлено план і налаштування дільниці');
-        if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheet(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
+        if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
       });
     }).catch(fail);
   }
@@ -1895,8 +1895,8 @@
     startGps();
     var lastRecalc = 0;
     onGps(function () {
-      updateMe(); renderSheet();
-      if (S.route && !S.route.fromGps && Date.now() - lastRecalc > 20000) { lastRecalc = Date.now(); S.route = computeRoute(); S.sel = S.route.ids[0]; updateMap(); renderSheet(); }
+      updateMe(); renderSheetSoft();
+      if (!S.adding && !typingInSheet() && S.route && !S.route.fromGps && Date.now() - lastRecalc > 20000) { lastRecalc = Date.now(); S.route = computeRoute(); S.sel = S.route.ids[0]; updateMap(); renderSheet(); }
     });
   }
   function sheetSwipe(el) {
@@ -1956,6 +1956,10 @@
       if (np && map) map.easeTo({ center: [np.lon, np.lat], zoom: Math.max(map.getZoom(), 16.5) });
     });
   }
+  /* фонове оновлення панелі (GPS, синхронізація, пішохідний маршрут): не перемальовуємо, поки людина друкує в полі панелі,
+     інакше поле зникає і клавіатура закривається щоразу, як приходить нова GPS-позиція */
+  function typingInSheet() { var ae = document.activeElement; return !!(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.closest && ae.closest('#sheet')); }
+  function renderSheetSoft() { if (S.adding || typingInSheet()) return; renderSheet(); }
   function renderSheet() {
     renderSheetInner(); sheetSwipe($('#sheet') || document.createElement('div'));
     placeFabs();
