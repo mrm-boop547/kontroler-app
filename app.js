@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.10';
+  var VERSION = '0.19.11';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2069,7 +2069,7 @@
     return { v: v, how: 'за сусідніми точками, найближча ' + Math.round(near[0].d) + ' м' };
   }
   /* номер будинку: цифрова клавіатура + кнопки для літер і дробу (6а, 2/1), клавіатура не ховається */
-  function houseKeys(id) { return '<div class="hkeys" data-for="' + id + '">' + ['а', 'б', 'в', 'г', 'д', '/'].map(function (t) { return '<button type="button" class="hk" data-t="' + t + '">' + t + '</button>'; }).join('') + '<button type="button" class="hk hk-abc" data-t="abc">' + ((document.getElementById(id) || {}).getAttribute && document.getElementById(id).getAttribute('inputmode') === 'text' ? '123' : 'абв') + '</button></div>'; }
+  function houseKeys(id) { return '<div class="hkeys" data-for="' + id + '">' + ['а', 'б', 'в', 'г', 'д', '/'].map(function (t) { return '<button type="button" class="hk" data-t="' + t + '">' + t + '</button>'; }).join('') + '<button type="button" class="hk hk-abc" data-t="abc">' + ((document.getElementById(id) || {}).getAttribute && document.getElementById(id).getAttribute('inputmode') === 'text' ? 'Цифри' : 'Букви') + '</button></div>'; }
   function villageRow(cur, how, act) {
     return '<button type="button" class="input selbtn" data-act="' + act + '" style="height:56px"><span class="col" style="gap:1px;align-items:flex-start;min-width:0"><span class="small mute" style="font-size:11px">Село' + (how ? ' · ' + esc(how) : '') + '</span>' +
       '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">' + esc(cur || 'Без села') + '</span></span>' + icon('down', 18, 2.4) + '</button>';
@@ -3373,10 +3373,13 @@
       var b = e.target.closest && e.target.closest('.hk-abc'); if (!b) return;
       var inp = document.getElementById(b.parentNode.getAttribute('data-for')); if (!inp) return;
       var txt = inp.getAttribute('inputmode') !== 'text';
-      inp.setAttribute('inputmode', txt ? 'text' : 'numeric');
-      b.textContent = txt ? '123' : 'абв';
-      /* синхронно в тому ж дотику: знімаємо і повертаємо фокус — телефон відкриває вже іншу клавіатуру */
-      inp.blur(); inp.focus(); try { var n = inp.value.length; inp.setSelectionRange(n, n); } catch (x) {}
+      /* Gboard та інші клавіатури не перечитують тип поля, поки воно у фокусі. Тому підміняємо поле новим
+         (те саме значення й обробники) і фокусуємо його в тому ж дотику: телефон відкриває нову клавіатуру */
+      var nw = inp.cloneNode(true); nw.value = inp.value; nw.oninput = inp.oninput; nw.onchange = inp.onchange;
+      nw.setAttribute('inputmode', txt ? 'text' : 'numeric');
+      inp.parentNode.replaceChild(nw, inp);
+      nw.focus(); try { var n = nw.value.length; nw.setSelectionRange(n, n); } catch (x) {}
+      b.textContent = txt ? 'Цифри' : 'Букви';
     });
     document.addEventListener('pointerdown', function (e) {
       var b = e.target.closest && e.target.closest('.hk'); if (!b) return;

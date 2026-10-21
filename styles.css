@@ -285,3 +285,4 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .hkeys{flex-wrap:nowrap;gap:5px}
 .hk{min-width:0;flex:1 1 0;height:42px;padding:0 4px}
 .hk-abc{flex:1.4 1 0}
+.hk-abc{flex:1.8 1 0;font-size:14px}
