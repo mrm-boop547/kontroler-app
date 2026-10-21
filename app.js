@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.11';
+  var VERSION = '0.19.12';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2503,12 +2503,13 @@
       (isCard ? cardTop(p) + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
       '<div class="card visit">' +
         /* дані абонента згорнуті в один рядок: ПІБ і № лічильника видно одразу, решта по тапу */
-        '<details class="subj"' + (R.subjOpen ? ' open' : '') + '><summary><div class="col" style="flex:1;min-width:0;gap:2px"><b style="font-size:16px">' + esc(f.fio || 'Абонент: немає даних') + '</b><span class="ids"><span class="ids-n">№ ' + esc(serial || '—') + '</span>' + (f.mtype ? '<span class="small mute">' + esc(f.mtype) + '</span>' : '') + '</span></div>' + icon('down', 18, 2.4) + '</summary>' +
+        '<details class="subj"' + (R.subjOpen || !(f.fio || serial) ? ' open' : '') + '><summary><div class="col" style="flex:1;min-width:0;gap:2px"><b style="font-size:16px">' + esc(f.fio || 'Абонент: немає даних') + '</b><span class="ids"><span class="ids-n">№ ' + esc(serial || '—') + '</span>' + (f.mtype ? '<span class="small mute">' + esc(f.mtype) + '</span>' : '') + '</span></div>' + icon('down', 18, 2.4) + '</summary>' +
         '<div class="kvs" style="padding-top:8px">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
           (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:700">' + esc(f.phone) + '</a></div>' : row('Телефон', '—')) +
           row('Серійний номер', '<span class="mono">' + esc(serial || '—') + '</span>') + row('Тип', esc(f.mtype || '—')) + row('Статус установки', esc(f.instStatus || '—')) +
           row('Розміщення', esc(f.placement || '—')) + row('Місце прилада', esc(f.devicePlace || '—')) +
-          '<div class="kv" style="align-items:center"><span>Сигнал тривоги на лічильнику</span>' + pickBtn('alarm', F.alarm) + '</div></div></details>' +
+          '<div class="kv" style="align-items:center"><span>Сигнал тривоги на лічильнику</span>' + pickBtn('alarm', F.alarm) + '</div></div>' +
+          '<button class="btn sec" data-act="subjEdit" data-id="' + id + '" style="height:46px;margin-top:6px">' + icon('edit', 18) + 'Редагувати дані абонента</button></details>' +
 
         '<div class="v-sec">Показники</div>' +
         '<label for="r-val" class="v-lab">Загальний (попередній: ' + (st.sys ? fmt(st.sys.v) : '—') + ')</label>' +
@@ -2608,6 +2609,29 @@
     return savePoint(p);
   }
   /* редагування точки з карти (Обхід, Мітки) і з картки: адреса, доступ, орієнтир, розташування */
+  /* ручне введення даних абонента (поступово, для орієнтації). Зберігається лише на цьому телефоні:
+     на сервер синхронізації дані абонентів не йдуть */
+  var SUBJ_F = [['fio', 'Прізвище, ім\'я, по батькові', 'text'], ['phone', 'Телефон', 'tel'], ['serial', 'Номер лічильника', 'text'], ['mtype', 'Тип лічильника', 'text'],
+    ['instStatus', 'Статус установки', 'text'], ['placement', 'Розміщення', 'text'], ['devicePlace', 'Місце прилада (код)', 'numeric'], ['prevIndex', 'Попередній показник', 'decimal'], ['account', 'Особовий рахунок', 'numeric']];
+  function openSubjEditor(id) {
+    var p = S.points.get(id); if (!p) return;
+    var f = p.fields || {}, ov = document.createElement('div'); ov.className = 'seals-ov';
+    ov.innerHTML = '<div class="seals-head"><button class="iconbtn" data-se="close" aria-label="Закрити">' + icon('close', 20, 2.4) + '</button><div class="col"><div class="small mute">' + esc(addr(p)) + '</div><div style="font-size:20px;font-weight:800">Дані абонента</div></div></div>' +
+      '<div class="seals-body"><div class="card" style="gap:12px">' + SUBJ_F.map(function (x) {
+        return '<div class="field"><label for="se-' + x[0] + '">' + x[1] + '</label><input id="se-' + x[0] + '" class="input"' + (x[2] === 'tel' ? ' type="tel"' : x[2] !== 'text' ? ' inputmode="' + x[2] + '"' : '') + ' autocomplete="off" value="' + esc(f[x[0]] || '') + '"' + (x[0] === 'fio' ? ' autocapitalize="words"' : x[0] === 'serial' ? ' autocapitalize="characters" spellcheck="false"' : '') + '></div>';
+      }).join('') + '</div><div class="small mute" style="line-height:1.5;padding:0 4px">Заповнюйте поступово, що відомо. Дані абонента зберігаються лише на цьому телефоні і в резервній копії; на сервер синхронізації вони не йдуть.</div></div>' +
+      '<div class="seals-foot"><button class="btn" data-se="save" style="height:58px">Зберегти</button></div>';
+    ov.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-se]'); if (!b) return;
+      if (b.getAttribute('data-se') === 'close') return ov.remove();
+      var nf = Object.assign({}, p.fields || {});
+      SUBJ_F.forEach(function (x) { var v = ov.querySelector('#se-' + x[0]).value.trim(); if (x[0] === 'serial') v = v.toUpperCase(); if (v) nf[x[0]] = v; else delete nf[x[0]]; });
+      p.fields = nf;
+      savePoint(p).then(function () { ov.remove(); toast('Дані абонента збережено'); if (R && R.id === id) R.subjOpen = true; var y = window.scrollY; render(); window.scrollTo(0, y); });
+    });
+    document.body.appendChild(ov);
+    setTimeout(function () { var i = ov.querySelector('#se-fio'); if (i && !i.value) i.focus(); }, 60);
+  }
   function openPointEditor(id) {
     var p = S.points.get(id); if (!p) return;
     var E = { st: p.status, v: p.village || '', off: isOff(p), tags: (p.tags || []).slice() };
@@ -3252,6 +3276,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'subjEdit': readCollect(); openSubjEditor(id); break;
       case 'spReset': spReset(el); break;
       case 'brT': BRT = el.getAttribute('data-v'); render(); break;
       case 'brSet': brSet(id, el.getAttribute('data-v')); break;
