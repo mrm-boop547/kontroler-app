@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.5';
+  var VERSION = '0.19.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -859,7 +859,7 @@
     d.lite = true;
     d.points = d.points.map(function (p) { var c = Object.assign({}, p); delete c.fields; c.lite = true; return c; });
     d.visits = d.visits.map(function (v) { var c = { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; if (v.form || v.sealList || v.br) c.br = visitWhy(v); return c; });
-    delete d.splits; return d;
+    return d;
   }
   function ghFile() { return 'sync/' + (me().id || 'x') + '-' + dev() + '.json'; }
   var syncBusy = false, syncTimer = null;
@@ -1356,7 +1356,7 @@
   var KX = 111320 * Math.cos(50.4 * Math.PI / 180), KY = 110570;
   function fd(a, b) { var x = (a.lon - b.lon) * KX, y = (a.lat - b.lat) * KY; return Math.sqrt(x * x + y * y); }
   function tourLen(ps) { if (ps.length < 2) return 0; var o = nn(ps[0], ps.slice(1), fd), m = 0, prev = ps[0]; o.forEach(function (p) { m += fd(prev, p); prev = p; }); return m; }
-  function splitOf(v) { var s = (S.meta.splits || {})[v]; return s && s.month === monthKey() ? s : null; }
+  function splitOf(v) { var s = (S.meta.splits || {})[v]; return s && !s.reset && s.month === monthKey() ? s : null; }
   function myIdx(s) { if (!s) return null; var n = me().name, i = n ? s.crew.indexOf(n) : -1; if (i < 0) { var m = (S.meta.splitMine || {})[s.v]; if (m != null) i = m; } return i >= 0 ? i : null; }
   function splitIdx(p) { var s = splitOf(p.village); if (!s) return null; var a = s.assign[p.id]; return a == null ? null : a; }
   function sectorName(i, s) { return (s && s.crew[i]) || 'Контролер ' + (i + 1); }
@@ -1493,6 +1493,13 @@
     var go2 = function () { updateMap(); var ps = villagePoints().filter(function (p) { return SP && (SP.focus == null || SP.assign[p.id] === SP.focus); }); if (ps.length) fitTo(ps, Math.round(window.innerHeight * 0.58)); };
     if (mapReady) go2(); else S.pendingFit = go2;
   }
+  /* скидання розподілу вулиць у селі: два тапи; «надгробок» з часом, щоб скидання дійшло колегам */
+  function spReset(el) {
+    if (!el.classList.contains('warn')) { el.classList.add('warn'); el.lastChild.textContent = 'Точно?'; clearTimeout(spReset._t); spReset._t = setTimeout(function () { if (el.isConnected) { el.classList.remove('warn'); el.lastChild.textContent = 'Скинути'; } }, 3000); return; }
+    var v = SP.v, all = Object.assign({}, S.meta.splits || {});
+    all[v] = { month: monthKey(), reset: true, made: Date.now(), by: me().id };
+    setMeta('splits', all).then(function () { scheduleSync(); SP = null; S.route = null; toast('Розподіл вулиць скинуто'); renderSectors(); });
+  }
   function renderSectorsUi() {
     var el = $('#sec-ui'); if (!el || !SP) return;
     var st = splitStats(SP.v, SP.crew.length, SP.assign), sv = splitOf(SP.v), mine = myIdx(sv);
@@ -1501,7 +1508,8 @@
     var streets = {}; villagePoints(SP.v).forEach(function (p) { if (p.status === 'n') return; var k = streetKey(p); var o = streets[k] = streets[k] || { n: 0, left: 0, who: {} }; o.n++; if (!doneThisCycle(p)) o.left++; var j = SP.assign[p.id]; if (j != null) o.who[j] = (o.who[j] || 0) + 1; });
     var names = Object.keys(streets).filter(Boolean).sort(ukSort);
     var whoOf = function (o) { var ks = Object.keys(o.who); return ks.length === 1 ? +ks[0] : ks.length ? 'mix' : null; };
-    el.innerHTML = '<div class="between"><div class="col" style="gap:2px"><b style="font-size:17px">Хто якою вулицею</b><span class="small mute">' + (SP.saved ? 'Збережено' + (sv && sv.by && sv.by !== me().id ? ' · від ' + esc(peerName(sv.by)) : '') : 'Не збережено') + ' · різниця навантаження ' + Math.round(spread * 100) + '%</span></div></div>' +
+    el.innerHTML = '<div class="between"><div class="col" style="gap:2px"><b style="font-size:17px">Хто якою вулицею</b><span class="small mute">' + (SP.saved ? 'Збережено' + (sv && sv.by && sv.by !== me().id ? ' · від ' + esc(peerName(sv.by)) : '') : 'Не збережено') + ' · різниця навантаження ' + Math.round(spread * 100) + '%</span></div>' +
+      (sv || SP.saved ? '<button class="pill-btn" data-act="spReset">' + icon('close', 14, 2.6) + '<span>Скинути</span></button>' : '') + '</div>' +
       '<div class="col" style="gap:6px"><div class="small mute">Хто сьогодні в селі</div><div class="tags">' + SP.crew.map(function (n, i) {
         return '<span class="chip" style="background:#fff;border:1.5px solid ' + SEC_COL[i % SEC_COL.length] + ';gap:6px"><span class="dot" style="background:' + SEC_COL[i % SEC_COL.length] + '"></span>' + esc(n) +
           (SP.crew.length > 2 ? '<button class="seal-x" data-act="crewDel" data-v="' + i + '" aria-label="Прибрати" style="width:20px;height:20px;background:transparent">' + icon('close', 12, 2.6) + '</button>' : '') + '</span>';
@@ -3235,6 +3243,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'spReset': spReset(el); break;
       case 'brT': BRT = el.getAttribute('data-v'); render(); break;
       case 'brSet': brSet(id, el.getAttribute('data-v')); break;
       case 'brShare': brShare(); break;
