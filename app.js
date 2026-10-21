@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.13';
+  var VERSION = '0.20.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -254,6 +254,9 @@
   /* кожна зміна точки ставить час і автора — так злиття від кількох контролерів знає, яка версія новіша */
   /* id нової точки містить код пристрою — дві точки з різних телефонів ніколи не отримають однаковий id */
   function dev() { return S.meta.device || me().id; }
+  /* код встановлення: живе лише в цьому браузері (не в базі й не в резервній копії) — розрізняє телефони, навіть якщо їх відновили з однієї копії */
+  var INST = null;
+  function inst() { if (INST) return INST; try { INST = localStorage.getItem('kc-inst'); if (!INST) { INST = Math.random().toString(36).slice(2, 10); localStorage.setItem('kc-inst', INST); } } catch (x) { INST = INST || Math.random().toString(36).slice(2, 10); } return INST; }
   function newPid() { return 'n' + dev() + Date.now().toString(36); }
   function normHouse(h) { return String(h || '').toLowerCase().replace(/[\s\-–]/g, '').replace(/[\\]/g, '/'); }
   function normStreet(st) { return String(st || '').toLowerCase().replace(/^(вул\.?|вулиця|пров\.?|провулок)\s+/, '').replace(/\s+/g, ' ').trim(); }
@@ -685,6 +688,8 @@
         tx.oncomplete = function () { toast('Оновлено назв: ' + n); render(); };
         return;
       }
+      /* копія з іншого телефона не повинна переносити його код пристрою і доступ до сервера */
+      meta = meta.filter(function (m) { return ['gh', 'ghSeen', 'ghFiles', 'ghLast', 'ghErr', 'device'].indexOf(m.k) < 0; });
       bulkReplace(pts, vis, meta).then(function () {
         var ph = data.photos || []; if (!ph.length) return;
         return new Promise(function (res) {
@@ -704,7 +709,7 @@
     all('photos').then(function (ph) {
       return Promise.all(ph.map(function (x) { return blobToData(x.blob).then(function (d) { return { pointId: x.pointId, ts: x.ts, kind: x.kind, data: d }; }); }));
     }).then(function (photos) {
-    var meta = Object.keys(S.meta).filter(function (k) { return k !== 'gh' && k !== 'ghSeen'; }).map(function (k) { return { k: k, v: S.meta[k] }; });
+    var meta = Object.keys(S.meta).filter(function (k) { return ['gh', 'ghSeen', 'ghFiles', 'ghLast', 'ghErr', 'device'].indexOf(k) < 0; }).map(function (k) { return { k: k, v: S.meta[k] }; });
     var data = { version: 2, app: VERSION, exported: new Date().toISOString(), points: Array.from(S.points.values()), visits: S.visits, meta: meta, photos: photos };
     var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -772,7 +777,7 @@
        • видалення — «надгробки» з часом, щоб видалена точка не повернулась від колеги. */
   function syncPackage() {
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
-    return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev() }), exported: Date.now(), month: monthKey(),
+    return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev(), inst: inst() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
       idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
   }
@@ -868,7 +873,7 @@
     if (!gh() || !me().login) return Promise.resolve();
     if (!navigator.onLine) { if (manual) toast('Немає інтернету. Синхронізую, коли з\'явиться'); return Promise.resolve(); }
     if (syncBusy) return Promise.resolve(); syncBusy = true;
-    var seen = Object.assign({}, S.meta.ghSeen || {}), got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st');
+    var seen = Object.assign({}, S.meta.ghSeen || {}), got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st'), files = Object.assign({}, S.meta.ghFiles || {}), clash = false;
     if (st && manual) st.textContent = 'Синхронізую…';
     var fail = function (e) {
       syncBusy = false; var msg = e && e.status === 401 ? 'токен недійсний або прострочений' : e && e.status === 404 ? 'репозиторій не знайдено або токен не має до нього доступу' : 'немає зв\'язку з сервером';
@@ -877,6 +882,9 @@
     var ok = function (r) { if (!r.ok) { var e = new Error('http'); e.status = r.status; throw e; } return r; };
     /* 1. забираємо файли колег, які змінились */
     return ghReq('/contents/sync').then(function (r) { return r.status === 404 ? [] : ok(r).json(); }).then(function (list) {
+      var onSrv = {}; (Array.isArray(list) ? list : []).forEach(function (f) { onSrv[f.path] = 1; }); Object.keys(files).forEach(function (k) { if (!onSrv[k]) delete files[k]; });
+      /* після зміни коду пристрою прибираємо свій старий файл, щоб колеги не бачили телефон двічі */
+      var old = S.meta.ghOldFile; if (old && old.path !== mine) { (list || []).forEach(function (f) { if (f.path === old.path) ghReq('/contents/' + f.path, { method: 'DELETE', body: { message: 'move device', sha: f.sha } }); }); delete files[old.path]; setMeta('ghOldFile', null); list = (list || []).filter(function (f) { return f.path !== old.path; }); }
       var mySha = null, todo = (Array.isArray(list) ? list : []).filter(function (f) {
         if (f.path === mine) { mySha = f.sha; return false; }
         return /\.json$/.test(f.name) && seen[f.path] !== f.sha;
@@ -884,9 +892,14 @@
       var chain = Promise.resolve();
       todo.forEach(function (f) {
         chain = chain.then(function () { return ghReq('/contents/' + f.path, { raw: true }).then(ok).then(function (r) { return r.json(); }).then(function (d) {
-          if (d.from && d.from.device === dev()) { seen[f.path] = f.sha; return; }
+          var fr = d.from || {};
+          files[f.path] = { name: fr.name || '?', id: fr.id || '', inst: fr.inst || '', dev: fr.device || '', app: d.app || '', ts: d.exported || 0, pts: (d.points || []).length, vis: (d.visits || []).length };
+          /* свій файл — лише якщо той самий код встановлення; для старих версій — той самий пристрій і той самий контролер */
+          var own = fr.inst ? fr.inst === inst() : (fr.device === dev() && fr.id === me().id);
+          if (fr.device === dev() && fr.inst && fr.inst !== inst()) clash = true;
+          if (own) { seen[f.path] = f.sha; files[f.path].own = true; return; }
           return mergeData(d).then(function (R) { got.vis += R.vis; got.pts += R.newPts + R.updPts; if (R.shared) got.sh = 1; got.from++; seen[f.path] = f.sha; });
-        }); });
+        }).catch(function (e) { files[f.path] = Object.assign(files[f.path] || { name: f.name }, { err: (e && e.status) || 'помилка' }); }); });
       });
       /* 2. відправляємо свій файл */
       return chain.then(function () {
@@ -895,8 +908,12 @@
         return ghReq('/contents/' + mine, { method: 'PUT', body: body }).then(ok).then(function (r) { return r.json(); });
       }).then(function (res) {
         seen[mine] = res && res.content && res.content.sha;
+        files[mine] = { name: me().name || '', id: me().id, inst: inst(), dev: dev(), app: VERSION, ts: Date.now(), own: true };
         syncBusy = false;
-        return Promise.all([setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now())]).then(refreshSyncBadge);
+        var jobs = [setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now()), setMeta('ghFiles', files)];
+        /* інший телефон має той самий код пристрою (відновлено з чужої копії) — беремо собі новий, наступна синхронізація піде в окремий файл */
+        if (clash) { jobs.push(setMeta('ghOldFile', { path: mine, sha: seen[mine] }), setMeta('device', Math.random().toString(36).slice(2, 8))); toast('Цей телефон отримав власний код пристрою'); }
+        return Promise.all(jobs).then(refreshSyncBadge);
       }).then(function () {
         var txt = got.vis || got.pts ? 'Отримано: ' + got.vis + ' відміток, ' + got.pts + ' точок' : 'Синхронізовано, нового від колег немає';
         if (manual || got.vis || got.pts) toast(txt);
@@ -904,6 +921,15 @@
         if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
       });
     }).catch(fail);
+  }
+  /* хто є на сервері: по файлу на кожен телефон — ім'я, версія, коли надсилав, скільки точок і відміток */
+  function srvList() {
+    var F = S.meta.ghFiles || {}, ks = Object.keys(F); if (!ks.length) return '<p class="mute">Список телефонів на сервері з\'явиться після першої синхронізації.</p>';
+    var byName = {}; ks.forEach(function (k) { var n = (F[k].name || '?').trim(); (byName[n] = byName[n] || []).push(F[k]); });
+    var dup = Object.keys(byName).filter(function (n) { var L = byName[n]; return L.length > 1 && L.some(function (x) { return x.inst && L.some(function (y) { return y.inst && y.inst !== x.inst; }); }); });
+    return '<p style="margin-top:6px"><b>Телефони на сервері · ' + ks.length + '</b></p>' + ks.sort(function (a, b) { return (F[b].ts || 0) - (F[a].ts || 0); }).map(function (k) { var x = F[k];
+        return '<div class="between" style="padding:6px 0;border-top:1px solid var(--bg);gap:8px"><span class="col" style="gap:0;min-width:0"><b>' + esc(x.name || '?') + (x.own ? ' (цей телефон)' : '') + '</b><span class="small mute">' + (x.app ? 'v' + esc(x.app) : 'стара версія') + (x.ts ? ' · ' + dt(x.ts) + ' ' + tm(x.ts) : '') + (x.err ? ' · не вдалося прочитати (' + esc(String(x.err)) + ')' : '') + '</span></span><span class="small" style="text-align:right;white-space:nowrap">' + (x.pts != null ? fmt(x.pts) + ' точок<br>' + fmt(x.vis) + ' відміток' : '') + '</span></div>';
+      }).join('') + (dup.length ? '<p style="color:#B91C1C;margin-top:8px"><b>Кілька телефонів під одним іменем:</b> ' + esc(dup.join(', ')) + '. Найімовірніше, телефон налаштували з чужої резервної копії. На тому телефоні: «Я» → кнопка зі стрілками біля імені («Змінити контролера») → увійти під своїм ПІБ і табельним. Олівець для цього не підходить: він переносить усі записи старого імені.</p>' : '');
   }
   function showInfo(k) {
     if (k === 'sync') {
@@ -914,7 +940,7 @@
         '<p>Обидва способи безпечно поєднуються: відмітки лише додаються, з двох версій точки лишається новіша, повтор нічого не дублює.</p>' +
         '<p><b>Новий контролер.</b> Достатньо токена: на першому екрані «Підключитися до спільної бази». Карта береться з бази точок на сервері; оновлюй її кнопкою нижче після великих змін (нові села, імпорт).</p>' +
         '<p><b>Колеги.</b> Хрестик прибирає контролера зі списку (звільнився, тестовий акаунт) і видаляє його файл із сервера. Його відмітки в історії лишаються. Якщо він знову надішле дані, повернеться в список.</p>' +
-        (g ? '<p class="mute">Репозиторій: ' + esc(g.repo) + ' · відмічено ' + fmt(S.visits.filter(function (v) { return v.by === me().id; }).length) + ' моїх · надіслано ' + (S.meta.lastSyncOut ? dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '—') + '</p>' : ''),
+        (g ? '<p class="mute">Репозиторій: ' + esc(g.repo) + ' · відмічено ' + fmt(S.visits.filter(function (v) { return v.by === me().id; }).length) + ' моїх · надіслано ' + (S.meta.lastSyncOut ? dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '—') + '</p>' : '') + (g ? srvList() : ''),
         g ? '<button class="btn sec" data-act="ghBase">Оновити базу точок для нових контролерів</button><button class="btn sec" data-act="ghOff" style="color:#B91C1C">Відключити цей телефон від сервера</button>' : '');
     }
   }
