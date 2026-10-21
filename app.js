@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.19.12';
+  var VERSION = '0.19.13';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1085,8 +1085,8 @@
       if (extra.focus !== false) q.focus();
       q.oninput = function () {
         var t = q.value.trim().toLowerCase(), list = ov.querySelector('.pk-list'), shown = 0;
-        ov.querySelectorAll('.pk-list .pk-head').forEach(function (h) { h.style.display = t ? 'none' : ''; });
-        var rows = Array.prototype.slice.call(ov.querySelectorAll('.pk-list .pk-row'));
+        ov.querySelectorAll('.pk-head').forEach(function (h) { h.style.display = t ? 'none' : ''; });
+        var rows = Array.prototype.slice.call(ov.querySelectorAll('.pk-row'));
         rows.forEach(function (r) {
           var l = r.getAttribute('data-q') || '', words = l.split(/[\s-]+/);
           var hit = !t || l.indexOf(t) === 0 ? 2 : words.some(function (w) { return w.indexOf(t) === 0; }) ? 1 : l.indexOf(t) >= 0 ? 0 : -1;
@@ -2024,6 +2024,7 @@
         '<div class="row"><button class="row" data-act="toggleSheet" style="flex-grow:1;min-width:0;border:0;background:transparent;padding:0;font-size:16px;font-weight:800;color:#111;text-align:left">' +
         (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : dotHtml(p.status)) +
         '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span>' + (d ? '<span class="small mute" style="flex-shrink:0">' + d + '</span>' : '') + '</button>' +
+        '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:44px;height:44px;border:1.5px solid #E4E4E7;box-shadow:none;flex-shrink:0">' + icon('edit', 16) + '</button>' +
         '<a class="iconbtn" href="#card/' + p.id + '" aria-label="Відкрити картку" style="background:#111;color:#fff;box-shadow:none;width:44px;height:44px">' + icon('arrow', 18, 2.4) + '</a></div></div>';
       return;
     }
@@ -2554,7 +2555,7 @@
     var idx = routeIndex(p.id), cv = cycleMap()[p.id], f = p.fields || {}, phone = (f.phone || '').replace(/[^\d+]/g, '');
     var flags = (p.flags || []).filter(function (x) { return FLAGNAME[x]; });
     var navUrl = 'https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=' + p.lat + ',' + p.lon;
-    return '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || 'Без села') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + '</div><div style="font-size:22px;font-weight:800;line-height:1.2">' + esc(addr(p)) + '</div></div></div>' +
+    return '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0;align-items:flex-start;gap:4px"><button class="vchip" data-act="pointVillage" data-id="' + p.id + '" aria-label="Змінити село">' + icon('village', 14) + esc(p.village || 'Без села') + icon('down', 14, 2.6) + '</button>' + (idx >= 0 ? '<div class="small mute">№' + (idx + 1) + ' у маршруті</div>' : '') + '<div style="font-size:22px;font-weight:800;line-height:1.2">' + esc(addr(p)) + '</div></div></div>' +
       '<div class="card" style="gap:12px">' +
         '<div class="tags">' + (isOff(p) ? '<span class="chip" style="background:#111;color:#fff">Лічильник відключено</span>' : '') + '<span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') +
           '<span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
@@ -3276,6 +3277,10 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'pointVillage': (function (pid) { var pt = S.points.get(pid); if (!pt) return; pickVillageFor(pt.village, function (v) {
+          var old = pt.village; if ((v || null) === (old || null)) return;
+          applyAddr(pt, v || '', pt.street || '', pt.house || '').then(function () { invalidate(); S.route = null; toast('Перенесено: ' + (old || 'без села') + ' → ' + (v || 'без села')); var y = window.scrollY; render(); window.scrollTo(0, y); });
+        }); })(id); break;
       case 'subjEdit': readCollect(); openSubjEditor(id); break;
       case 'spReset': spReset(el); break;
       case 'brT': BRT = el.getAttribute('data-v'); render(); break;
