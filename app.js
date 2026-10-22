@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.4';
+  var VERSION = '0.20.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2168,7 +2168,6 @@
       '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (a.st === s ? ' on' : '') + '" data-act="addSt" data-v="' + s + '" style="min-height:44px;align-items:center;padding:6px 4px">' + dotHtml(s) + '<small style="opacity:1;font-weight:700">' + ST[s].short + '</small></button>';
       }).join('') + '</div>' +
-      '<button class="opt' + (a.jur ? ' on jur' : '') + '" data-act="addJur" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:48px;padding:0 14px"><span class="row" style="gap:8px"><span class="dot" style="background:#7C3AED"></span><b style="font-size:15px">Юридичний споживач</b></span><span class="sw' + (a.jur ? ' on' : '') + '"></span></button>' +
       villageRow(a.village, a.vSet ? 'вибрано вручну' : a.how, 'addVillage') +
       '<div class="small mute">' + (a.auto ? 'Адресу підставлено з карти, перевірте. ' : '') + 'Мітку можна перетягнути.</div>' +
       '<button class="btn" data-act="addSave">' + icon('pin') + 'Зберегти точку</button></div>';
