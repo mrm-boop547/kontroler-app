@@ -296,3 +296,6 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .sticky-row .chip{flex-shrink:0;background:#fff;height:34px}
 .sticky-row{padding:4px 4px 4px 10px;font-size:12px}
 .sticky-row .chip{height:30px;font-size:12px}
+.seals-ov{top:var(--vvt,0);height:var(--vvh,100%);bottom:auto}
+body.kb-open nav.tabs,body.kb-open .fabs,body.kb-open .compass{display:none}
+body.kb-open .seals-foot{padding-bottom:8px}
