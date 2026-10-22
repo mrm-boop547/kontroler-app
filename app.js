@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.8';
+  var VERSION = '0.20.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2167,14 +2167,14 @@
   function cancelAdd(quiet) { S.adding = null; if (addMarker) { addMarker.remove(); addMarker = null; } if (!quiet) renderSheet(); }
   function renderAddSheet(el) {
     var a = S.adding;
-    el.innerHTML = '<div class="sheet"><div class="between"><div class="h2">Нова точка тут</div><button class="iconbtn" data-act="addCancel" aria-label="Скасувати" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
+    el.innerHTML = '<div class="sheet add-sheet"><div class="between"><div class="h2">Нова точка тут</div><button class="iconbtn" data-act="addCancel" aria-label="Скасувати" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
       '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="ad-s" class="input" placeholder="Вулиця" value="' + esc(a.street) + '"><input id="ad-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" placeholder="Будинок" value="' + esc(a.house) + '"></div>' +
-      (a.sticky && stickyStreet(a.village) ? '<div class="sticky-row">' + icon('pin', 14) + '<span>Вулиця тримається до кінця дня</span><button class="chip" data-act="stickyOff">Інша вулиця</button></div>' : '') +
+      (a.sticky && stickyStreet(a.village) ? '<div class="sticky-row add-extra">' + icon('pin', 14) + '<span>Вулиця тримається до кінця дня</span><button class="chip" data-act="stickyOff">Інша вулиця</button></div>' : '') +
       '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (a.st === s ? ' on' : '') + '" data-act="addSt" data-v="' + s + '" style="min-height:44px;align-items:center;padding:6px 4px">' + dotHtml(s) + '<small style="opacity:1;font-weight:700">' + ST[s].short + '</small></button>';
       }).join('') + '</div>' +
-      villageRow(a.village, a.vSet ? 'вибрано вручну' : a.how, 'addVillage') +
-      '<div class="small mute">' + (a.auto ? 'Адресу підставлено з карти, перевірте. ' : '') + 'Мітку можна перетягнути.</div>' +
+      villageRow(a.village, a.vSet ? 'вибрано вручну' : a.how, 'addVillage').replace('class="input selbtn"', 'class="input selbtn add-extra"') +
+      '<div class="small mute add-extra">' + (a.auto ? 'Адресу підставлено з карти, перевірте. ' : '') + 'Мітку можна перетягнути.</div>' +
       '<button class="btn" data-act="addSave">' + icon('pin') + 'Зберегти точку</button></div>';
     $('#ad-s').oninput = function () { a.street = this.value; };
     $('#ad-h').oninput = function () { a.house = this.value; };
@@ -3460,7 +3460,7 @@
        щоб кнопка «Зберегти» лишалась над клавіатурою; нижня панель вкладок ховається */
     if (window.visualViewport) {
       var kb = function () {
-        var vv = window.visualViewport, h = vv.height, open = h < window.innerHeight * 0.8 || h < screen.height * 0.62;
+        var vv = window.visualViewport, h = vv.height; if (!kb.max || Math.abs(window.innerWidth - (kb.w || 0)) > 50) { kb.max = h; kb.w = window.innerWidth; } kb.max = Math.max(kb.max, h); var open = h < kb.max * 0.8;
         document.documentElement.style.setProperty('--vvh', h + 'px'); document.documentElement.style.setProperty('--vvt', (vv.offsetTop || 0) + 'px');
         document.body.classList.toggle('kb-open', !!open && /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || ''));
       };

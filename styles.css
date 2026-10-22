@@ -299,3 +299,9 @@ nav.tabs a.on{gap:4px;font-size:11px;padding:0 4px}
 .seals-ov{top:var(--vvt,0);height:var(--vvh,100%);bottom:auto}
 body.kb-open nav.tabs,body.kb-open .fabs,body.kb-open .compass{display:none}
 body.kb-open .seals-foot{padding-bottom:8px}
+/* набір номера на карті: панель нової точки стискається до полів і кнопки, щоб усе було видно над клавіатурою */
+body.kb-open .add-sheet{bottom:8px;gap:10px;padding:12px 14px}
+body.kb-open .add-sheet .add-extra{display:none !important}
+body.kb-open .add-sheet .hk{height:38px}
+body.kb-open .add-sheet [data-act=addSave]{height:50px}
+body.kb-open .mapui{display:none !important}
