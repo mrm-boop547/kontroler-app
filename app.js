@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.1';
+  var VERSION = '0.20.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1743,6 +1743,12 @@
     };
     map.on('rotate', syncComp); map.on('moveend', syncComp); syncComp(); map.__syncComp = syncComp;
     map.on('style.load', addLayers);
+    /* супутник «відвалювався» після згортання: запити тайлів, що впали у фоні, карта більше не повторює,
+       а Android може скинути графіку (WebGL). Перезавантажуємо тайли супутника при поверненні, появі мережі,
+       відновленні графіки та після помилок тайлів */
+    map.on('error', function (e) { if (e && e.sourceId === 'esri') refreshSat(false, 8000); });
+    map.on('webglcontextrestored', function () { refreshSat(true); });
+    map.getCanvas().addEventListener('webglcontextlost', function (ev) { ev.preventDefault(); }, false);
     /* підстраховка: якщо після зміни шару наші точки зникли, повертаємо їх */
     map.on('styledata', function () { if (map.isStyleLoaded() && !map.getLayer('pts')) addLayers(); });
     map.on('click', function (e) {
@@ -1756,6 +1762,16 @@
     map.on('movestart', function (e) { if (e.originalEvent) S.moved = true; });
     map.on('moveend', function () { if (mapMode === 'bind' && S.moved && $('#bindBtn')) $('#bindBtn').disabled = false; });
     map.on('error', function (e) { if (e && e.error && !/Failed to fetch|NetworkError|AJAXError/.test(e.error.message)) console.warn('map', e.error.message); });
+  }
+  var satT = 0, satTimer = null;
+  function refreshSat(force, delay) {
+    if (!map || (S.meta.layer || 'scheme') !== 'sat' || !navigator.onLine) return;
+    clearTimeout(satTimer);
+    satTimer = setTimeout(function () {
+      if (!force && Date.now() - satT < 10000) return; satT = Date.now();
+      try { var src = map.getSource('esri'); if (src && src.setTiles) src.setTiles(MAP_STYLE('sat').sources.esri.tiles.slice()); map.triggerRepaint(); }
+      catch (x) { try { map.setStyle(MAP_STYLE('sat')); } catch (y) {} }
+    }, delay || 300);
   }
   function addLayers() {
     mapReady = true;
@@ -3420,8 +3436,8 @@
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
     checkUpdate(false, true);
-    document.addEventListener('visibilitychange', function () { syncWake(); if (document.visibilityState === 'visible') { checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
-    window.addEventListener('online', function () { refreshSyncBadge(); ghSync(false); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000) refreshSat(true, 400); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
+    window.addEventListener('online', function () { refreshSyncBadge(); refreshSat(true, 800); ghSync(false); });
     window.addEventListener('offline', function () { refreshSyncBadge(); });
     window.addEventListener('resize', function () { placeFabs(); });
     /* поле «Будинок»: під рядком з'являються кнопки а б в г д / (поки поле у фокусі); «абв» — звичайна клавіатура */
