@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.0';
+  var VERSION = '0.20.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2340,8 +2340,8 @@
       '<div class="row" style="gap:8px"><button class="btn" data-act="dupMerge" data-id="' + p.id + '" data-o="' + o.p.id + '" style="flex:1;height:46px;font-size:14px">Об\'єднати в цю</button>' +
       '<button class="btn sec" data-act="dupNo" data-id="' + p.id + '" data-o="' + o.p.id + '" style="flex:1;height:46px">Це різні</button></div></div>';
   }
-  function loadPhotos(pid) {
-    var box = $('#photos'); if (!box) return;
+  function loadPhotos(pid, boxSel) {
+    var box = $(boxSel || '#photos'); if (!box) return;
     (S.phUrls || []).forEach(function (u) { URL.revokeObjectURL(u); }); S.phUrls = [];
     photosOf(pid).then(function (ph) {
       box.innerHTML = ph.map(function (x) {
@@ -2351,14 +2351,14 @@
       box.style.display = ph.length ? '' : 'none';
     });
   }
-  function bindPhotoInputs(pid) {
-    ['#ph-m', '#ph-h'].forEach(function (sel) {
+  function bindPhotoInputs(pid, sels, boxSel) {
+    (sels || ['#ph-m', '#ph-h']).forEach(function (sel) {
       var inp = $(sel); if (!inp) return;
       inp.onchange = function () {
         var file = inp.files[0]; if (!file) return;
         toast('Зберігаю фото…');
         compress(file).then(function (b) { return put('photos', { pointId: pid, ts: Date.now(), kind: inp.getAttribute('data-kind'), blob: b }); })
-          .then(function () { inp.value = ''; toast('Фото збережено'); loadPhotos(pid); })
+          .then(function () { inp.value = ''; toast('Фото збережено'); loadPhotos(pid, boxSel); if (boxSel && $('#photos')) loadPhotos(pid); })
           .catch(function () { toast('Не вдалося зберегти фото'); });
       };
     });
@@ -2678,6 +2678,10 @@
         '<div class="card"><div class="h2" style="font-size:16px">Мітки</div><div class="tags">' + TAGS.map(function (t) { return '<button class="tag' + (E.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-pe="tag" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Як знайти</div><textarea id="pe-n" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(keep.n) + '</textarea>' +
           '<button class="btn sec" data-pe="bind" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Пересунути точку на карті</span><span class="small mute">' + esc(p.src || '') + '</span></button></div>' +
+        '<div class="card"><div class="h2" style="font-size:16px">Фото</div><div class="small mute" style="margin-top:-6px">Де захований лічильник, хвіртка, будинок. Зберігається одразу, без показника.</div>' +
+          '<div id="pe-photos" class="photos"></div>' +
+          '<div class="grid2" style="gap:8px"><label class="btn sec" for="pe-ph-m" style="height:50px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="pe-ph-h" style="height:50px">' + icon('camera', 18) + 'Хвіртка, будинок</label></div>' +
+          '<input id="pe-ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="pe-ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок"></div>' +
         '<button class="btn sec" data-pe="del" style="color:#B91C1C;height:46px">Видалити точку (дубль)</button>' +
         '</div><div class="seals-foot"><button class="btn" data-pe="save" style="height:58px">Зберегти</button></div>';
     };
@@ -2699,7 +2703,8 @@
         });
       }
     });
-    draw(); document.body.appendChild(ov);
+    var draw0 = draw; draw = function () { draw0(); loadPhotos(id, '#pe-photos'); bindPhotoInputs(id, ['#pe-ph-m', '#pe-ph-h'], '#pe-photos'); };
+    document.body.appendChild(ov); draw();
   }
   /* значення полів-виборів і пофідерної прив'язки зберігаємо в R.form перед перемальовуванням */
   function readCollect() {
