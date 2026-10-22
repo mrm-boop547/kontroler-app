@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.5';
+  var VERSION = '0.20.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2140,6 +2140,9 @@
     var rest = letterHeads(list.filter(function (o) { return o.v !== hv; }));
     openSheet('У яке село', pinned.concat(rest, [{ v: '', l: 'Без села', sub: 'уточнити пізніше' }]), cur || '', function (v) { if (v === '__newv') addVillage(cb); else cb(v); }, { btn: { v: '__newv', l: 'Нове' }, pin: pinned.length, search: 'Пошук села' });
   }
+  /* «вулиця, якою йду»: після збереження точки її вулиця підставляється в наступні нові точки цього села,
+     поки не скинеш або не почнеш іншу вулицю; щодня обнуляється */
+  function stickyStreet(v) { var x = S.meta.stickyStreet; return x && x.day === today() && x.street && (x.village || null) === (v || null) ? x.street : ''; }
   function startAdd(ll, pt) {
     var street = '', house = '';
     try {
@@ -2150,7 +2153,8 @@
       var ns = nearestFeature(sn, pt); if (ns) street = cleanStreet(ns.properties.name);
     } catch (x) { /* карта без даних — поля порожні */ }
     var gv = guessVillage({ lat: ll.lat, lon: ll.lng });
-    S.adding = { lat: ll.lat, lon: ll.lng, street: street, house: house, st: 'y', auto: !!(street || house), village: gv.v, how: gv.how, vSet: false };
+    var ss = stickyStreet(gv.v);
+    S.adding = { lat: ll.lat, lon: ll.lng, street: ss || street, house: house, st: 'y', auto: !!(street || house) && !ss, sticky: !!ss, village: gv.v, how: gv.how, vSet: false };
     if (!addMarker) {
       var el = document.createElement('div'); el.className = 'addpin';
       el.innerHTML = '<svg width="34" height="44" viewBox="0 0 40 52" aria-hidden="true"><path d="M20 50s-17-15-17-29A17 17 0 0137 21c0 14-17 29-17 29z" fill="#111" stroke="#fff" stroke-width="3"/><circle cx="20" cy="21" r="7" fill="#fff"/></svg>';
@@ -2159,12 +2163,15 @@
     } else addMarker.setLngLat(ll);
     if (S.meta.sheetMin) setMeta('sheetMin', false);
     renderSheet();
+    /* вулиця вже підставлена — одразу курсор у «Будинок», щоб лише набрати номер */
+    if (S.adding.sticky) { var hi = $('#ad-h'); if (hi) hi.focus(); }
   }
   function cancelAdd(quiet) { S.adding = null; if (addMarker) { addMarker.remove(); addMarker = null; } if (!quiet) renderSheet(); }
   function renderAddSheet(el) {
     var a = S.adding;
     el.innerHTML = '<div class="sheet"><div class="between"><div class="h2">Нова точка тут</div><button class="iconbtn" data-act="addCancel" aria-label="Скасувати" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
       '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="ad-s" class="input" placeholder="Вулиця" value="' + esc(a.street) + '"><input id="ad-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" placeholder="Будинок" value="' + esc(a.house) + '"></div>' +
+      (a.sticky && stickyStreet(a.village) ? '<div class="sticky-row">' + icon('pin', 14) + '<span>Вулицю «' + esc(stickyStreet(a.village)) + '» підставлено. Тримається до кінця дня</span><button class="chip" data-act="stickyOff">Інша вулиця</button></div>' : '') +
       '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (a.st === s ? ' on' : '') + '" data-act="addSt" data-v="' + s + '" style="min-height:44px;align-items:center;padding:6px 4px">' + dotHtml(s) + '<small style="opacity:1;font-weight:700">' + ST[s].short + '</small></button>';
       }).join('') + '</div>' +
@@ -2183,6 +2190,7 @@
       flags: [].concat(s ? [] : ['no_street'], h ? [] : ['no_house']) };
     if (!dupGuard(p)) { cancelAdd(true); return; }
     S.points.set(p.id, p); S.route = null; cancelAdd(true); S.sel = p.id;
+    if (s) setMeta('stickyStreet', { street: s, village: p.village || null, day: today() });
     savePoint(p).then(function () { toast('Точку додано: ' + addr(p) + ' · ' + (p.village || 'без села')); updateMap(); renderSheet(); });
   }
 
@@ -3329,6 +3337,7 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'stickyOff': setMeta('stickyStreet', null); if (S.adding) { S.adding.street = ''; S.adding.sticky = false; } renderSheet(); setTimeout(function () { var i = $('#ad-s'); if (i) i.focus(); }, 50); break;
       case 'addJur': S.adding.jur = !S.adding.jur; renderSheet(); break;
       case 'pointVillage': (function (pid) { var pt = S.points.get(pid); if (!pt) return; pickVillageFor(pt.village, function (v) {
           var old = pt.village; if ((v || null) === (old || null)) return;
