@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.6';
+  var VERSION = '0.20.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2163,15 +2163,13 @@
     } else addMarker.setLngLat(ll);
     if (S.meta.sheetMin) setMeta('sheetMin', false);
     renderSheet();
-    /* вулиця вже підставлена — одразу курсор у «Будинок», щоб лише набрати номер */
-    if (S.adding.sticky) { var hi = $('#ad-h'); if (hi) hi.focus(); }
   }
   function cancelAdd(quiet) { S.adding = null; if (addMarker) { addMarker.remove(); addMarker = null; } if (!quiet) renderSheet(); }
   function renderAddSheet(el) {
     var a = S.adding;
     el.innerHTML = '<div class="sheet"><div class="between"><div class="h2">Нова точка тут</div><button class="iconbtn" data-act="addCancel" aria-label="Скасувати" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
       '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><input id="ad-s" class="input" placeholder="Вулиця" value="' + esc(a.street) + '"><input id="ad-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" placeholder="Будинок" value="' + esc(a.house) + '"></div>' +
-      (a.sticky && stickyStreet(a.village) ? '<div class="sticky-row">' + icon('pin', 14) + '<span>Вулицю «' + esc(stickyStreet(a.village)) + '» підставлено. Тримається до кінця дня</span><button class="chip" data-act="stickyOff">Інша вулиця</button></div>' : '') +
+      (a.sticky && stickyStreet(a.village) ? '<div class="sticky-row">' + icon('pin', 14) + '<span>Вулиця тримається до кінця дня</span><button class="chip" data-act="stickyOff">Інша вулиця</button></div>' : '') +
       '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">' + ST_ORDER.map(function (s) {
         return '<button class="opt' + (a.st === s ? ' on' : '') + '" data-act="addSt" data-v="' + s + '" style="min-height:44px;align-items:center;padding:6px 4px">' + dotHtml(s) + '<small style="opacity:1;font-weight:700">' + ST[s].short + '</small></button>';
       }).join('') + '</div>' +
@@ -2180,6 +2178,8 @@
       '<button class="btn" data-act="addSave">' + icon('pin') + 'Зберегти точку</button></div>';
     $('#ad-s').oninput = function () { a.street = this.value; };
     $('#ad-h').oninput = function () { a.house = this.value; };
+    /* «→ / Готово» на клавіатурі зберігає точку: не треба ховати клавіатуру і шукати кнопку */
+    ['#ad-s', '#ad-h'].forEach(function (sel) { var i = $(sel); if (i) { i.setAttribute('enterkeyhint', sel === '#ad-h' ? 'done' : 'next'); i.onkeydown = function (e) { if (e.key !== 'Enter') return; e.preventDefault(); if (sel === '#ad-s') { var h = $('#ad-h'); if (h) h.focus(); return; } this.blur(); saveAdd(); }; } });
   }
   function saveAdd() {
     var a = S.adding; if (!a) return;
