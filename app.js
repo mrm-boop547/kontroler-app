@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.3';
+  var VERSION = '0.20.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2691,7 +2691,8 @@
         '<div class="card"><div class="h2" style="font-size:16px">Доступ до лічильника</div><div class="grid2" style="gap:8px">' + ST_ORDER.map(function (k) {
           return '<button class="opt' + (E.st === k ? ' on' : '') + '" data-pe="st" data-v="' + k + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:52px">' + dotHtml(k) + '<b style="font-size:15px">' + ST[k].label + '</b></button>';
         }).join('') + '</div></div>' +
-        '<div class="card"><button class="opt' + (E.off ? ' on' : '') + '" data-pe="off" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><b style="font-size:15px">Лічильник відключено</b><span class="sw' + (E.off ? ' on' : '') + '"></span></button>' +
+        '<div class="card"><button class="opt' + (E.tags.indexOf('jur') >= 0 ? ' on jur' : '') + '" data-pe="tag" data-v="jur" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span class="dot" style="background:' + JUR + '"></span><b style="font-size:15px">Юридичний споживач</b></span><span class="sw' + (E.tags.indexOf('jur') >= 0 ? ' on' : '') + '"></span></button>' +
+          '<button class="opt' + (E.off ? ' on' : '') + '" data-pe="off" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><b style="font-size:15px">Лічильник відключено</b><span class="sw' + (E.off ? ' on' : '') + '"></span></button>' +
           '<div class="small mute">На карті й у назві з\'явиться «(відключено)». Знімати так само: фото лічильника і актуальний показник.</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Адреса</div>' +
           '<div class="field"><label>Село</label><button type="button" class="input selbtn" data-pe="v"><span class="' + (E.v ? '' : 'mute') + '">' + esc(E.v || 'Без села') + '</span>' + icon('down', 18, 2.4) + '</button></div>' +
