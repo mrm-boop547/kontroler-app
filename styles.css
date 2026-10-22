@@ -305,3 +305,5 @@ body.kb-open .add-sheet .add-extra{display:none !important}
 body.kb-open .add-sheet .hk{height:38px}
 body.kb-open .add-sheet [data-act=addSave]{height:50px}
 body.kb-open .mapui{display:none !important}
+/* фільтри «Усі» відкриті: картку точки і кнопки карти ховаємо, щоб не перекривали панель */
+body.fopen #sheet, body.fopen #fabs, body.fopen .compass { display: none !important; }
