@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.2';
+  var VERSION = '0.21.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -791,7 +791,7 @@
     var d = syncPackage(), txt = JSON.stringify(d);
     var name = 'kontroler-sync-' + me().name.replace(/[^\wА-Яа-яІіЇїЄєҐґ]+/g, '_') + '-' + today() + '.json';
     var file = typeof File === 'function' ? new File([txt], name, { type: 'application/json' }) : null;
-    var done = function () { setMeta('lastSyncOut', Date.now()); toast('Пакет змін: ' + fmt(d.visits.length) + ' візитів, ' + fmt(d.points.length) + ' точок'); if (location.hash === '#me' || location.hash === '#settings') { var y0 = window.scrollY; render(); window.scrollTo(0, y0); } };
+    var done = function () { setMeta('lastSyncOut', Date.now()); toast('Пакет змін: ' + fmt(d.visits.length) + ' візитів, ' + fmt(d.points.length) + ' точок'); if (location.hash === '#me' || location.hash === '#settings') bgRender(); };
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: 'Карта контролера — дані ' + me().name }).then(done).catch(function () { download(name, txt, 'application/json'); done(); });
     } else { download(name, txt, 'application/json'); done(); }
@@ -874,6 +874,13 @@
   function ghFile() { return 'sync/' + (me().id || 'x') + '-' + dev() + '.json'; }
   var syncBusy = false, syncTimer = null;
   function scheduleSync() { if (!gh()) return; setTimeout(refreshSyncBadge, 300); clearTimeout(syncTimer); syncTimer = setTimeout(function () { ghSync(false); }, 15000); }
+  /* фонове оновлення екрана (після синхронізації): поки людина друкує, не перемальовуємо, інакше поле пропадає з-під пальця
+     і клавіатура закривається; перемалюємо, коли фокус піде з поля */
+  function typingNow() { var ae = document.activeElement; return !!(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'file' && ae.type !== 'checkbox'); }
+  function bgRender() {
+    if (typingNow()) { if (!bgRender.wait) { bgRender.wait = true; document.addEventListener('focusout', function f() { setTimeout(function () { if (typingNow()) return; document.removeEventListener('focusout', f); bgRender.wait = false; bgRender(); }, 300); }); } return; }
+    var y = window.scrollY, h = location.hash; render(); if (location.hash === h) window.scrollTo(0, y);
+  }
   function ghSync(manual) {
     if (!gh() || !me().login) return Promise.resolve();
     if (!navigator.onLine) { if (manual) toast('Немає інтернету. Синхронізую, коли з\'явиться'); return Promise.resolve(); }
@@ -894,7 +901,7 @@
       if (st) { st.textContent = 'Помилка'; st.style.color = '#B91C1C'; }
       /* тимчасові збої — автоматичний повтор через 1 хв */
       if (!c || c === 403 || c === 409 || c === 422 || c >= 500) { clearTimeout(ghSync._rt); ghSync._rt = setTimeout(function () { ghSync(false); }, 60000); }
-      var y = window.scrollY; if (/^#(me|settings)/.test(location.hash || '')) { render(); window.scrollTo(0, y); }
+      if (/^#(me|settings)/.test(location.hash || '')) bgRender();
     };
     var ok = function (r) { if (!r.ok) { var e = new Error('http'); e.status = r.status; throw r.text().then(function (t) { try { e.detail = (JSON.parse(t).message || '').slice(0, 80); } catch (x) {} return e; }, function () { return e; }); } return r; };
     /* 1. забираємо файли колег, які змінились */
@@ -940,7 +947,7 @@
         var txt = got.vis || got.pts ? 'Отримано: ' + got.vis + ' відміток, ' + got.pts + ' точок' : 'Синхронізовано, нового від колег немає';
         if (manual || got.vis || got.pts) toast(txt);
         if (got.sh && !manual && !(got.vis || got.pts)) toast('Оновлено план і налаштування дільниці');
-        if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
+        if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) bgRender(); }
       });
     }).catch(function (e) { return Promise.resolve(e).then(fail, fail); });
   }
@@ -1091,7 +1098,7 @@
       drop.forEach(function (k) { delete m[k]; });
       return setMeta('satOff', m).then(function () { return Promise.all(drop.map(satPurge)); }).then(function () {
         toast(fail ? 'Супутник для «' + v + '» збережено частково: не вдалося ' + fail + ' з ' + total : 'Супутник для «' + v + '» збережено офлайн');
-        var y = window.scrollY; if (/^#(me|settings)/.test(location.hash)) { render(); window.scrollTo(0, y); }
+        if (/^#(me|settings)/.test(location.hash)) bgRender();
       });
     }).catch(function () { satBusy = false; toast('Не вдалося зберегти супутник'); });
   }
@@ -1160,7 +1167,7 @@
       S.offBusy = false;
       setMeta('offline', { ts: Date.now(), tiles: ok, fail: fail, mb: +(bytes / 1048576).toFixed(1) });
       toast(fail ? 'Збережено ' + ok + ' з ' + r.total + ', повторіть для решти' : 'Карту дільниці збережено офлайн');
-      if (location.hash === '#me' || location.hash === '#settings') { var y0 = window.scrollY; render(); window.scrollTo(0, y0); }
+      if (location.hash === '#me' || location.hash === '#settings') bgRender();
     }).catch(function () { S.offBusy = false; set('Помилка завантаження, спробуйте ще раз'); });
   }
 
@@ -2425,7 +2432,7 @@
         '<div class="grid2" style="gap:8px"><div class="card dark" style="padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">Останній</span><span style="font-size:24px;font-weight:800">' + (last ? fmt(last.reading) : '—') + '</span><span class="small mute">' + (last ? (last.fromList ? 'з маршрутного листа' : dt(last.ts) + ' · ' + tm(last.ts)) : 'ще немає') + '</span></div>' +
         '<div class="card" style="background:#F6F6F7;padding:12px 14px;gap:2px;border-radius:18px"><span class="small mute">З попереднього</span><span style="font-size:24px;font-weight:800">' + (delta != null ? (delta >= 0 ? '+' : '') + fmt(delta) : '—') + '</span><span class="small mute">кВт·год</span></div></div>' +
         '<a class="btn" href="#read/' + p.id + '">' + icon('check', 20, 2.6) + 'Зняти показник на місці</a>' +
-        '<div class="field" style="margin-top:6px"><label for="rdg">Передали по телефону</label><input id="rdg" class="input" inputmode="numeric" placeholder="Показник зі слів"></div>' +
+        '<div class="field" style="margin-top:6px"><label for="rdg">Передали по телефону</label><input id="rdg" class="input" inputmode="decimal" placeholder="Показник зі слів"></div>' +
         '<button class="btn out" data-act="saveReading" data-id="' + p.id + '">Зберегти як «по телефону»</button>' +
         (rd.length ? '<button class="btn sec" data-act="toggleHist" style="justify-content:space-between;padding:0 14px;border:0;background:#F6F6F7">Історія показників · ' + rd.length + icon('down', 18, 2.4) + '</button>' +
           '<div id="hist" style="display:none">' + rd.map(function (v, i) {
@@ -2740,7 +2747,7 @@
   function cardBottom(p) {
     var rd = lastReading(p.id);
     return '<details class="card fold-card"' + ((cycleMap()[p.id] || {}).result === 'note' ? ' open' : '') + '><summary><span class="row" style="gap:10px">' + icon('list', 18) + '<b>Історія · ' + visitsOf(p.id).length + '</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
-        '<div class="field"><label for="rdg">Показник передали по телефону</label><div class="row" style="gap:8px"><input id="rdg" class="input" inputmode="numeric" placeholder="Показник зі слів" style="min-width:0;flex:1"><button class="btn out" data-act="saveReading" data-id="' + p.id + '" style="width:auto;padding:0 16px">Зберегти</button></div></div>' +
+        '<div class="field"><label for="rdg">Показник передали по телефону</label><div class="row" style="gap:8px"><input id="rdg" class="input" inputmode="decimal" placeholder="Показник зі слів" style="min-width:0;flex:1"><button class="btn out" data-act="saveReading" data-id="' + p.id + '" style="width:auto;padding:0 16px">Зберегти</button></div></div>' +
         (rd.length ? '<div class="col" style="gap:0">' + rd.map(function (v, i) {
           var nx = rd[i + 1], dd = nx ? Number(v.reading) - Number(nx.reading) : null;
           return '<div class="list-row" style="justify-content:space-between"><div class="col"><b>' + dt(v.ts) + '</b><span class="small mute">' + tm(v.ts) + (v.method ? ' · ' + esc(v.method) : '') + '</span></div><div class="col" style="align-items:flex-end"><b style="font-size:16px">' + fmt(v.reading) + '</b><span class="small mute">' + (dd != null ? (dd >= 0 ? '+' : '') + fmt(dd) : '—') + '</span></div></div>';
@@ -2978,7 +2985,7 @@
   }
   function saveVisit(id) {
     var p = S.points.get(id); if (!p || !V.res) return;
-    var reading = $('#vr') ? $('#vr').value.replace(/\s/g, '') : '';
+    var reading = $('#vr') ? $('#vr').value.replace(/\s/g, '').replace(',', '.') : '';
     if (reading && !/^\d+(\.\d+)?$/.test(reading)) return toast('Показник: лише цифри');
     var note = $('#vn').value.trim();
     /* «Зчитано» — без візиту тут: доступ і мітки зберігаємо в точку, далі крок зчитування з пломбами */
@@ -2996,7 +3003,7 @@
     });
   }
   function saveReading(id) {
-    var val = ($('#rdg').value || '').replace(/\s/g, '');
+    var val = ($('#rdg').value || '').replace(/\s/g, '').replace(',', '.');
     if (!/^\d+(\.\d+)?$/.test(val)) return toast('Введіть показник цифрами');
     var lastM = cycleMap()[id], afterNote = lastM && lastM.result === 'note';
     var v = newVisit({ pointId: id, result: 'ok', prof: S.points.get(id).status, reading: val, method: afterNote ? 'по телефону (після записки)' : 'по телефону', note: null,
@@ -3296,7 +3303,7 @@
 
   /* ---------- встановлення як застосунок ---------- */
   var installEvt = null;
-  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; if (/^#(home|me)?$/.test(location.hash || '')) { var y = window.scrollY; render(); window.scrollTo(0, y); } });
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; if (/^#(home|me)?$/.test(location.hash || '')) bgRender(); });
   window.addEventListener('appinstalled', function () { installEvt = null; setMeta('installed', Date.now()); toast('Застосунок встановлено'); });
   function isStandalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
   function installCard(compact) {
@@ -3567,7 +3574,10 @@
       var kb = function () {
         var vv = window.visualViewport, h = vv.height; if (!kb.max || Math.abs(window.innerWidth - (kb.w || 0)) > 50) { kb.max = h; kb.w = window.innerWidth; } kb.max = Math.max(kb.max, h); var open = h < kb.max * 0.8;
         document.documentElement.style.setProperty('--vvh', h + 'px'); document.documentElement.style.setProperty('--vvt', (vv.offsetTop || 0) + 'px');
-        document.body.classList.toggle('kb-open', !!open && /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || ''));
+        var ae = document.activeElement || {};
+        document.body.classList.toggle('kb-open', !!open && /^(INPUT|TEXTAREA)$/.test(ae.tagName || ''));
+        /* фокус у верхній панелі карти (пошук): її не ховаємо, інакше поле зникає, клавіатура закривається і все повторюється по колу */
+        document.body.classList.toggle('kb-ui', !!(ae.closest && ae.closest('.mapui')));
       };
       window.visualViewport.addEventListener('resize', kb); window.visualViewport.addEventListener('scroll', kb);
       document.addEventListener('focusin', function () { setTimeout(kb, 300); }); document.addEventListener('focusout', function () { setTimeout(kb, 300); });

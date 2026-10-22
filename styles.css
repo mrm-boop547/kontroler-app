@@ -304,6 +304,7 @@ body.kb-open .add-sheet{bottom:8px;gap:10px;padding:12px 14px}
 body.kb-open .add-sheet .add-extra{display:none !important}
 body.kb-open .add-sheet .hk{height:38px}
 body.kb-open .add-sheet [data-act=addSave]{height:50px}
-body.kb-open .mapui{display:none !important}
+body.kb-open:not(.kb-ui) .mapui{display:none !important}
 /* фільтри «Усі» відкриті: картку точки і кнопки карти ховаємо, щоб не перекривали панель */
 body.fopen #sheet, body.fopen #fabs, body.fopen .compass { display: none !important; }
+body.kb-open.kb-ui #sheet{display:none !important}
