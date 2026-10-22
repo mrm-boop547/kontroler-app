@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.0';
+  var VERSION = '0.21.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -879,11 +879,23 @@
     if (syncBusy) return Promise.resolve(); syncBusy = true;
     var seen = Object.assign({}, S.meta.ghSeen || {}), got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st'), files = Object.assign({}, S.meta.ghFiles || {}), clash = false;
     if (st && manual) st.textContent = 'Синхронізую…';
+    /* зрозуміла причина помилки: код відповіді сервера і що з ним робити */
     var fail = function (e) {
-      syncBusy = false; var msg = e && e.status === 401 ? 'токен недійсний або прострочений' : e && e.status === 404 ? 'репозиторій не знайдено або токен не має до нього доступу' : 'немає зв\'язку з сервером';
-      setMeta('ghErr', msg); if (manual) toast('Синхронізація: ' + msg); if (st) st.textContent = 'Помилка: ' + msg;
+      syncBusy = false;
+      var c = e && e.status, msg = !c ? (navigator.onLine ? 'сервер не відповів (слабкий інтернет?), повторю сам' : 'немає інтернету, синхронізую, коли з\'явиться')
+        : c === 401 ? 'токен недійсний або прострочений (код 401)'
+        : c === 403 ? 'немає доступу або забагато запитів, спробую пізніше (код 403)'
+        : c === 404 ? 'репозиторій не знайдено або токен не має до нього доступу (код 404)'
+        : c === 409 || c === 422 ? 'конфлікт версій файлу, повторю (код ' + c + ')'
+        : c === 413 ? 'забагато даних за раз (код 413)'
+        : 'сервер відповів помилкою (код ' + c + ')' + (e.detail ? ': ' + e.detail : '');
+      setMeta('ghErr', msg); if (manual) toast('Синхронізація: ' + msg);
+      if (st) { st.textContent = 'Помилка'; st.style.color = '#B91C1C'; }
+      /* тимчасові збої — автоматичний повтор через 1 хв */
+      if (!c || c === 403 || c === 409 || c === 422 || c >= 500) { clearTimeout(ghSync._rt); ghSync._rt = setTimeout(function () { ghSync(false); }, 60000); }
+      var y = window.scrollY; if (/^#(me|settings)/.test(location.hash || '')) { render(); window.scrollTo(0, y); }
     };
-    var ok = function (r) { if (!r.ok) { var e = new Error('http'); e.status = r.status; throw e; } return r; };
+    var ok = function (r) { if (!r.ok) { var e = new Error('http'); e.status = r.status; throw r.text().then(function (t) { try { e.detail = (JSON.parse(t).message || '').slice(0, 80); } catch (x) {} return e; }, function () { return e; }); } return r; };
     /* 1. забираємо файли колег, які змінились */
     return ghReq('/contents/sync').then(function (r) { return r.status === 404 ? [] : ok(r).json(); }).then(function (list) {
       var onSrv = {}; (Array.isArray(list) ? list : []).forEach(function (f) { onSrv[f.path] = 1; }); Object.keys(files).forEach(function (k) { if (!onSrv[k]) delete files[k]; });
@@ -909,7 +921,12 @@
       return chain.then(function () {
         var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(litePackage())) };
         if (mySha) body.sha = mySha;
-        return ghReq('/contents/' + mine, { method: 'PUT', body: body }).then(ok).then(function (r) { return r.json(); });
+        var put = function () { return ghReq('/contents/' + mine, { method: 'PUT', body: body }); };
+        return put().then(function (r) {
+          if (r.status !== 409 && r.status !== 422) return r;
+          /* файл на сервері змінився з іншого запиту — беремо його поточну версію і пишемо ще раз */
+          return ghReq('/contents/' + mine).then(function (q) { return q.ok ? q.json() : null; }).then(function (j) { if (j && j.sha) body.sha = j.sha; else delete body.sha; return put(); });
+        }).then(ok).then(function (r) { return r.json(); });
       }).then(function (res) {
         seen[mine] = res && res.content && res.content.sha;
         files[mine] = { name: me().name || '', id: me().id, inst: inst(), dev: dev(), app: VERSION, ts: Date.now(), own: true };
@@ -924,7 +941,7 @@
         if (got.sh && !manual && !(got.vis || got.pts)) toast('Оновлено план і налаштування дільниці');
         if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) { var y = window.scrollY; render(); window.scrollTo(0, y); } }
       });
-    }).catch(fail);
+    }).catch(function (e) { return Promise.resolve(e).then(fail, fail); });
   }
   /* хто є на сервері: по файлу на кожен телефон — ім'я, версія, коли надсилав, скільки точок і відміток */
   function srvList() {
