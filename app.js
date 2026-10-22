@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.20.9';
+  var VERSION = '0.21.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -936,6 +936,7 @@
       }).join('') + (dup.length ? '<p style="color:#B91C1C;margin-top:8px"><b>Кілька телефонів під одним іменем:</b> ' + esc(dup.join(', ')) + '. Найімовірніше, телефон налаштували з чужої резервної копії. На тому телефоні: «Я» → кнопка зі стрілками біля імені («Змінити контролера») → увійти під своїм ПІБ і табельним. Олівець для цього не підходить: він переносить усі записи старого імені.</p>' : '');
   }
   function showInfo(k) {
+    if (k === 'sat') return infoSheet('Супутник без інтернету', '<p>Вибери село на головній і натисни «Зберегти супутник». Застосунок завантажить знімки навколо всіх точок села на всіх наближеннях, до окремих будинків. Одне село ≈10–20 МБ, 1–2 хв. Краще через Wi-Fi або перед виїздом.</p><p>Без інтернету карта показує збережене так само, як з інтернетом. Тримаємо до ' + SAT_MAX + ' сіл; найстаріші прибираються самі, або хрестиком.</p><p class="mute">Знімки © Esri. Для особистої роботи в полі; при впровадженні на все обленерго супутник для офлайну варто оформити ліцензією.</p>');
     if (k === 'sync') {
       var g = gh();
       return infoSheet('Синхронізація', '<p><b>Через інтернет.</b> Працює сама: при відкритті застосунку, коли з\'являється інтернет, через 15 с після кожної відмітки і кожні 5 хв. Без інтернету все зберігається на телефоні і піде пізніше.</p>' +
@@ -1027,6 +1028,73 @@
     return '<div class="between"><div class="sync-sub">' + icon('cloud', 18) + '<b>Через інтернет</b></div><span class="small" id="gh-st" style="font-weight:700;' + (err ? 'color:#B91C1C' : 'color:#16A34A') + '">' + (err ? 'помилка' : S.meta.ghLast ? '✓ ' + tm(S.meta.ghLast) + (dt(S.meta.ghLast) !== dt(Date.now()) ? ' ' + dt(S.meta.ghLast) : '') : 'ще не було') + '</span></div>' +
       (err ? '<div class="small" style="color:#B91C1C">' + esc(err) + '</div>' : '') +
       '<button class="btn" data-act="ghSync">' + icon('sync', 18) + 'Синхронізувати зараз</button>';
+  }
+
+  /* ---------- супутник офлайн: знімки Esri навколо точок вибраного села, всі наближення до будинків ----------
+     Окреме сховище (не чиститься автоматично); з'являється без інтернету так само, як із ним. Тримаємо до 6 сіл. */
+  var SAT = 'sat-v1', SAT_MAX = 6;
+  function satUrl(z, x, y) { return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + y + '/' + x; }
+  function satTiles(v) {
+    var ps = villagePoints(v); if (!ps.length) return [];
+    var a = 90, b = -90, c = 180, d = -180;
+    ps.forEach(function (p) { a = Math.min(a, p.lat); b = Math.max(b, p.lat); c = Math.min(c, p.lon); d = Math.max(d, p.lon); });
+    var pad = 0.0025; a -= pad; b += pad; c -= pad * 1.5; d += pad * 1.5;
+    var out = {}, add = function (z, x, y) { out[z + '/' + x + '/' + y] = 1; };
+    for (var z = 13; z <= 19; z++) {
+      if (z <= 16) { var t1 = tileXY(b, c, z), t2 = tileXY(a, d, z); for (var x = t1.x; x <= t2.x; x++) for (var y = t1.y; y <= t2.y; y++) add(z, x, y); }
+      else { var r = z === 19 ? 0 : 1; ps.forEach(function (p) { var t = tileXY(p.lat, p.lon, z); for (var i = -r; i <= r; i++) for (var j = -r; j <= r; j++) add(z, t.x + i, t.y + j); }); }
+    }
+    return Object.keys(out).map(function (k) { var q = k.split('/'); return satUrl(+q[0], +q[1], +q[2]); });
+  }
+  var satBusy = false;
+  function satDownload(v) {
+    if (!v || v === ALL) return toast('Спершу виберіть село');
+    if (!navigator.onLine) return toast('Потрібен інтернет');
+    if (satBusy) return toast('Вже завантажую'); satBusy = true;
+    var list = satTiles(v), total = list.length, ok = 0, fail = 0, bytes = 0, i = 0;
+    var set = function (t) { var el = $('#sat-st'); if (el) el.textContent = t; };
+    set('Завантажую ' + v + '… 0%');
+    caches.open(SAT).then(function (cache) {
+      var worker = function () {
+        if (i >= total) return Promise.resolve();
+        var u = list[i++];
+        return cache.match(u).then(function (hit) {
+          if (hit) { ok++; return; }
+          /* «#kc-off» — щоб службовий кеш перегляду не дублював ці знімки; кеш порівнює адреси без «#» */
+          return fetch(u + '#kc-off', { mode: 'cors' }).then(function (r) { if (!r.ok) throw 0; return r.clone().arrayBuffer().then(function (buf) { bytes += buf.byteLength; return cache.put(u, r); }); }).then(function () { ok++; }, function () { fail++; });
+        }).then(function () { if ((ok + fail) % 10 === 0) set('Завантажую ' + v + '… ' + pct(ok + fail, total) + '% · ' + (bytes / 1048576).toFixed(1) + ' МБ'); return worker(); });
+      };
+      return Promise.all([worker(), worker(), worker(), worker()]);
+    }).then(function () {
+      satBusy = false;
+      var m = Object.assign({}, S.meta.satOff || {}); m[v] = { ts: Date.now(), tiles: ok, fail: fail, mb: bytes ? +(bytes / 1048576).toFixed(1) : (m[v] ? m[v].mb : 0) };
+      /* понад ліміт — прибираємо найстаріші села */
+      var ks = Object.keys(m).sort(function (x, y) { return m[y].ts - m[x].ts; }), drop = ks.slice(SAT_MAX);
+      drop.forEach(function (k) { delete m[k]; });
+      return setMeta('satOff', m).then(function () { return Promise.all(drop.map(satPurge)); }).then(function () {
+        toast(fail ? 'Супутник для «' + v + '» збережено частково: не вдалося ' + fail + ' з ' + total : 'Супутник для «' + v + '» збережено офлайн');
+        var y = window.scrollY; if (/^#(me|settings)/.test(location.hash)) { render(); window.scrollTo(0, y); }
+      });
+    }).catch(function () { satBusy = false; toast('Не вдалося зберегти супутник'); });
+  }
+  /* видалити знімки села, крім тих, що потрібні іншим збереженим селам */
+  function satPurge(v) {
+    var keep = {}; Object.keys(S.meta.satOff || {}).forEach(function (k) { if (k !== v) satTiles(k).forEach(function (u) { keep[u] = 1; }); });
+    return caches.open(SAT).then(function (c) { return Promise.all(satTiles(v).filter(function (u) { return !keep[u]; }).map(function (u) { return c.delete(u); })); });
+  }
+  function satRemove(v) {
+    var m = Object.assign({}, S.meta.satOff || {}); delete m[v];
+    satPurge(v).then(function () { return setMeta('satOff', m); }).then(function () { toast('Видалено супутник для «' + v + '»'); var y = window.scrollY; render(); window.scrollTo(0, y); });
+  }
+  function satCard() {
+    var m = S.meta.satOff || {}, ks = Object.keys(m).sort(function (a, b) { return m[b].ts - m[a].ts; }), v = village() && village() !== ALL ? village() : null;
+    var est = v ? satTiles(v).length : 0;
+    return '<div class="card" style="gap:10px"><div class="between"><div class="h2">Супутник без інтернету</div>' + infoBtn('sat') + '</div>' +
+      (ks.length ? '<div class="col" style="gap:0">' + ks.map(function (k) { var x = m[k];
+        return '<div class="list-row" style="padding:8px 0">' + icon('check', 16, 3) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(k) + '</b><span class="small mute">' + dt(x.ts) + ' · ' + x.mb + ' МБ' + (x.fail ? ' · не вдалося ' + x.fail : '') + '</span></div>' +
+          '<button class="seal-x" data-act="satDel" data-v="' + esc(k) + '" aria-label="Видалити">' + icon('close', 14, 2.4) + '</button></div>'; }).join('') + '</div>' : '') +
+      '<div class="small" id="sat-st" style="font-weight:700">' + (v ? (m[v] ? '«' + esc(v) + '» збережено ' + dt(m[v].ts) : '«' + esc(v) + '»: ≈' + Math.max(1, Math.round(est * 25 / 1024)) + ' МБ') : 'Виберіть село на головній') + '</div>' +
+      (v ? '<button class="btn sec" data-act="satGet">' + icon('cloud', 18) + (m[v] ? 'Оновити супутник: ' : 'Зберегти супутник: ') + esc(v) + '</button>' : '') + '</div>';
   }
 
   /* ---------- офлайн-карта: векторні тайли всієї дільниці (OpenFreeMap дає їх до z14, далі карта збільшує сама) ---------- */
@@ -3258,9 +3326,10 @@
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
         '<button class="btn sec" data-act="csvVisits">Журнал відміток</button>' +
         '<button class="btn sec" data-act="kml">Карта в KML (MAPS.ME, Google)</button></div>';
-    var offline = '<div class="card"><div class="h2">Карта без інтернету</div><div class="small mute" style="line-height:1.5">Схема вулиць і будинків усієї дільниці, ≈10–25 МБ, краще через Wi-Fi. Супутник працює лише з інтернетом.</div>' +
+    var offline = '<div class="card"><div class="h2">Карта без інтернету</div><div class="small mute" style="line-height:1.5">Схема вулиць і будинків усієї дільниці, ≈10–25 МБ, краще через Wi-Fi. Супутник окремо, по селах: блок нижче.</div>' +
         '<div class="small" id="off-st" style="font-weight:700">' + (off ? 'Збережено ' + dt(off.ts) + ' · ' + off.tiles + ' фрагментів · ' + off.mb + ' МБ' + (off.fail ? ' · не вдалося ' + off.fail : '') : 'Ще не збережено') + '</div>' +
         '<button class="btn sec" data-act="offline">' + (off ? 'Оновити карту офлайн' : 'Зберегти карту дільниці офлайн') + '</button></div>';
+    offline += satCard();
     var backup = '<div class="card"><div class="between"><div class="h2">Резервна копія</div><span class="small ' + (S.meta.lastBackup ? 'mute' : '') + '" style="' + (S.meta.lastBackup ? '' : 'color:#B45309') + '">' + (S.meta.lastBackup ? 'остання ' + dt(S.meta.lastBackup) : 'ще не робили') + '</span></div>' +
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
@@ -3338,6 +3407,8 @@
       case 'profileSave': profileSave(); break;
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
+      case 'satGet': satDownload(village()); break;
+      case 'satDel': if (confirm('Видалити збережений супутник для «' + el.getAttribute('data-v') + '»?')) satRemove(el.getAttribute('data-v')); break;
       case 'stickyOff': setMeta('stickyStreet', null); if (S.adding) { S.adding.street = ''; S.adding.sticky = false; } renderSheet(); setTimeout(function () { var i = $('#ad-s'); if (i) i.focus(); }, 50); break;
       case 'addJur': S.adding.jur = !S.adding.jur; renderSheet(); break;
       case 'pointVillage': (function (pid) { var pt = S.points.get(pid); if (!pt) return; pickVillageFor(pt.village, function (v) {

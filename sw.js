@@ -1,7 +1,8 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.20.9';
+var SHELL = 'shell-v0.21.0';
 var OFFLINE = 'offline-v1'; /* карта дільниці, збережена кнопкою «Зберегти карту офлайн» — не чиститься автоматично */
 var TILES = 'tiles-v1';
+var SAT = 'sat-v1'; /* супутник, збережений по селах кнопкою — не чиститься автоматично */
 var FILES = ['./', './index.html', './styles.css', './app.js', './mapstyle.js', './manifest.webmanifest',
   './lib/maplibre-gl.js', './lib/qrcode.js', './lib/jsQR.js', './lib/maplibre-gl.css', './icons/icon-192.png', './icons/icon-512.png'];
 
@@ -10,7 +11,7 @@ self.addEventListener('install', function (e) {
 });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
-    return Promise.all(ks.filter(function (k) { return k !== SHELL && k !== TILES && k !== OFFLINE; }).map(function (k) { return caches.delete(k); }));
+    return Promise.all(ks.filter(function (k) { return k !== SHELL && k !== TILES && k !== OFFLINE && k !== SAT; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 
@@ -45,6 +46,8 @@ self.addEventListener('fetch', function (e) {
     return;
   }
   if (isTile(url)) {
+    /* завантаження «наперед» сторінка кладе у своє сховище сама — тут не дублюємо */
+    if (url.indexOf('#kc-off') >= 0) return;
     e.respondWith(caches.match(req).then(function (hit) {
       var net = fetch(req).then(function (res) {
         if (res && (res.ok || res.type === 'opaque')) { var cp = res.clone(); caches.open(TILES).then(function (c) { c.put(req, cp); trim(); }); }
