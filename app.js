@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.4';
+  var VERSION = '0.21.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -3044,13 +3044,13 @@
       '<div class="sheet" style="bottom:calc(16px + var(--safe-b))" id="bind-sheet"></div>';
     renderBindUi();
     var c = p ? [p.lon, p.lat] : S.pos ? [S.pos.lon, S.pos.lat] : null;
-    var setup = function () { updateMap(); if (c) map.jumpTo({ center: c, zoom: 18.5 }); };
+    var setup = function () { updateMap(); if (c) pinJump(c, 18.5); };
     if (mapReady) setup(); else S.pendingFit = setup;
     var first = !p;
     startGps();
     onGps(function (pos) {
       B.acc = Math.round(pos.acc); renderBindAcc();
-      if (B.mode === 'gps' && !S.moved && first) { map.jumpTo({ center: [pos.lon, pos.lat], zoom: Math.max(map.getZoom(), 18) }); first = false; }
+      if (B.mode === 'gps' && !S.moved && first) { pinJump([pos.lon, pos.lat], Math.max(map.getZoom(), 18)); first = false; }
       updateMe();
     });
     if (S.pos) { B.acc = Math.round(S.pos.acc); renderBindAcc(); }
@@ -3072,7 +3072,7 @@
       '<button class="btn" id="bindBtn" data-act="doBind">' + icon('pin') + (B.mode === 'gps' ? 'Прив\'язати за GPS' : 'Зберегти тут') + '</button>';
     renderBindAcc();
   }
-  function bindVillage() { if (B.vSet) return { v: B.village, how: 'вибрано вручну' }; var c = map ? map.getCenter() : null, pos = B.mode === 'gps' && S.pos ? S.pos : c ? { lat: c.lat, lon: c.lng } : S.pos; return pos ? guessVillage(pos) : { v: newVillage(), how: '' }; }
+  function bindVillage() { if (B.vSet) return { v: B.village, how: 'вибрано вручну' }; var c = map ? pinLngLat() : null, pos = B.mode === 'gps' && S.pos ? S.pos : c ? { lat: c.lat, lon: c.lng } : S.pos; return pos ? guessVillage(pos) : { v: newVillage(), how: '' }; }
   function renderBindAcc() {
     var btn = $('#bindBtn'); if (!btn) return;
     if (B.mode !== 'gps') { btn.disabled = false; return; }
@@ -3083,8 +3083,23 @@
     $('#acct').innerHTML = (lvl >= 2 ? dotHtml('g') + ' Точність добра' : lvl === 1 ? dotHtml('y') + ' Слабка — краще вручну' : dotHtml('r') + ' Погана — прив\'яжіть вручну');
     document.querySelectorAll('#accbar span').forEach(function (s, i) { s.style.background = i < lvl ? '#111' : '#E4E4E7'; });
   }
+  /* вістря чорної мітки на екрані: мітка стоїть не в центрі карти (42% висоти, вістря внизу),
+     тому координати беремо саме з-під вістря, а не центр карти, інакше точка зсувалась нижче */
+  function pinPx() {
+    var el = document.querySelector('.crosshair'), box = map.getContainer().getBoundingClientRect();
+    if (!el) return { x: box.width / 2, y: box.height / 2 };
+    var r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2 - box.left, y: r.top + r.height * (50 / 52) - box.top };
+  }
+  function pinLngLat() { var p = pinPx(); return map.unproject([p.x, p.y]); }
+  /* поставити карту так, щоб координата c опинилась під вістрям мітки */
+  function pinJump(c, zoom) {
+    map.jumpTo({ center: c, zoom: zoom });
+    var p = pinPx(), box = map.getContainer().getBoundingClientRect();
+    map.panBy([box.width / 2 - p.x, box.height / 2 - p.y], { animate: false });
+  }
   function doBind() {
-    var c = map.getCenter(), useGps = B.mode === 'gps' && S.pos;
+    var c = pinLngLat(), useGps = B.mode === 'gps' && S.pos;
     var lat = useGps ? S.pos.lat : c.lat, lon = useGps ? S.pos.lon : c.lng, acc = useGps ? S.pos.acc : null;
     var src = useGps ? 'GPS' : (S.meta.layer === 'sat' ? 'вручну (супутник)' : 'вручну (карта)');
     var p = B.p;
@@ -3414,7 +3429,7 @@
       case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; break;
       case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
         if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || stMatch(p, S.filter); })); } break;
-      case 'locate': if (S.pos) { updateMe(); map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); if (S.pos.stale) toast('Остання відома позиція (сіра). GPS ще шукає супутники'); } else toast(navigator.onLine ? 'Шукаю GPS… Перевірте, чи дозволено геолокацію' : 'Шукаю супутники без інтернету, це до 1–3 хв. Краще на відкритому місці'); break;
+      case 'locate': if (S.pos) { updateMe(); if (mapMode === 'bind') { S.moved = true; pinJump([S.pos.lon, S.pos.lat], Math.max(map.getZoom(), 18)); } else map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); if (S.pos.stale) toast('Остання відома позиція (сіра). GPS ще шукає супутники'); } else toast(navigator.onLine ? 'Шукаю GPS… Перевірте, чи дозволено геолокацію' : 'Шукаю супутники без інтернету, це до 1–3 хв. Краще на відкритому місці'); break;
       case 'layer': setLayer(el.getAttribute('data-l')); render(); break;
       case 'skip': S.skipped[S.sel] = 1; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; updateMap(); renderSheet(); toast('Адресу пропущено до кінця дня'); break;
       case 'saveCard': saveCard(id); break;
