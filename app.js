@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.3';
+  var VERSION = '0.21.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -315,14 +315,30 @@
   function newVisit(o) { o.ts = o.ts || Date.now(); o.by = me().id; o.uid = dev() + '-' + o.ts.toString(36); scheduleSync(); return o; }
 
   /* ---------- GPS ---------- */
-  var watchId = null, gpsListeners = [];
-  function startGps() {
-    if (watchId !== null || !navigator.geolocation) return;
-    watchId = navigator.geolocation.watchPosition(function (pos) {
-      S.pos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
-      gpsListeners.forEach(function (f) { f(S.pos); });
-    }, function (err) { if (err.code === 1) toast('Дозвольте доступ до геолокації'); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  var watchId = null, gpsListeners = [], gpsRetry = null;
+  /* GPS без інтернету: на телефоні немає допоміжних даних (A-GPS), тому перше визначення займає 1–3 хв.
+     1) одразу беремо останню відому телефону позицію (працює офлайн), 2) стежимо без тайм-ауту,
+     3) при помилці перезапускаємо стеження, 4) зберігаємо останню позицію, щоб після перезапуску застосунку карта знала, де ви */
+  function gpsSet(pos, stale) {
+    var c = pos.coords, ts = pos.timestamp || Date.now();
+    if (S.pos && !S.pos.stale && stale) return;
+    S.pos = { lat: c.latitude, lon: c.longitude, acc: stale ? Math.max(c.accuracy || 0, 100) : c.accuracy, ts: ts, stale: !!stale };
+    if (!stale) try { localStorage.setItem('lastPos', JSON.stringify(S.pos)); } catch (e) {}
+    gpsListeners.forEach(function (f) { f(S.pos); });
   }
+  function startGps() {
+    if (!navigator.geolocation) return;
+    if (!S.pos) try { var lp = JSON.parse(localStorage.getItem('lastPos') || 'null'); if (lp && Date.now() - lp.ts < 6 * 3600e3) { lp.stale = true; lp.acc = Math.max(lp.acc || 0, 100); S.pos = lp; } } catch (e) {}
+    if (watchId !== null) return;
+    navigator.geolocation.getCurrentPosition(function (pos) { gpsSet(pos, Date.now() - pos.timestamp > 60000); }, function () {}, { enableHighAccuracy: false, maximumAge: Infinity, timeout: 10000 });
+    watchId = navigator.geolocation.watchPosition(function (pos) { gpsSet(pos, false); }, function (err) {
+      /* доступ заборонено: знімаємо стеження, щоб наступний екран спробував знову (раптом дозволили в налаштуваннях) */
+      if (err.code === 1) { navigator.geolocation.clearWatch(watchId); watchId = null; if (Date.now() - (startGps.warned || 0) > 60000) { startGps.warned = Date.now(); toast('Дозвольте доступ до геолокації'); } return; }
+      /* немає сигналу або тайм-аут: перезапускаємо стеження, GPS-модуль продовжує шукати супутники */
+      clearTimeout(gpsRetry); gpsRetry = setTimeout(restartGps, 3000);
+    }, { enableHighAccuracy: true, maximumAge: 10000 });
+  }
+  function restartGps() { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } startGps(); }
   function onGps(f) { gpsListeners.push(f); }
   function offGps() { gpsListeners = []; }
 
@@ -1931,7 +1947,7 @@
       meMarker = new maplibregl.Marker({ element: el }).setLngLat([S.pos.lon, S.pos.lat]).addTo(map);
       map.on('zoom', sizeAcc);
     }
-    meMarker.setLngLat([S.pos.lon, S.pos.lat]); sizeAcc();
+    meMarker.setLngLat([S.pos.lon, S.pos.lat]); meMarker.getElement().classList.toggle('stale', !!S.pos.stale); sizeAcc();
   }
   function sizeAcc() {
     if (!meMarker || !S.pos) return;
@@ -2084,7 +2100,7 @@
     if (reading && !/^\d+(\.\d+)?$/.test(reading)) return toast('Показник: лише цифри');
     if (res === 'empty' && p.status !== 'n') { p.status = 'n'; savePoint(p); }
     var v = newVisit({ pointId: id, result: res, prof: p.status, reading: reading || null, method: reading ? 'зчитано' : null, note: null,
-      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
+      pos: S.pos && !S.pos.stale ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
     S.quickOk = null;
     put('visits', v).then(function (k) {
       v.id = k; S.visits.push(v); invalidate(); S.lastQuick = { pid: id, key: k, uid: v.uid, ts: Date.now(), res: res }; refreshDone();
@@ -2941,7 +2957,7 @@
     var v = newVisit({ pointId: id, result: 'ok', prof: p.status, reading: R.val, method: R.photo ? 'зчитано, фотофіксація' : 'зчитано', note: notes.join('; ') || null,
       serial: f.serial || '',
       seals: sum === 'all' ? 'без зауважень' : sum.toLowerCase() + ' пломба', form: { alarm: F.alarm, placement: F.placement2, noteSel: F.noteSel, zko: F.zko, av: F.av, feeder: F.feeder }, sealList: L.filter(function (x) { return x.n || x.st; }), photo: !!R.photo, sysReading: st.sys ? st.sys.v : null,
-      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
+      pos: S.pos && !S.pos.stale ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
     /* у картку: статуси пломб, підсумок «Пломби», серійний (якщо його не було) */
     if (L.some(function (x) { return x.n; })) f.sealList = L.filter(function (x) { return x.n; });
     f.seals = sum === 'all' ? 'Без зауважень' : sum + ' пломба';
@@ -2991,7 +3007,7 @@
     /* «Зчитано» — без візиту тут: доступ і мітки зберігаємо в точку, далі крок зчитування з пломбами */
     if (V.res === 'ok') { p.status = V.prof; p.tags = V.tags.slice(); S.readNote = note; return savePoint(p).then(function () { V = {}; R = {}; location.replace('#read/' + id); }); }
     var v = newVisit({ pointId: id, result: V.res, prof: V.prof, reading: reading || null, method: reading ? (($('#vmw [data-f]') || {}).getAttribute ? $('#vmw [data-f]').getAttribute('data-val') : 'зчитано') : null, note: note || null,
-      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
+      pos: S.pos && !S.pos.stale ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
     if (V.res === 'empty') V.prof = 'n';
     p.status = V.prof; p.tags = V.tags.slice();
     if (note) p.note = p.note ? p.note + '; ' + note : note;
@@ -3007,7 +3023,7 @@
     if (!/^\d+(\.\d+)?$/.test(val)) return toast('Введіть показник цифрами');
     var lastM = cycleMap()[id], afterNote = lastM && lastM.result === 'note';
     var v = newVisit({ pointId: id, result: 'ok', prof: S.points.get(id).status, reading: val, method: afterNote ? 'по телефону (після записки)' : 'по телефону', note: null,
-      pos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
+      pos: S.pos && !S.pos.stale ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
     return put('visits', v).then(function (k) { v.id = k; S.visits.push(v); invalidate(); S.route = null; toast('Показник збережено: ' + fmt(val)); var y = window.scrollY; R = {}; renderRead(id); window.scrollTo(0, y); });
   }
 
@@ -3398,7 +3414,7 @@
       case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; break;
       case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
         if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || stMatch(p, S.filter); })); } break;
-      case 'locate': if (S.pos) { updateMe(); map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); } else toast('Шукаю GPS… Перевірте, чи дозволено геолокацію'); break;
+      case 'locate': if (S.pos) { updateMe(); map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); if (S.pos.stale) toast('Остання відома позиція (сіра). GPS ще шукає супутники'); } else toast(navigator.onLine ? 'Шукаю GPS… Перевірте, чи дозволено геолокацію' : 'Шукаю супутники без інтернету, це до 1–3 хв. Краще на відкритому місці'); break;
       case 'layer': setLayer(el.getAttribute('data-l')); render(); break;
       case 'skip': S.skipped[S.sel] = 1; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; updateMap(); renderSheet(); toast('Адресу пропущено до кінця дня'); break;
       case 'saveCard': saveCard(id); break;
@@ -3564,7 +3580,7 @@
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
     checkUpdate(false, true);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000) refreshSat(true, 400); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000) refreshSat(true, 400); if (awayMs > 60000 && watchId !== null) restartGps(); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
     window.addEventListener('online', function () { refreshSyncBadge(); refreshSat(true, 800); ghSync(false); });
     window.addEventListener('offline', function () { refreshSyncBadge(); });
     window.addEventListener('resize', function () { placeFabs(); });
