@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.7';
+  var VERSION = '0.21.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2695,7 +2695,7 @@
     var done = R.L.filter(function (x) { return x.st; }).length;
     /* порядок і склад полів — точно як «Візит контролера» в старому застосунку */
     app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
-      (isCard ? cardTop(p) + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
+      (isCard ? cardTop(p) + cardPhotos() + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
       '<div class="card visit">' +
         /* дані абонента згорнуті в один рядок: ПІБ і № лічильника видно одразу, решта по тапу */
         '<details class="subj"' + (R.subjOpen || !(f.fio || serial) ? ' open' : '') + '><summary><div class="col" style="flex:1;min-width:0;gap:2px"><b style="font-size:16px">' + esc(f.fio || 'Абонент: немає даних') + '</b><span class="ids"><span class="ids-n">№ ' + esc(serial || '—') + '</span>' + (f.mtype ? '<span class="small mute">' + esc(f.mtype) + '</span>' : '') + '</span></div>' + icon('down', 18, 2.4) + '</summary>' +
@@ -2761,13 +2761,17 @@
         (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:46px;height:46px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
       '</div>' + dupBox(p);
   }
+  /* фото в картку абонента — окремо від зчитування: зберігається одразу, без показника і пломб */
+  function cardPhotos() {
+    return '<div class="card" style="gap:10px"><div class="between"><b>Фото</b><span class="small mute">зберігається одразу, без показника</span></div>' +
+      '<div id="photos" class="photos"></div>' +
+      '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
+      '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок"></div>';
+  }
   function cardFind(p) {
     return '<details class="card fold-card"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div class="field"><label for="note">Орієнтир</label><textarea id="note" class="input" placeholder="Колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
-        '<div class="field"><label>Фото</label><div id="photos" class="photos"></div>' +
-        '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Хвіртка</label></div></div>' +
-        '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
         '<div class="v-sec" style="text-align:left;font-size:15px">Адреса на карті</div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
         '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="a-s">Вулиця</label><input id="a-s" class="input" value="' + esc(p.street || '') + '"></div><div class="field"><label for="a-h">Будинок</label><input id="a-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(p.house || '') + '"></div></div>' +
