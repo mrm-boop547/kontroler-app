@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.22.0';
+  var VERSION = '0.22.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1924,7 +1924,7 @@
       'circle-color': ['case', ['has', 'col'], ['get', 'col'], ['==', ['get', 'jur'], true], '#7C3AED', ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF']],
       'circle-stroke-color': ['case', ['==', ['get', 'sel'], true], '#111111', ['has', 'vr'], '#FFFFFF', ['==', ['get', 'st'], 'n'], '#A1A1AA', '#FFFFFF'],
       'circle-stroke-width': ['case', ['==', ['get', 'sel'], true], 3, 2],
-      'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
+      'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
     /* відвідані цього місяця — квадрат замість кола: синій з ✓ — показник знято; білий із синьою рамкою — був без показника.
        Малюємо самі (canvas), щоб не залежати від шрифтів карти без інтернету */
     var mk = function (name, fill, border, check) {
@@ -1942,7 +1942,7 @@
       map.addImage('v-off', og.getImageData(0, 0, 33, 33), { pixelRatio: 3 }); }
     map.addLayer({ id: 'pts-off', type: 'symbol', source: 'pts', filter: ['==', ['get', 'off'], true], layout: {
       'icon-image': 'v-off', 'icon-offset': [11, -11], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.9, 1.5], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
     /* аварійний будинок: червоний трикутник «!» зліва над точкою (значок відключення — справа) */
     if (!map.hasImage('v-ruin')) { var rc = document.createElement('canvas'); rc.width = rc.height = 36; var rg = rc.getContext('2d');
       rg.lineJoin = 'round'; rg.beginPath(); rg.moveTo(18, 3); rg.lineTo(33.5, 31); rg.lineTo(2.5, 31); rg.closePath(); rg.fillStyle = '#DC2626'; rg.fill(); rg.lineWidth = 3; rg.strokeStyle = '#fff'; rg.stroke();
@@ -1950,13 +1950,13 @@
       map.addImage('v-ruin', rg.getImageData(0, 0, 36, 36), { pixelRatio: 3 }); }
     map.addLayer({ id: 'pts-ruin', type: 'symbol', source: 'pts', filter: ['==', ['get', 'ruin'], true], layout: {
       'icon-image': 'v-ruin', 'icon-offset': [-11, -11], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.9, 1.5], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
     mk('v-ok', '#2563EB', '#2563EB', true);
     mk('v-no', '#FFFFFF', '#2563EB', false);
     map.addLayer({ id: 'pts-v', type: 'symbol', source: 'pts', filter: ['has', 'vr'], layout: {
       'icon-image': ['match', ['get', 'vr'], 'ok', 'v-ok', 'v-no'], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.25],
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.3, 1] } });
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
     /* підписи адрес — окреме джерело: якщо шрифти не завантажились без інтернету, точки все одно видно */
     map.addLayer({ id: 'lbl', type: 'symbol', source: 'lbl', minzoom: 16, layout: {
       'text-field': ['step', ['zoom'], ['get', 'h'], 17.6, ['get', 'a']], 'text-font': ['Noto Sans Bold'], 'text-size': 11,
@@ -2012,7 +2012,7 @@
       var pr = { id: p.id, off: isOff(p), ruin: isRuin(p), jur: isJur(p), st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
       var vs0 = vstate(p); if (vs0) pr.vr = vs0;
       feats.push({ type: 'Feature', geometry: g, properties: pr });
-      if (!dim || mapMode === 'route') lbl.push({ type: 'Feature', geometry: g, properties: { h: (p.house || '') + (isOff(p) ? ' · відкл.' : ''), a: addr(p) } });
+      if (!dim || (mapMode === 'route' && !S.filter)) lbl.push({ type: 'Feature', geometry: g, properties: { h: (p.house || '') + (isOff(p) ? ' · відкл.' : ''), a: addr(p) } });
     });
     map.getSource('pts').setData({ type: 'FeatureCollection', features: feats });
     if (map.getSource('lbl')) map.getSource('lbl').setData({ type: 'FeatureCollection', features: lbl });
