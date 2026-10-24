@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.8';
+  var VERSION = '0.21.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1334,7 +1334,7 @@
     var active = ps.filter(function (p) { return p.status !== 'n'; });
     var read = active.filter(readThisCycle).length;
     var vis = function (p) { return village() !== ALL || inPlan(p.village); };
-    var leftPlan = active.filter(function (p) { return vis(p) && !doneThisCycle(p); }).length, left180 = active.filter(function (p) { return vis(p) && in180(p); }).length;
+    var leftPlan = active.filter(function (p) { return vis(p) && !doneThisCycle(p); }).length, left180 = active.filter(function (p) { return vis(p) && in180(p) && !visitedToday(p); }).length;
     var r180 = routeCfg().round === '180', left = r180 ? left180 : leftPlan;
     var r = ensureRoute(); var first = r && r.ids.length ? S.points.get(r.ids[0]) : null;
     var km = r ? fdist(r.meters) : '—', hrs = r ? Math.max(1, Math.round((r.meters / 1.25 / 60 + r.ids.length * 3) / 60)) : 0;
@@ -1988,6 +1988,8 @@
     if (r) r.ids.forEach(function (id, i) { order[id] = i + 1; });
     var feats = [], lbl = [];
     var list = mapMode === 'all' ? allFiltered() : villagePoints(), cm = cycleMap();
+    /* коло 180: на карті маршруту лише точки, не зчитані довше за норму (+ відвідані сьогодні, щоб бачити пройдене) */
+    if (mapMode === 'route') list = routePts(list);
     list.forEach(function (p) {
       var num = order[p.id] || 0;
       var dim = p.id === S.sel ? false : mapMode === 'route' ? (S.filter ? !stMatch(p, S.filter) : (r && r.off ? false : !num)) : mapMode === 'all' ? false : true;
@@ -2042,12 +2044,17 @@
     map.setStyle(MAP_STYLE(l), { diff: false });
     if (l === 'sat' && !navigator.onLine) toast('Супутник доступний лише з інтернетом');
   }
+  /* точки, які показує карта «Маршрут»: у колі 180 лише не зчитані довше за норму (+ обрана і відвідані сьогодні) */
+  function routePts(list) {
+    if (routeCfg().round !== '180') return list;
+    return list.filter(function (p) { return p.id === S.sel || (p.status !== 'n' && in180(p)) || visitedToday(p); });
+  }
   function renderMap() {
     mapMode = 'route';
     var r = ensureRoute();
     if (!S.sel || routeIndex(S.sel) < 0 && !S.points.get(S.sel)) S.sel = r && r.ids[0];
-    if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; villagePoints().forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
-    var c = counts(villagePoints()), lay = S.meta.layer || 'scheme';
+    if (r && r.off && !S.sel && S.pos) { var bp = null, bd = Infinity; routePts(villagePoints()).forEach(function (p) { var d = dist(S.pos, p); if (d < bd && p.status !== 'n') { bd = d; bp = p; } }); S.sel = bp && bp.id; }
+    var c = counts(routePts(villagePoints())), lay = S.meta.layer || 'scheme';
     /* Обхід: зверху лише село і тонкий рядок статусів; кнопки карти — праворуч унизу під пальцем; налаштування маршруту — у панелі */
     setMeta('mapTab', 'map');
     app.innerHTML = '<div class="mapui" style="top:18px;display:flex;flex-direction:column;gap:10px">' +
@@ -2061,7 +2068,7 @@
       '<div id="sheet"></div>' + tabs('map');
     bindVillageSelect('vsel');
     renderSheet(); bindSearch();
-    var doFit = function () { updateMap(); var sel = S.points.get(S.sel); if (renderMap.fitNext !== false) { fitTo(sel ? [sel] : villagePoints()); } renderMap.fitNext = true; };
+    var doFit = function () { updateMap(); var sel = S.points.get(S.sel); if (renderMap.fitNext !== false) { var vp = villagePoints(), c180 = routeCfg().round === '180' ? vp.filter(function (p) { return p.status !== 'n' && in180(p); }) : []; fitTo(sel ? [sel] : c180.length ? c180 : vp); } renderMap.fitNext = true; };
     if (mapReady) doFit(); else S.pendingFit = doFit;
     startGps();
     var lastRecalc = 0;
@@ -3165,9 +3172,9 @@
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Огляд</h1></div>' +
       coverageCard(true) +
-      '<div class="grid2 tools">' +
-        '<a href="#report" class="tool dark">' + icon('chart', 22) + '<b>Звіт</b><span>по днях і контролерах</span></a>' +
-        '<a href="#brigade" class="tool dark">' + icon('alert', 22) + '<b>Бригада</b><span>' + (function () { var n = brigadeList().new.length; return n ? n + ' нових' : 'проблемні точки'; })() + '</span></a></div>' +
+      '<a href="#report" class="tool dark" style="min-height:0;flex-direction:row;align-items:center;gap:12px;padding:16px">' + icon('chart', 22) + '<span class="col" style="flex:1;gap:2px"><b style="color:#fff">Звіт</b><span>по днях і контролерах</span></span>' + icon('right', 18, 2.4) + '</a>' +
+      /* бригада: той самий червоний блок, що й на головній */
+      brigadeCard() +
       districtCard() +
 
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села за абеткою · % праворуч — зчитано за ' + NORM() + ' днів</div>' +
@@ -3448,7 +3455,7 @@
     var el = e.target.closest('[data-act]'); if (!el) return;
     var a = el.getAttribute('data-act'), id = el.getAttribute('data-id');
     switch (a) {
-      case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; break;
+      case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; if (S.route && !S.route.ids.length && !S.route.off) toast(routeCfg().round === '180' ? 'Немає адрес кола ' + NORM() + ' на сьогодні в цьому селі' : 'Усі адреси цього місяця вже пройдені'); break;
       case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
         if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || stMatch(p, S.filter); })); } break;
       case 'locate': if (S.pos) { updateMe(); if (mapMode === 'bind') { S.moved = true; pinJump([S.pos.lon, S.pos.lat], Math.max(map.getZoom(), 18)); } else map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); if (S.pos.stale) toast('Остання відома позиція (сіра). GPS ще шукає супутники'); } else toast(navigator.onLine ? 'Шукаю GPS… Перевірте, чи дозволено геолокацію' : 'Шукаю супутники без інтернету, це до 1–3 хв. Краще на відкритому місці'); break;
