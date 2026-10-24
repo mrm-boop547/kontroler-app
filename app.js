@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.21.9';
+  var VERSION = '0.22.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -353,9 +353,9 @@
   /* слайдер кількості адрес: 10…150, крайнє праве положення = «Усі» */
   var LIM_MAX = 160;
   function limLabel(n) { return n >= 9999 || n >= LIM_MAX ? 'Усі' : String(n); }
-  function sliderHtml(id, n) {
+  function sliderHtml(id, n, label) {
     var v = n >= 9999 ? LIM_MAX : Math.min(LIM_MAX, n);
-    return '<div class="sld"><div class="between"><span class="small mute">Скільки адрес</span><b class="sld-val" id="' + id + '-v">' + limLabel(n) + '</b></div>' +
+    return '<div class="sld"><div class="between"><span class="small mute">' + (label || 'Скільки адрес') + '</span><b class="sld-val" id="' + id + '-v">' + limLabel(n) + '</b></div>' +
       '<input type="range" class="range" id="' + id + '" min="10" max="' + LIM_MAX + '" step="5" value="' + v + '" style="--p:' + ((v - 10) / (LIM_MAX - 10) * 100) + '%">' +
       '<div class="between small mute"><span>10</span><span>50</span><span>100</span><span>Усі</span></div></div>';
   }
@@ -364,6 +364,21 @@
     var upd = function () { var v = +el.value; el.style.setProperty('--p', ((v - 10) / (LIM_MAX - 10) * 100) + '%'); (document.getElementById(id + '-v') || {}).textContent = limLabel(v); return v >= LIM_MAX ? 9999 : v; };
     el.oninput = function () { upd(); };
     el.onchange = function () { onSet(upd()); };
+  }
+  /* ціль на день = довжина маршруту; прогрес — скільки показників я зняв сьогодні (різні точки) */
+  function todayRead() { var me0 = me().id, t = today(), m = {}; S.visits.forEach(function (v) { if (v.result === 'ok' && (v.by || me0) === me0 && dayKey(v.ts) === t) m[v.pointId] = 1; }); return Object.keys(m).length; }
+  /* скільки треба кожному на день, щоб закрити місячний план: залишок ÷ робочі дні ÷ контролери, кратне 5 */
+  function goalHint() {
+    var st = planStats(); if (!st || !st.left) return null;
+    var n = Math.ceil(st.left / Math.max(1, st.days) / Math.max(1, crew()));
+    return { n: Math.max(10, Math.min(150, Math.ceil(n / 5) * 5)), raw: n, days: st.days, crew: crew() };
+  }
+  function goalLine() {
+    var g = routeCfg().limit, n = todayRead();
+    if (g >= 9999) return '<div class="small mute">Сьогодні знято ' + n + '</div>';
+    var ok = n >= g;
+    return '<div class="progress"' + (ok ? ' style="background:rgba(22,163,74,.25)"' : '') + '><span style="width:' + Math.min(100, pct(n, g)) + '%' + (ok ? ';background:#22C55E' : '') + '"></span></div>' +
+      '<div class="small' + (ok ? '' : ' mute') + '"' + (ok ? ' style="color:#4ADE80;font-weight:700"' : '') + '>' + (ok ? 'Ціль виконано · ' + n + ' з ' + g : 'Сьогодні: ' + n + ' з ' + g + ' · ціль на день') + '</div>';
   }
   function setLimit(n) {
     var nc = Object.assign({}, S.meta.routeCfg || {}); nc.limit = n;
@@ -512,7 +527,6 @@
         '<button class="pk-row' + (T.auto ? ' on' : '') + '" data-rc="auto"><span>Будувати маршрут автоматично</span><span class="sw' + (T.auto ? ' on' : '') + '"></span></button>' +
         '<div class="col" style="gap:8px"><div class="small mute">Кого обходимо</div><div class="tags">' +
           ['g', 'y', 'r'].map(function (s) { return '<button class="chip fchip' + (T.types.indexOf(s) >= 0 ? ' on' : '') + '" data-rc="type" data-v="' + s + '">' + dotHtml(s) + ST[s].short + '</button>'; }).join('') + '</div></div>' +
-        sliderHtml('rc-lim', T.limit) +
         (v === ALL ? '<div class="small mute">Уся дільниця: маршрут іде через усі села' + (plan() ? ' плану' : '') + ', починаючи від вас</div>' : '') +
         (v === ALL ? '' : '<div class="col" style="gap:8px"><div class="small mute">Вулиці (сектор)</div><div class="tags">' + chip('street', '', 'Усі вулиці', !T.streets.length) +
           names.map(function (n) { return chip('street', n, esc(n) + ' <span style="opacity:.6">' + streets[n] + '</span>', T.streets.indexOf(n) >= 0); }).join('') + '</div></div>') +
@@ -533,9 +547,9 @@
         setMeta('routeCfg', nc).then(function () { closeSheet(); S.route = computeRoute(); S.sel = S.route.ids[0] || S.sel; renderMap.fitNext = true; render(); });
         return;
       }
-      var y = ov.querySelector('.pk-list').scrollTop; draw(); ov.querySelector('.pk-list').scrollTop = y; bindSlider('rc-lim', function (n) { T.limit = n; });
+      var y = ov.querySelector('.pk-list').scrollTop; draw(); ov.querySelector('.pk-list').scrollTop = y;
     });
-    draw(); document.body.appendChild(ov); bindSlider('rc-lim', function (n) { T.limit = n; }); requestAnimationFrame(function () { ov.classList.add('show'); });
+    draw(); document.body.appendChild(ov); requestAnimationFrame(function () { ov.classList.add('show'); });
   }
   function ensureRoute(force) {
     if (force || !S.route || S.route.village !== village()) S.route = computeRoute();
@@ -1350,10 +1364,10 @@
       statusList() +
       '<a href="#map" data-act="startRoute" class="card big dark" style="gap:16px">' +
         '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px"><span style="font-size:22px;font-weight:800">Почати обхід</span>' +
-        '<span class="small mute" style="font-size:13px">' + (r ? r.ids.length : 0) + ' адрес на сьогодні · ' + km + (hrs ? ' · ≈ ' + hrs + ' год' : '') + '</span></div>' +
+        '<span class="small mute" style="font-size:13px">маршрут ' + (r ? r.ids.length : 0) + ' адрес · ' + km + (hrs ? ' · ≈ ' + hrs + ' год' : '') + '</span></div>' +
         '<span style="width:52px;height:52px;border-radius:26px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + icon('go', 22, 2.4) + '</span></div>' +
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
-        '<div class="progress"><span style="width:' + pct(read, active.length) + '%"></span></div><div class="small mute">' + read + ' з ' + active.length + ' знято · ' + pct(read, active.length) + '%</div></div></a>' +
+        goalLine() + '</div></a>' +
       brigadeCard() +
       installCard(true) +
       (needBackup ? '<button class="btn sec" data-act="backup">' + icon('cloud', 18) + 'Зробити резервну копію даних</button>' : '') +
@@ -3406,7 +3420,11 @@
   /* «Я»: спершу те, чим користуються щодня (мої дані, обмін), далі налаштування обходу, внизу — рідкісне (таблиці, офлайн-карта, копія) */
   function routeCardHtml() {
     var nd = NORM();
-    return '<div class="card"><div class="h2">Обхід</div>' + sliderHtml('dl', routeCfg().limit) +
+    var gh = goalHint(), g = routeCfg().limit;
+    return '<div class="card"><div class="h2">Ціль на день</div>' + sliderHtml('dl', g, 'Адрес зі знятим показником') +
+      '<div class="small mute">Стільки найближчих адрес у маршруті на карті. Прогрес видно на картці «Почати обхід».</div>' +
+      (gh ? '<div class="between" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;gap:10px"><span class="small">Щоб закрити план за ' + gh.days + ' роб. дн.: ≈ <b>' + gh.raw + '</b> на кожного з ' + gh.crew + '</span>' +
+        (g === gh.n ? '<span class="small mute">стоїть</span>' : '<button class="chip" data-act="goalSet" data-v="' + gh.n + '">Поставити ' + gh.n + '</button>') + '</div>' : '') +
       '<div class="small mute" style="padding-top:4px">Норма зчитування: хто не зчитаний довше, іде в «Список ' + nd + '»</div>' +
       '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div></div>';
   }
@@ -3442,7 +3460,7 @@
   }
   function bindSettings() {
     if ($('#imp2')) $('#imp2').onchange = importFile; if ($('#imp3')) $('#imp3').onchange = importFile;
-    bindSlider('dl', function (n) { setLimit(n).then(function () { toast('Маршрут: ' + limLabel(n) + ' адрес'); }); });
+    bindSlider('dl', function (n) { setLimit(n).then(function () { toast('Ціль на день: ' + limLabel(n) + ' адрес'); var y = window.scrollY; render(); window.scrollTo(0, y); }); });
   }
   function renderSettings() {
     if (S.points.size && me().login) return location.replace('#me');
@@ -3455,6 +3473,7 @@
     var el = e.target.closest('[data-act]'); if (!el) return;
     var a = el.getAttribute('data-act'), id = el.getAttribute('data-id');
     switch (a) {
+      case 'goalSet': var gn = +el.getAttribute('data-v'); setLimit(gn).then(function () { toast('Ціль: ' + gn + ' адрес на день'); var y = window.scrollY; render(); window.scrollTo(0, y); }); break;
       case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; if (S.route && !S.route.ids.length && !S.route.off) toast(routeCfg().round === '180' ? 'Немає адрес кола ' + NORM() + ' на сьогодні в цьому селі' : 'Усі адреси цього місяця вже пройдені'); break;
       case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
         if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || stMatch(p, S.filter); })); } break;
