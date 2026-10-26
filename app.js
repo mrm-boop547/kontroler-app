@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.22.2';
+  var VERSION = '0.22.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -3171,10 +3171,12 @@
   function renderVillages() {
     var vs = villages(), allActive = 0, allRead = 0, vt = S.meta.vTotals || {};
     if (S.vEdit) return renderVillageTotals(vs, vt);
-    /* за абеткою; «Без села» в кінці */
+    /* спершу села плану, потім решта за абеткою; «Без села» в кінці */
     var pl = (plan() || {}).villages || [];
     vs = vs.slice().sort(function (a, b) {
       if ((a.name === 'Без села') !== (b.name === 'Без села')) return a.name === 'Без села' ? 1 : -1;
+      /* села плану — першими, далі решта; всередині кожної групи за абеткою */
+      var pa = pl.indexOf(a.name) >= 0, pb = pl.indexOf(b.name) >= 0; if (pa !== pb) return pa ? -1 : 1;
       return a.name.localeCompare(b.name, 'uk');
     });
     var rows = vs.map(function (v) {
@@ -3199,7 +3201,7 @@
       brigadeCard() +
       districtCard() +
 
-      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села за абеткою · % праворуч — зчитано за ' + NORM() + ' днів</div>' +
+      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + (pl.length ? 'Спершу села плану, далі за абеткою' : 'Села за абеткою') + ' · % праворуч — зчитано за ' + NORM() + ' днів</div>' +
       rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
   /* сторінка села з «Огляду»: стан доступу, зчитування, вулиці, хто працював */
