@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.22.1';
+  var VERSION = '0.22.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -904,6 +904,12 @@
   function litePackage() {
     var d = syncPackage();
     d.lite = true;
+    /* на сервер — лише власні зміни: точки, які востаннє змінив я, і мої відмітки. Зміни колег лежать у їхніх файлах,
+       тож пересилати їх ще раз не треба. Раніше кожен телефон вивантажував дані всієї команди, файл ріс до мегабайтів,
+       і GitHub міг відповідати помилкою 500 */
+    var me0 = me().id;
+    d.points = d.points.filter(function (p) { return !p.by || p.by === me0; });
+    d.visits = d.visits.filter(function (v) { return !v.by || v.by === me0; });
     d.points = d.points.map(function (p) { var c = Object.assign({}, p); delete c.fields; c.lite = true; return c; });
     d.visits = d.visits.map(function (v) { var c = { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; if (v.form || v.sealList || v.br) c.br = visitWhy(v); return c; });
     return d;
@@ -933,6 +939,7 @@
         : c === 404 ? 'репозиторій не знайдено або токен не має до нього доступу (код 404)'
         : c === 409 || c === 422 ? 'конфлікт версій файлу, повторю (код ' + c + ')'
         : c === 413 ? 'забагато даних за раз (код 413)'
+        : c >= 500 ? 'збій на боці GitHub (код ' + c + ')' + (e.step ? ', ' + e.step : '') + '. Дані збережені на телефоні, повторю сам за хвилину'
         : 'сервер відповів помилкою (код ' + c + ')' + (e.detail ? ': ' + e.detail : '');
       setMeta('ghErr', msg); if (manual) toast('Синхронізація: ' + msg);
       if (st) { st.textContent = 'Помилка'; st.style.color = '#B91C1C'; }
@@ -942,7 +949,8 @@
     };
     var ok = function (r) { if (!r.ok) { var e = new Error('http'); e.status = r.status; throw r.text().then(function (t) { try { e.detail = (JSON.parse(t).message || '').slice(0, 80); } catch (x) {} return e; }, function () { return e; }); } return r; };
     /* 1. забираємо файли колег, які змінились */
-    return ghReq('/contents/sync').then(function (r) { return r.status === 404 ? [] : ok(r).json(); }).then(function (list) {
+    var step = function (name) { return function (e) { return Promise.resolve(e).then(function (x) { if (x && !x.step) x.step = name; throw x; }); }; };
+    return ghReq('/contents/sync').then(function (r) { return r.status === 404 ? [] : ok(r).json(); }).catch(step('читання списку файлів')).then(function (list) {
       var onSrv = {}; (Array.isArray(list) ? list : []).forEach(function (f) { onSrv[f.path] = 1; }); Object.keys(files).forEach(function (k) { if (!onSrv[k]) delete files[k]; });
       /* після зміни коду пристрою прибираємо свій старий файл, щоб колеги не бачили телефон двічі */
       var old = S.meta.ghOldFile; if (old && old.path !== mine) { (list || []).forEach(function (f) { if (f.path === old.path) ghReq('/contents/' + f.path, { method: 'DELETE', body: { message: 'move device', sha: f.sha } }); }); delete files[old.path]; setMeta('ghOldFile', null); list = (list || []).filter(function (f) { return f.path !== old.path; }); }
@@ -964,14 +972,14 @@
       });
       /* 2. відправляємо свій файл */
       return chain.then(function () {
-        var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(litePackage())) };
+        var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(litePackage())) }, kb = Math.round(body.content.length * 0.75 / 1024);
         if (mySha) body.sha = mySha;
         var put = function () { return ghReq('/contents/' + mine, { method: 'PUT', body: body }); };
         return put().then(function (r) {
           if (r.status !== 409 && r.status !== 422) return r;
           /* файл на сервері змінився з іншого запиту — беремо його поточну версію і пишемо ще раз */
           return ghReq('/contents/' + mine).then(function (q) { return q.ok ? q.json() : null; }).then(function (j) { if (j && j.sha) body.sha = j.sha; else delete body.sha; return put(); });
-        }).then(ok).then(function (r) { return r.json(); });
+        }).then(ok).then(function (r) { return r.json(); }).catch(step('запис файлу цього телефона, ' + kb + ' КБ'));
       }).then(function (res) {
         seen[mine] = res && res.content && res.content.sha;
         files[mine] = { name: me().name || '', id: me().id, inst: inst(), dev: dev(), app: VERSION, ts: Date.now(), own: true };
