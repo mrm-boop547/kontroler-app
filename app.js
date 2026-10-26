@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.23.0';
+  var VERSION = '0.23.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2685,7 +2685,6 @@
     if (off && !R.photo) add('зробіть фото лічильника (лічильник відключено)', '.photo-btn');
     else if (lower && !R.photo) add('зробіть фото лічильника (показник менший за попередній)', '.photo-btn');
     if (R.photo && !off && (R.form || {}).noteSel !== PH_NOTE) add('у примітці виберіть «' + PH_NOTE + '»', '#r-note');
-    if (R.form && !R.form.alarm) add('вкажіть сигнал тривоги', '#r-alarm');
     if (R.L.length && !R.L.every(function (x) { return x.st; })) add('відмітьте статус кожної пломби', '#r-seals');
     else if (!R.sealsSel) add('виберіть стан пломб', '#r-seals');
     if (R.serial === 'diff' && !R.serialFact) add('впишіть номер з лічильника', '#r-sf');
@@ -2709,8 +2708,8 @@
     var f = p.fields || {};
     if (R.id !== id) {
       var L0 = sealList(p).map(function (x) { return Object.assign({}, x, { st: '' }); });
-      R = { id: id, serial: null, serialFact: '', val: '', photo: null, photoUrl: null, seals: null, L: L0, note: S.readNote || '',
-        form: { alarm: f.alarm || '', placement2: f.placement2 || f.placement || '', noteSel: '', zko: f.zko || 'Без зауважень', av: f.av || '', feeder: f.feeder || f.feederOld || '' } };
+      R = { id: id, serial: null, serialFact: '', val: '', photo: null, photoUrl: null, seals: null, L: L0, sealsSel: L0.length ? null : 'all', note: S.readNote || '',
+        form: { alarm: f.alarm || 'Ні', placement2: f.placement2 || f.placement || '', noteSel: '', zko: f.zko || 'Без зауважень', av: f.av || 'Відсутній', feeder: f.feeder || f.feederOld || '' } };
       S.readNote = null;
     }
     var st = readState(p), idx = routeIndex(id), rn = (S.meta.routeNo || {})[p.village] || '', F = R.form;
@@ -2765,7 +2764,7 @@
             (done < nL ? 'Відмітьте · ' + done + '/' + nL : esc(sealsLabel)) + '</span>' + icon('right', 16, 2.4) + '</button>'
           : '<button type="button" class="prow" data-act="rPick" data-k="seals" data-id="' + id + '" id="r-seals"><span class="pl">Пломби</span><span class="pv' + (R.sealsSel ? '' : ' mute') + '">' + esc(sealsLabel || 'Вибрати') + '</span>' + icon('right', 16, 2.4) + '</button>') +
         '<div class="prow ro"><span class="pl">Номінал автомата (старе значення)</span><span class="pv">' + esc(f.avOld || '—') + '</span></div>' +
-        prow('Номінал автомата', 'av', F.av, 'Вибрати', !!(f.av || f.avOld) && F.av !== (f.av || f.avOld)) +
+        prow('Номінал автомата', 'av', F.av, 'Вибрати', !!f.av && F.av !== f.av) +
         '<div class="prow ro"><span class="pl">Пофідерна прив\'язка (старе значення)</span><span class="pv mono" style="font-size:13px">' + esc(f.feederOld || '—') + '</span></div>' +
         '<div class="prow ro" style="flex-direction:column;align-items:stretch;gap:6px"><span class="pl">Пофідерна прив\'язка</span>' + feederHtml + '</div>' +
         '</div>' +
