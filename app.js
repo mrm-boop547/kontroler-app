@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.24.1';
+  var VERSION = '0.24.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1164,8 +1164,10 @@
       (ks.length ? '<div class="col" style="gap:0">' + ks.map(function (k) { var x = m[k];
         return '<div class="list-row" style="padding:8px 0">' + icon('check', 16, 3) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(k) + '</b><span class="small mute">' + dt(x.ts) + ' · ' + x.mb + ' МБ' + (x.fail ? ' · не вдалося ' + x.fail : '') + '</span></div>' +
           '<button class="seal-x" data-act="satDel" data-v="' + esc(k) + '" aria-label="Видалити">' + icon('close', 14, 2.4) + '</button></div>'; }).join('') + '</div>' : '') +
-      '<div class="small" id="sat-st" style="font-weight:700">' + (v ? (m[v] ? '«' + esc(v) + '» збережено ' + dt(m[v].ts) : '«' + esc(v) + '»: ≈' + Math.max(1, Math.round(est * 25 / 1024)) + ' МБ') : 'Виберіть село на головній') + '</div>' +
-      (v ? '<button class="btn sec" data-act="satGet">' + icon('cloud', 18) + (m[v] ? 'Оновити супутник: ' : 'Зберегти супутник: ') + esc(v) + '</button>' : '') + '</div>';
+      '<div class="small" id="sat-st" style="font-weight:700">' + (v ? (m[v] ? '«' + esc(v) + '» збережено ' + dt(m[v].ts) : '«' + esc(v) + '»: ≈' + Math.max(1, Math.round(est * 25 / 1024)) + ' МБ') : 'Виберіть село кнопкою нижче') + '</div>' +
+      (v ? '<button class="btn sec" data-act="satGet">' + icon('cloud', 18) + (m[v] ? 'Оновити супутник: ' : 'Зберегти супутник: ') + esc(v) + '</button>' : '') +
+      /* будь-яке село вручну — не залежить від того, що вибрано на головній */
+      '<button class="btn sec" data-act="satPick">' + icon('village', 18) + (v ? 'Інше село…' : 'Вибрати село і зберегти') + '</button></div>';
   }
 
   /* ---------- офлайн-карта: векторні тайли всієї дільниці (OpenFreeMap дає їх до z14, далі карта збільшує сама) ---------- */
@@ -3577,6 +3579,12 @@
       case 'planToggle': planToggle(el.getAttribute('data-v')); break;
       case 'planReset': planReset(el); break;
       case 'satGet': satDownload(village()); break;
+      case 'satPick': (function () {
+        var m0 = S.meta.satOff || {}, pl = (plan() || {}).villages || [];
+        var list = villages().filter(function (x) { return x.name !== 'Без села'; }).map(function (x) { return { v: x.name, l: x.name, sub: x.n + ' точок' + (m0[x.name] ? ' · збережено ' + dt(m0[x.name].ts) : '') }; });
+        var inPl = list.filter(function (o) { return pl.indexOf(o.v) >= 0; }).map(function (o, i) { return Object.assign({}, o, { head: i ? '' : 'Села плану', hot: true }); });
+        openSheet('Супутник офлайн: яке село', inPl.concat(letterHeads(list.filter(function (o) { return pl.indexOf(o.v) < 0; }))), '', function (v) { if (v) satDownload(v); }, { search: 'Пошук села' });
+      })(); break;
       case 'satDel': if (confirm('Видалити збережений супутник для «' + el.getAttribute('data-v') + '»?')) satRemove(el.getAttribute('data-v')); break;
       case 'stickyOff': setMeta('stickyStreet', null); if (S.adding) { S.adding.street = ''; S.adding.sticky = false; } renderSheet(); setTimeout(function () { var i = $('#ad-s'); if (i) i.focus(); }, 50); break;
       case 'addJur': S.adding.jur = !S.adding.jur; renderSheet(); break;
