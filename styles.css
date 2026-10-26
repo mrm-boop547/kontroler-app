@@ -366,3 +366,8 @@ body.kb-open.kb-ui #sheet{display:none !important}
 /* кнопка «Зробити фото» біля показника: іконка й підпис по центру, висота як у поля */
 .photo-btn{width:92px;height:56px;padding:4px 6px;text-align:center;line-height:1.15}
 .photo-btn span{display:block;width:100%;text-align:center;white-space:normal}
+/* чотири кнопки візиту — однакові за розміром і шрифтом, різняться лише кольором */
+.btn.vbtn{height:56px;font-size:16px;font-weight:800;border-radius:28px;border:1.5px solid #E4E4E7;background:#fff;color:#111;width:100%}
+.btn.vbtn.note-btn{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
+.btn.vbtn.save-btn{background:#16A34A;border-color:#16A34A;color:#fff}
+.btn.vbtn.seals-btn.done{background:#DCFCE7;border-color:#86EFAC;color:#166534}

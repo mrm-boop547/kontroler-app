@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.23.6';
+  var VERSION = '0.23.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2772,10 +2772,10 @@
       '</div>' +
       '<div id="r-miss" class="miss" style="display:none"></div>' +
       /* три кнопки в тому ж порядку, що й у старому застосунку: Повідомлення про візит · Зберегти · Пломби */
-      '<button class="btn note-btn" data-act="quick" data-v="note" data-id="' + id + '">Повідомлення про візит</button>' +
-      '<button id="r-save" class="btn save-btn" data-act="rSave" data-id="' + id + '">Зберегти</button>' +
-      '<button class="btn seals-btn' + (nL && done === nL ? ' done' : '') + '" data-act="rSealsOpen" data-id="' + id + '">Пломби' + (nL ? ' · ' + done + ' з ' + nL : '') + '</button>' +
-      '<button class="btn sec" data-act="noRead" data-id="' + id + '" style="height:46px;font-size:14px;margin-top:4px">Не вдалося зняти: нема доступу / не живуть</button>' +
+      '<button class="btn vbtn note-btn" data-act="quick" data-v="note" data-id="' + id + '">Повідомлення про візит</button>' +
+      '<button id="r-save" class="btn vbtn save-btn" data-act="rSave" data-id="' + id + '">Зберегти</button>' +
+      '<button class="btn vbtn seals-btn' + (nL && done === nL ? ' done' : '') + '" data-act="rSealsOpen" data-id="' + id + '">Пломби' + (nL ? ' · ' + done + ' з ' + nL : '') + '</button>' +
+      '<button class="btn vbtn" data-act="noRead" data-id="' + id + '">Не вдалося зняти</button>' +
       (isCard ? cardBottom(p) : '') +
       '</div>';
     var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); readUi(); };
