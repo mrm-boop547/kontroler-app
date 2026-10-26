@@ -392,3 +392,13 @@ body.kb-open.kb-ui #sheet{display:none !important}
 /* підписи під стовпчиками: не обрізаються і не налазять — показуються рідко, по центру */
 .c14{overflow:visible}
 .c14l{white-space:nowrap;height:12px;line-height:12px;overflow:visible;display:flex;justify-content:center;width:0;align-self:center}
+/* «Локації на карті» в «Огляді» — темний блок */
+.dark-fold{background:#111;color:#fff}
+.dark-fold summary > svg{color:#A1A1AA}
+.dark-fold .mute,.dark-fold .small.mute,.dark-fold .cv-sec{color:#A1A1AA}
+.dark-fold .bar span[style*="#E4E4E7"]{background:#3F3F46 !important}
+.dark-fold .sttile{background:rgba(255,255,255,.08);color:#fff}
+.dark-fold .fold,.dark-fold .fold-row,.dark-fold .cv-sec,.dark-fold .qf{border-color:rgba(255,255,255,.12)}
+.dark-fold .fold-row,.dark-fold .linkbtn{color:#fff !important;background:transparent}
+.dark-fold .fold-row svg,.dark-fold .fold summary svg{color:#A1A1AA}
+.dark-fold .dot[style*="#111"]{background:#fff !important}

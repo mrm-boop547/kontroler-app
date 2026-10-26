@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.5';
+  var VERSION = '0.26.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -3238,10 +3238,10 @@
       /* 2. звіт і бригада поруч; бригада — світло-червона, як на головній */
       brigadeCard() +
 
+      /* наповнення карти — перед списком сіл, темний згорнутий рядок */
+      (function () { var c = coverage(); return foldBlock('cov', 'Локації на карті', '<span class="small" style="color:#A1A1AA">' + fmt(c.placed) + ' з ' + fmt(c.total) + ' · ' + pct(c.placed, c.total) + '%</span>', coverageCard(true), 'card fold-card dark-fold'); })() +
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · смуга — доступ, % — зчитано за ' + NORM() + ' днів</div>' +
       '<div class="card vlist">' + rows.join('') + '</div>' +
-      /* 4. наповнення карти — рідко потрібне, згорнуто в один рядок */
-      (function () { var c = coverage(); return foldBlock('cov', 'Локації на карті', '<span class="small mute">' + fmt(c.placed) + ' з ' + fmt(c.total) + ' · ' + pct(c.placed, c.total) + '%</span>', coverageCard(true)); })() +
       '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
   /* сторінка села з «Огляду»: стан доступу, зчитування, вулиці, хто працював */
