@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.0';
+  var VERSION = '0.26.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1825,8 +1825,6 @@
   function renderReport() {
     var R = reportData(RP);
     var others = R.who.filter(function (w) { return w.id !== me().id; });
-    var hm = function (ts) { var d = new Date(ts); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
-    var todayL = (R.byDay[today()] || []).slice().sort(function (a, b) { return a.ts - b.ts; });
     app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Детальна аналітика</h1></div>' +
       '<div class="seg" style="align-self:flex-start">' + [['day', 'Сьогодні'], ['week', 'Тиждень'], ['month', 'Місяць'], ['cycle', NORM() + ' днів']].map(function (x) { return '<button data-act="rp" data-v="' + x[0] + '" class="' + (RP === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<div class="card dark" style="gap:12px"><div class="small mute">' + ({ day: 'Сьогодні', week: 'Цей тиждень', month: monthName(), cycle: 'Останні ' + NORM() + ' днів' })[RP] + ' · днів з обходом: ' + R.days + '</div>' +
@@ -1836,8 +1834,8 @@
       '<div class="card"><div class="h2" style="font-size:15px">Результати обходу</div>' + RESULTS.map(function (r) {
         var n = R[r[0]] || 0; return '<div class="between"><span>' + r[1] + '</span><span class="row"><span style="width:110px;height:8px;border-radius:4px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(n, R.total) + '%;background:' + (r[0] === 'ok' ? '#16A34A' : r[0] === 'empty' ? '#A1A1AA' : r[0] === 'note' ? '#111111' : '#F59E0B') + '"></span></span><b style="width:40px;text-align:right">' + n + '</b></span></div>';
       }).join('') + '</div>' +
-      '<div class="card"><div class="h2" style="font-size:15px">' + ({ day: 'Сьогодні в полі', week: 'По днях тижня', month: 'По днях місяця', cycle: 'По тижнях за ' + NORM() + ' днів' })[RP] + '</div>' +
-        (RP === 'day' ? (todayL.length ? '<div class="between"><span class="mute">Перша відмітка</span><b>' + hm(todayL[0].ts) + '</b></div><div class="between"><span class="mute">Остання відмітка</span><b>' + hm(todayL[todayL.length - 1].ts) + '</b></div><div class="between"><span class="mute">Відміток</span><b>' + todayL.length + '</b></div>' : '<div class="small mute">Сьогодні відміток ще немає</div>') : reportChart(RP)) + '</div>' +
+      /* графік — лише для тижня, місяця і 180 днів; для «Сьогодні» окремого блоку немає */
+      (RP === 'day' ? '' : '<div class="card"><div class="h2" style="font-size:15px">' + ({ week: 'По днях тижня', month: 'По днях місяця', cycle: 'По тижнях за ' + NORM() + ' днів' })[RP] + '</div>' + reportChart(RP) + '</div>') +
       (others.length ? '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">адреси · зчитано · нові точки</span></div>' +
         /* мій рядок — першим і виділеним, з підписами чисел; навіть якщо відміток ще немає */
         (function () { var mid = me().id, mw = R.who.filter(function (w) { return w.id === mid; })[0] || { id: mid, v: 0, ok: 0, pts: 0, miss: 0, note: 0 };
