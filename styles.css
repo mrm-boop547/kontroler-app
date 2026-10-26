@@ -389,3 +389,6 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .tool.brt{background:#FEF2F2;color:#B91C1C}
 .tool.brt .small{color:#B91C1C;opacity:.85}
 .fold-body > .card.cv{padding:0;box-shadow:none;background:none}
+/* підписи під стовпчиками: не обрізаються і не налазять — показуються рідко, по центру */
+.c14{overflow:visible}
+.c14l{white-space:nowrap;height:12px;line-height:12px;overflow:visible;display:flex;justify-content:center;width:0;align-self:center}

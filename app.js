@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.25.2';
+  var VERSION = '0.26.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1807,24 +1807,38 @@
     R.who = Object.keys(W).map(function (k) { return W[k]; }).sort(function (a, b) { return b.v - a.v || b.pts - a.pts; });
     return R;
   }
+  /* графік за вибраний період: тиждень — 7 днів, місяць — дні місяця, 180 днів — по тижнях */
+  function reportChart(k) {
+    var B = [], now = new Date(), add = function (from, to, lab) {
+      var L = S.visits.filter(function (v) { return v.ts >= from && v.ts < to; });
+      B.push({ lab: lab, n: L.length, ok: L.filter(function (v) { return v.result === 'ok'; }).length });
+    };
+    var d0 = function (d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); }, today0 = d0(now), DAY = 864e5;
+    if (k === 'week') for (var i = 6; i >= 0; i--) { var a = today0 - i * DAY; add(a, a + DAY, new Date(a).getDate()); }
+    else if (k === 'month') { var m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); for (var t = m0; t <= today0; t += DAY) { var t0 = d0(t + 3600e3 * 3), dn = new Date(t0).getDate(); add(t0, t0 + DAY, dn === 1 || dn % 5 === 0 ? dn : ''); } }
+    else { var nW = Math.ceil(NORM() / 7); for (var w = nW - 1; w >= 0; w--) { var e = today0 + DAY - w * 7 * DAY, s0 = e - 7 * DAY; add(s0, e, (w % 6 === 0) ? dt(s0).slice(0, 5) : ''); } }
+    var mx = Math.max(5, Math.max.apply(null, B.map(function (x) { return x.n; })));
+    return '<div class="chart14" style="grid-template-columns:repeat(' + B.length + ',minmax(0,1fr));gap:' + (B.length > 20 ? 2 : 4) + 'px">' + B.map(function (x) {
+      return '<div class="c14"><div class="c14b"><span style="height:' + (x.n / mx * 100) + '%;background:#D4D4D8"></span><span style="height:' + (x.ok / mx * 100) + '%;background:#111;position:absolute;bottom:0;left:0;right:0"></span></div><span class="c14l">' + x.lab + '</span></div>';
+    }).join('') + '</div><div class="row small mute" style="gap:12px"><span class="row" style="gap:4px"><span class="dot" style="background:#111"></span>зчитано</span><span class="row" style="gap:4px"><span class="dot" style="background:#D4D4D8"></span>усі відмітки</span>' + (k === 'cycle' ? '<span>· стовпчик = тиждень</span>' : '') + '</div>';
+  }
   function renderReport() {
-    var R = reportData(RP), today0 = reportData('day');
-    var days = []; for (var i = 13; i >= 0; i--) { var d = new Date(Date.now() - i * 864e5); days.push({ k: dayKey(d.getTime()), d: d }); }
-    var all14 = days.map(function (x) { var L = S.visits.filter(function (v) { return dayKey(v.ts) === x.k; }); return { d: x.d, ok: L.filter(function (v) { return v.result === 'ok'; }).length, n: L.length }; });
-    var mx = Math.max(10, Math.max.apply(null, all14.map(function (x) { return x.n; })));
-    var st = planStats(), cv = coverage();
-    var vrows = (plan() ? plan().villages : villages().slice(0, 8).map(function (v) { return v.name; })).map(function (v) {
-      var a = 0, dn = 0; villagePoints(v).forEach(function (q) { if (q.status === 'n') return; a++; if (readThisCycle(q)) dn++; });
-      return '<div class="list-row"><b style="flex-grow:1">' + esc(v) + '</b><span class="small mute">' + dn + ' з ' + a + '</span><span style="width:60px;height:6px;border-radius:3px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(dn, a) + '%;background:#111"></span></span><b style="width:42px;text-align:right">' + pct(dn, a) + '%</b></div>';
-    });
-    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Звіт</h1></div>' +
-      '<div class="seg" style="align-self:flex-start">' + [['day', 'Сьогодні'], ['week', 'Тиждень'], ['month', 'Місяць'], ['cycle', 'Цикл']].map(function (x) { return '<button data-act="rp" data-v="' + x[0] + '" class="' + (RP === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+    var R = reportData(RP);
+    var others = R.who.filter(function (w) { return w.id !== me().id; });
+    var hm = function (ts) { var d = new Date(ts); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+    var todayL = (R.byDay[today()] || []).slice().sort(function (a, b) { return a.ts - b.ts; });
+    app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Детальна аналітика</h1></div>' +
+      '<div class="seg" style="align-self:flex-start">' + [['day', 'Сьогодні'], ['week', 'Тиждень'], ['month', 'Місяць'], ['cycle', NORM() + ' днів']].map(function (x) { return '<button data-act="rp" data-v="' + x[0] + '" class="' + (RP === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<div class="card dark" style="gap:12px"><div class="small mute">' + ({ day: 'Сьогодні', week: 'Цей тиждень', month: monthName(), cycle: 'Останні ' + NORM() + ' днів' })[RP] + ' · днів з обходом: ' + R.days + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:28px">' + fmt(R.total) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:28px">' + fmt(R.ok) + '</b><span class="small mute">зчитано · ' + pct(R.ok, R.total) + '%</span></div>' +
         '<div class="col"><b style="font-size:28px">' + fmt(R.note || 0) + '</b><span class="small mute">візитів (записок)</span></div></div>' +
-        '<div class="grid2"><div class="col"><b style="font-size:18px">' + (R.days ? (R.total / R.days).toFixed(0) : 0) + '</b><span class="small mute">адрес / день</span></div><div class="col"><b style="font-size:18px">' + (R.hours ? (R.total / R.hours).toFixed(1).replace('.', ',') : '—') + '</b><span class="small mute">адрес / год</span></div>' +
-        '</div></div>' +
-      '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">адреси · зчитано · нові точки</span></div>' +
+        '<div class="small mute">≈ ' + (R.days ? Math.round(R.total / R.days) : 0) + ' адрес на день обходу</div></div>' +
+      '<div class="card"><div class="h2" style="font-size:15px">Результати обходу</div>' + RESULTS.map(function (r) {
+        var n = R[r[0]] || 0; return '<div class="between"><span>' + r[1] + '</span><span class="row"><span style="width:110px;height:8px;border-radius:4px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(n, R.total) + '%;background:' + (r[0] === 'ok' ? '#16A34A' : r[0] === 'empty' ? '#A1A1AA' : r[0] === 'note' ? '#111111' : '#F59E0B') + '"></span></span><b style="width:40px;text-align:right">' + n + '</b></span></div>';
+      }).join('') + '</div>' +
+      '<div class="card"><div class="h2" style="font-size:15px">' + ({ day: 'Сьогодні в полі', week: 'По днях тижня', month: 'По днях місяця', cycle: 'По тижнях за ' + NORM() + ' днів' })[RP] + '</div>' +
+        (RP === 'day' ? (todayL.length ? '<div class="between"><span class="mute">Перша відмітка</span><b>' + hm(todayL[0].ts) + '</b></div><div class="between"><span class="mute">Остання відмітка</span><b>' + hm(todayL[todayL.length - 1].ts) + '</b></div><div class="between"><span class="mute">Відміток</span><b>' + todayL.length + '</b></div>' : '<div class="small mute">Сьогодні відміток ще немає</div>') : reportChart(RP)) + '</div>' +
+      (others.length ? '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">адреси · зчитано · нові точки</span></div>' +
         /* мій рядок — першим і виділеним, з підписами чисел; навіть якщо відміток ще немає */
         (function () { var mid = me().id, mw = R.who.filter(function (w) { return w.id === mid; })[0] || { id: mid, v: 0, ok: 0, pts: 0, miss: 0, note: 0 };
           var stat = function (n, l) { return '<div class="col" style="gap:0"><b style="font-size:24px;line-height:1.1">' + fmt(n) + '</b><span style="font-size:12px;color:#A1A1AA">' + l + '</span></div>'; };
@@ -1835,16 +1849,7 @@
           return '<button class="list-row" data-act="whoMap" data-v="' + esc(w.id) + '" style="border-left:0;border-right:0;border-bottom:0;background:none;width:100%;text-align:left;padding:10px 0">' + icon('user', 18) +
             '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(whoName(w.id)) + '</b><span class="small mute">' + pct(w.ok, w.v) + '% зчитано' + (w.note ? ' · візитів ' + w.note : '') + (w.miss ? ' · нема доступу ' + w.miss : '') + '</span></div>' +
             '<b style="width:36px;text-align:right">' + w.v + '</b><b style="width:36px;text-align:right">' + w.ok + '</b><b style="width:36px;text-align:right">' + w.pts + '</b>' + icon('right', 14, 2.4) + '</button>';
-        }).join('') : '<div class="small mute" style="padding:8px 0">Відміток колег за цей період немає. Вони з\'являються після синхронізації («Я» → «Синхронізація»).</div>') + '</div>' +
-      '<div class="card"><div class="h2" style="font-size:15px">Результати обходу</div>' + RESULTS.map(function (r) {
-        var n = R[r[0]] || 0; return '<div class="between"><span>' + r[1] + '</span><span class="row"><span style="width:110px;height:8px;border-radius:4px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(n, R.total) + '%;background:' + (r[0] === 'ok' ? '#16A34A' : r[0] === 'empty' ? '#A1A1AA' : r[0] === 'note' ? '#111111' : '#F59E0B') + '"></span></span><b style="width:40px;text-align:right">' + n + '</b></span></div>';
-      }).join('') + '</div>' +
-      '<div class="card"><div class="between"><div class="h2" style="font-size:15px">Останні 14 днів</div><span class="small mute">сьогодні ' + today0.total + '</span></div><div class="chart14">' + all14.map(function (x) {
-        return '<div class="c14"><div class="c14b"><span style="height:' + (x.n / mx * 100) + '%;background:#D4D4D8"></span><span style="height:' + (x.ok / mx * 100) + '%;background:#111;position:absolute;bottom:0;left:0;right:0"></span></div><span>' + x.d.getDate() + '</span></div>';
-      }).join('') + '</div><div class="row small mute" style="gap:12px"><span class="row" style="gap:4px"><span class="dot" style="background:#111"></span>зчитано</span><span class="row" style="gap:4px"><span class="dot" style="background:#D4D4D8"></span>усі візити</span></div></div>' +
-      (st ? '<div class="card"><div class="h2" style="font-size:15px">План на ' + monthName().toLowerCase() + '</div><div class="small mute">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + ' · ' + st.days + ' роб. днів · ≈' + st.pace + '/день</div>' + '<div class="col" style="gap:0">' + vrows.join('') + '</div></div>'
-        : '<div class="card"><div class="h2" style="font-size:15px">Села · зчитано за ' + NORM() + ' днів</div><div class="col" style="gap:0">' + vrows.join('') + '</div></div>') +
-      '<div class="card"><div class="h2" style="font-size:15px">Локації на карті</div><div class="small mute">' + fmt(cv.placed) + ' з ' + fmt(cv.total) + ' (' + pct(cv.placed, cv.total) + '%) · точно прив\'язано ' + fmt(cv.exact) + '</div></div>' +
+        }).join('') : '<div class="small mute" style="padding:8px 0">Відміток колег за цей період немає. Вони з\'являються після синхронізації («Я» → «Синхронізація»).</div>') + '</div>' : '') +
       '<div class="row" style="gap:8px"><button class="btn" data-act="shareReport" style="flex:1">Надіслати звіт</button><button class="btn sec" data-act="csvVisits" style="flex:1;height:56px">Журнал у Excel</button></div>' +
       '</div>' + tabs('villages');
   }
