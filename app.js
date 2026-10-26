@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.23.3';
+  var VERSION = '0.23.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2737,12 +2737,13 @@
       (isCard ? cardTop(p) + cardPhotos() + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
       '<div class="card visit">' +
         /* дані абонента згорнуті в один рядок: ПІБ і № лічильника видно одразу, решта по тапу */
-        '<details class="subj"' + (R.subjOpen || !(f.fio || serial) ? ' open' : '') + '><summary><div class="col" style="flex:1;min-width:0;gap:2px"><b style="font-size:16px">' + esc(f.fio || 'Абонент: немає даних') + '</b><span class="ids"><span class="ids-n">№ ' + esc(serial || '—') + '</span>' + (f.mtype ? '<span class="small mute">' + esc(f.mtype) + '</span>' : '') + '</span></div>' + icon('down', 18, 2.4) + '</summary>' +
-        '<div class="kvs" style="padding-top:8px">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
+        /* дані абонента завжди розгорнуті, як у старому застосунку */
+        '<div class="subj">' +
+        '<div class="kvs">' + row('Абонент', esc(f.fio || '—')) + row('Адреса', esc(f.address || addr(p))) +
           (phone ? '<div class="kv"><span>Телефон</span><a href="tel:' + esc(phone) + '" style="font-weight:700">' + esc(f.phone) + '</a></div>' : row('Телефон', '—')) +
           row('Серійний номер', '<span class="mono">' + esc(serial || '—') + '</span>') + row('Тип', esc(f.mtype || '—')) + row('Статус установки', esc(f.instStatus || '—')) +
           row('Розміщення', esc(f.placement || '—')) + row('Місце прилада', esc(f.devicePlace || '—')) + '</div>' +
-          '<button class="btn sec" data-act="subjEdit" data-id="' + id + '" style="height:46px;margin-top:6px">' + icon('edit', 18) + 'Редагувати дані абонента</button></details>' +
+          '<button class="btn sec" data-act="subjEdit" data-id="' + id + '" style="height:46px;margin-top:6px">' + icon('edit', 18) + 'Редагувати дані абонента</button></div>' +
         /* звірка номера лічильника з базою — у тому ж рядку, без окремого кроку */
         '<div class="sercheck" id="r-serial"><div class="between" style="gap:8px"><span class="pl">Номер на лічильнику</span><b class="mono">' + esc(serial || 'немає в базі') + '</b></div>' +
           '<div class="seg2">' + (serial ? b2('rSerial', 'ok', icon('check', 16, 3) + 'Збігається', R.serial === 'ok', 'ok') + b2('rSerial', 'diff', 'Інший', R.serial === 'diff', 'bad') : b2('rSerial', 'diff', 'Переписати', R.serial === 'diff', '')) + b2('rSerial', 'skip', 'Не видно', R.serial === 'skip', '') + '</div>' +
@@ -2770,11 +2771,11 @@
         '</div>' +
       '</div>' +
       '<div id="r-miss" class="miss" style="display:none"></div>' +
+      /* три кнопки в тому ж порядку, що й у старому застосунку: Повідомлення про візит · Зберегти · Пломби */
+      '<button class="btn note-btn" data-act="quick" data-v="note" data-id="' + id + '">Повідомлення про візит</button>' +
       '<button id="r-save" class="btn save-btn" data-act="rSave" data-id="' + id + '">Зберегти</button>' +
-      /* інші результати візиту — окремо і дрібніше, щоб не натиснути випадково */
-      '<div class="alt-res"><span class="small mute">Якщо показник зняти не вдалося</span><div class="grid2" style="gap:8px">' +
-        '<button class="btn sec" data-act="quick" data-v="note" data-id="' + id + '" style="height:48px;font-size:14px">Повідомлення про візит</button>' +
-        '<button class="btn sec" data-act="noRead" data-id="' + id + '" style="height:48px;font-size:14px">Не вдалося зняти</button></div></div>' +
+      '<button class="btn seals-btn' + (nL && done === nL ? ' done' : '') + '" data-act="rSealsOpen" data-id="' + id + '">Пломби' + (nL ? ' · ' + done + ' з ' + nL : '') + '</button>' +
+      '<button class="btn sec" data-act="noRead" data-id="' + id + '" style="height:46px;font-size:14px;margin-top:4px">Не вдалося зняти: нема доступу / не живуть</button>' +
       (isCard ? cardBottom(p) : '') +
       '</div>';
     var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); readUi(); };
