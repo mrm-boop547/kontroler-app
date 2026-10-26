@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.24.2';
+  var VERSION = '0.25.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1334,7 +1334,8 @@
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#16A34A"></span>Знято</span><b style="font-size:20px">' + pct(rd, act) + '%</b><span class="small mute">' + fmt(rd) + '</span></div>' +
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#F59E0B"></span>Список ' + NORM() + '</span><b style="font-size:20px">' + pct(miss, act) + '%</b><span class="small mute">' + fmt(miss) + '</span></div>' +
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#fff;border:2px solid #A1A1AA"></span>Немає даних</span><b style="font-size:20px">' + pct(Math.max(left, 0), act) + '%</b><span class="small mute">' + fmt(Math.max(left, 0)) + '</span></div>' +
-      '</div></a>';
+      '</div>' + (function () { var st = planStats(); if (!st) return '';
+        return '<div class="between" style="border-top:1px solid var(--bg);padding-top:12px;gap:10px"><span class="col" style="gap:2px"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + plan().villages.length + ' ' + plural(plan().villages.length, 'село', 'села', 'сіл') + '</span><b style="font-size:20px">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + '</b></span><span class="small mute" style="text-align:right">≈' + fmt(st.pace) + ' адрес<br>на день</span></div>'; })() + '</a>';
   }
   function statusList() {
     var ps = villagePoints(), c = counts(ps);
@@ -3204,30 +3205,36 @@
       var pa = pl.indexOf(a.name) >= 0, pb = pl.indexOf(b.name) >= 0; if (pa !== pb) return pa ? -1 : 1;
       return a.name.localeCompare(b.name, 'uk');
     });
-    var rows = vs.map(function (v) {
+    var rows = []; rows = vs.map(function (v) {
       var head = '';
       var ps = villagePoints(v.name === 'Без села' ? null : v.name);
       if (v.name === 'Без села') ps = Array.from(S.points.values()).filter(function (p) { return !p.village; });
       var c = counts(ps), act = ps.filter(function (p) { return p.status !== 'n'; }), rd = act.filter(readThisCycle).length;
       allActive += act.length; allRead += rd;
       var seg = function (s) { return '<span style="flex:' + c[s] + ' 1 0;min-width:' + (c[s] ? 3 : 0) + 'px;background:' + (s === 'n' ? '#fff;box-sizing:border-box;border:1.5px solid #A1A1AA' : ST[s].color) + '"></span>'; };
-      return head + '<a class="card vcard" href="#village/' + encodeURIComponent(v.name) + '">' +
-        '<div class="between"><div class="col"><b style="font-size:15px">' + esc(v.name) + (pl.indexOf(v.name) >= 0 ? ' <span class="chip" style="height:22px;font-size:11px;padding:0 8px;vertical-align:2px">план</span>' : '') + '</b><span class="small mute">' + (vt[v.name] ? 'внесено ' + v.n + ' з ' + fmt(vt[v.name]) + ' · ' + pct(v.n, vt[v.name]) + '%' : v.n + ' точок') + '</span></div>' +
-        '<div class="row"><span style="width:56px;height:6px;border-radius:3px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(rd, act.length) + '%;background:#111;border-radius:3px"></span></span><b style="font-size:18px;min-width:44px;text-align:right">' + pct(rd, act.length) + '%</b></div></div>' +
-        '<div class="bar">' + ST_ORDER.map(seg).join('') + '</div>' +
-        '<div class="row small" style="gap:12px;font-size:13px;color:#3F3F46;flex-wrap:wrap">' + ST_ORDER.map(function (s) { return '<span class="row" style="gap:5px">' + dotHtml(s) + '<b>' + c[s] + '</b><span class="mute">' + pct(c[s], ps.length) + '%</span></span>'; }).join('') + '</div></a>';
+      var inP = pl.indexOf(v.name) >= 0, R0 = pct(rd, act.length);
+      /* заголовки груп: «План місяця» → «Інші села» */
+      if (pl.length && inP && !rows.planHead) { rows.planHead = 1; head = '<div class="vgrp">План · ' + monthName().toLowerCase() + '</div>'; }
+      if (pl.length && !inP && !rows.restHead) { rows.restHead = 1; head = '<div class="vgrp">Інші села</div>'; }
+      return head + '<a class="vrow" href="#village/' + encodeURIComponent(v.name) + '">' +
+        '<span class="col" style="flex:1;min-width:0;gap:4px"><span class="row" style="gap:6px;min-width:0"><b class="vname">' + esc(v.name) + '</b>' + '<span class="small mute" style="margin-left:auto;white-space:nowrap">' + fmt(v.n) + ' т.</span></span>' +
+        '<span class="bar vbar">' + ST_ORDER.map(seg).join('') + '</span></span>' +
+        '<b class="vpct">' + R0 + '%</b>' + icon('right', 16, 2.4) + '</a>';
     });
     var q = queuePoints().length;
     var needBackup = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     app.innerHTML = '<div class="screen"><div class="col" style="gap:2px;padding:6px 4px 0"><div class="small mute" style="font-size:13px">Здолбунівська дільниця</div><h1 class="h1">Огляд</h1></div>' +
-      coverageCard(true) +
-      '<a href="#report" class="tool dark" style="min-height:0;flex-direction:row;align-items:center;gap:12px;padding:16px">' + icon('chart', 22) + '<span class="col" style="flex:1;gap:2px"><b style="color:#fff">Звіт</b><span>по днях і контролерах</span></span>' + icon('right', 18, 2.4) + '</a>' +
-      /* бригада: той самий червоний блок, що й на головній */
-      brigadeCard() +
+      /* 1. зведення дільниці: зчитано за норму + план місяця */
       districtCard() +
+      /* 2. звіт і бригада поруч; бригада — світло-червона, як на головній */
+      '<div class="grid2 tools"><a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span class="small mute">по днях і контролерах</span></a>' +
+        '<a href="#brigade" class="tool brt">' + icon('alert', 22) + '<b>Бригада' + (function () { var n = brigadeList().new.length; return n ? ' · ' + n : ''; })() + '</b><span class="small">' + (function () { var L = brigadeList(); return L.new.length ? 'нові задачі' : L.sent.length ? 'передано ' + L.sent.length : 'нових немає'; })() + '</span></a></div>' +
 
-      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">' + (pl.length ? 'Спершу села плану, далі за абеткою' : 'Села за абеткою') + ' · % праворуч — зчитано за ' + NORM() + ' днів</div>' +
-      rows.join('') + '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
+      '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · смуга — доступ, % — зчитано за ' + NORM() + ' днів</div>' +
+      '<div class="card vlist">' + rows.join('') + '</div>' +
+      /* 4. наповнення карти — рідко потрібне, згорнуто в один рядок */
+      (function () { var c = coverage(); return foldBlock('cov', 'Локації на карті', '<span class="small mute">' + fmt(c.placed) + ' з ' + fmt(c.total) + ' · ' + pct(c.placed, c.total) + '%</span>', coverageCard(true)); })() +
+      '<button class="btn sec" data-act="newVillage">' + icon('plus', 18) + 'Додати нове село</button></div>' + tabs('villages');
   }
   /* сторінка села з «Огляду»: стан доступу, зчитування, вулиці, хто працював */
   function renderVillage(name) {

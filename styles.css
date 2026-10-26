@@ -376,3 +376,16 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .prep > .card{padding:14px 0 0;border-radius:0;box-shadow:none;background:transparent;border-top:1px solid var(--bg)}
 .prep > .card .h2{font-size:16px}
 .fold-card summary .small{font-weight:600}
+/* «Огляд»: села компактними рядками в одній картці */
+.vlist{padding:4px 16px;gap:0}
+.vgrp{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#71717A;padding:12px 0 6px}
+.vrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--bg);color:inherit;text-decoration:none;min-height:56px}
+.vgrp + .vrow,.vlist > .vrow:first-child{border-top:0}
+.vname{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vplan{font-size:10px;font-weight:800;background:#111;color:#fff;border-radius:6px;padding:2px 6px;flex-shrink:0}
+.vbar{height:6px;width:100%}
+.vpct{font-size:17px;min-width:44px;text-align:right}
+.vrow > svg{color:#A1A1AA;flex-shrink:0}
+.tool.brt{background:#FEF2F2;color:#B91C1C}
+.tool.brt .small{color:#B91C1C;opacity:.85}
+.fold-body > .card.cv{padding:0;box-shadow:none;background:none}
