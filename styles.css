@@ -363,3 +363,6 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .save-btn{background:#16A34A;color:#fff}
 /* «Як знайти адресата» всередині картки статусу: розкривний рядок під кнопками */
 .fold-in{border-top:1px solid var(--bg);padding-top:12px}
+/* кнопка «Зробити фото» біля показника: іконка й підпис по центру, висота як у поля */
+.photo-btn{width:92px;height:56px;padding:4px 6px;text-align:center;line-height:1.15}
+.photo-btn span{display:block;width:100%;text-align:center;white-space:normal}
