@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.7';
+  var VERSION = '0.26.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2160,6 +2160,12 @@
     if (res === 'empty' && p.status !== 'n') { p.status = 'n'; savePoint(p); }
     var v = newVisit({ pointId: id, result: res, prof: p.status, reading: reading || null, method: reading ? 'зчитано' : null, note: null,
       pos: S.pos && !S.pos.stale ? { lat: S.pos.lat, lon: S.pos.lon, acc: Math.round(S.pos.acc) } : null });
+    /* «Повідомлення про візит»: до лічильника не потрапили, залишили записку — усі пломби отримують статус «Немає доступу» */
+    if (res === 'note') {
+      var L0 = (R && R.id === id && R.L && R.L.length ? R.L : sealList(p)).filter(function (x) { return x.n; });
+      v.sealList = L0.map(function (x) { return { n: x.n, place: x.place, st: 'Немає доступу' }; });
+      v.seals = 'немає доступу';
+    }
     S.quickOk = null;
     put('visits', v).then(function (k) {
       v.id = k; S.visits.push(v); invalidate(); S.lastQuick = { pid: id, key: k, uid: v.uid, ts: Date.now(), res: res }; refreshDone();
@@ -3343,7 +3349,7 @@
   }
   var RUIN_WHY = 'Аварійний будинок: ніхто не живе, загроза обриву проводів';
   function brigadeIssue(p) {
-    var f = p.fields || {}, vs = visitsOf(p.id).filter(function (v) { return v.form || v.sealList || v.br; }), v = vs[0], why = [];
+    var f = p.fields || {}, vs = visitsOf(p.id).filter(function (v) { return (v.form || v.sealList || v.br) && v.result !== 'note'; }), v = vs[0], why = [];
     var ruin = (p.tags || []).indexOf('ruin') >= 0 ? RUIN_WHY : null;
     if (v) { why = visitWhy(v); if (ruin) why.unshift(ruin); return why.length ? { p: p, why: why, ts: Math.max(v.ts, ruin ? p.ruinTs || 0 : 0), by: v.by } : null; }
     if (ruin) why.push(ruin);
