@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.2';
+  var VERSION = '0.26.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -568,6 +568,9 @@
     var h = full.slice(1).split('/');
     document.body.classList.remove('fopen');
     var name = h[0] || 'home', arg = h[1] ? decodeURIComponent(h[1]) : null;
+    /* аналітика щоразу відкривається на «Сьогодні»; вибраний період тримається, лише поки ви на цьому екрані */
+    if (name === 'report' && S.lastScreen !== 'report') RP = 'day';
+    S.lastScreen = name;
     offGps();
     if (name !== 'bind' && S.layerBeforeBind) { var lb = S.layerBeforeBind; S.layerBeforeBind = null; if (map) setLayer(lb); else setMeta('layer', lb); }
     showMap(name === 'map' || name === 'bind' || name === 'all' || name === 'sectors');
@@ -1782,7 +1785,7 @@
   }
 
   /* ---------- Звіт ---------- */
-  var RP = 'month';
+  var RP = 'day';
   function periodStart(k) {
     var d = new Date(); d.setHours(0, 0, 0, 0);
     if (k === 'week') { var w = (d.getDay() + 5) % 7; d.setDate(d.getDate() - w); }
