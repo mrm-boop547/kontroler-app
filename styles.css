@@ -402,3 +402,12 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .dark-fold .fold-row,.dark-fold .linkbtn{color:#fff !important;background:transparent}
 .dark-fold .fold-row svg,.dark-fold .fold summary svg{color:#A1A1AA}
 .dark-fold .dot[style*="#111"]{background:#fff !important}
+/* «Підготовка до виїзду» */
+.prow2{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--bg)}
+.prow2-ic{width:40px;height:40px;border-radius:12px;background:#F1F1F3;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pchip{height:38px;padding:0 14px;font-weight:800;font-size:14px;border:1.5px solid #E4E4E7;background:#fff;gap:6px;flex-shrink:0}
+.pchip.dark{background:#111;color:#fff;border-color:#111}
+.satc{height:32px;gap:5px;padding:0 4px 0 10px;background:#DCFCE7;color:#166534;font-size:13px;font-weight:800}
+.satc .mute{color:#15803D;opacity:.7}
+.satx{width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;color:#166534;cursor:pointer}
+#sat-st:empty{display:none}

@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.8';
+  var VERSION = '0.26.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1165,14 +1165,15 @@
   function satCard() {
     var m = S.meta.satOff || {}, ks = Object.keys(m).sort(function (a, b) { return m[b].ts - m[a].ts; }), v = village() && village() !== ALL ? village() : null;
     var est = v ? satTiles(v).length : 0;
-    return '<div class="card" style="gap:10px"><div class="between"><div class="h2">Супутник без інтернету</div>' + infoBtn('sat') + '</div>' +
-      (ks.length ? '<div class="col" style="gap:0">' + ks.map(function (k) { var x = m[k];
-        return '<div class="list-row" style="padding:8px 0">' + icon('check', 16, 3) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(k) + '</b><span class="small mute">' + dt(x.ts) + ' · ' + x.mb + ' МБ' + (x.fail ? ' · не вдалося ' + x.fail : '') + '</span></div>' +
-          '<button class="seal-x" data-act="satDel" data-v="' + esc(k) + '" aria-label="Видалити">' + icon('close', 14, 2.4) + '</button></div>'; }).join('') + '</div>' : '') +
-      '<div class="small" id="sat-st" style="font-weight:700">' + (v ? (m[v] ? '«' + esc(v) + '» збережено ' + dt(m[v].ts) : '«' + esc(v) + '»: ≈' + Math.max(1, Math.round(est * 25 / 1024)) + ' МБ') : 'Виберіть село кнопкою нижче') + '</div>' +
-      (v ? '<button class="btn sec" data-act="satGet">' + icon('cloud', 18) + (m[v] ? 'Оновити супутник: ' : 'Зберегти супутник: ') + esc(v) + '</button>' : '') +
-      /* будь-яке село вручну — не залежить від того, що вибрано на головній */
-      '<button class="btn sec" data-act="satPick">' + icon('village', 18) + (v ? 'Інше село…' : 'Вибрати село і зберегти') + '</button></div>';
+    return '<div class="prow2" style="align-items:flex-start"><span class="prow2-ic">' + icon('globe', 20) + '</span><span class="col" style="flex:1;min-width:0;gap:8px">' +
+      '<span class="between" style="gap:8px"><b>Супутник по селах</b>' + infoBtn('sat') + '</span>' +
+      (ks.length ? '<span class="tags">' + ks.map(function (k) { return '<span class="chip satc">' + icon('check', 13, 3) + esc(k) + ' <span class="mute" style="font-weight:600">' + dt(m[k].ts).slice(0, 5) + '</span><button class="satx" data-act="satDel" data-v="' + esc(k) + '" aria-label="Видалити ' + esc(k) + '">' + icon('close', 12, 2.6) + '</button></span>'; }).join('') + '</span>'
+        : '<span class="small" style="color:#B45309;font-weight:700">жодного села не збережено</span>') +
+      '<span class="small" id="sat-st" style="font-weight:700;min-height:0"></span>' +
+      '<span class="row" style="gap:8px;flex-wrap:wrap">' +
+        (v ? '<button class="chip pchip dark" data-act="satGet">' + icon('cloud', 15) + (m[v] ? 'Оновити ' : '') + esc(v) + (m[v] ? '' : ' · ≈' + Math.max(1, Math.round(est * 25 / 1024)) + ' МБ') + '</button>' : '') +
+        '<button class="chip pchip" data-act="satPick">' + icon('plus', 14, 2.6) + (v ? 'Інше село' : 'Вибрати село') + '</button></span>' +
+      '</span></div>';
   }
 
   /* ---------- офлайн-карта: векторні тайли всієї дільниці (OpenFreeMap дає їх до z14, далі карта збільшує сама) ---------- */
@@ -3510,9 +3511,10 @@
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
         '<button class="btn sec" data-act="csvVisits">Журнал відміток</button>' +
         '<button class="btn sec" data-act="kml">Карта в KML (MAPS.ME, Google)</button></div>';
-    var offline = '<div class="card"><div class="h2">Карта без інтернету</div><div class="small mute" style="line-height:1.5">Схема вулиць і будинків усієї дільниці, ≈10–25 МБ, краще через Wi-Fi. Супутник окремо, по селах: блок нижче.</div>' +
-        '<div class="small" id="off-st" style="font-weight:700">' + (off ? 'Збережено ' + dt(off.ts) + ' · ' + off.tiles + ' фрагментів · ' + off.mb + ' МБ' + (off.fail ? ' · не вдалося ' + off.fail : '') : 'Ще не збережено') + '</div>' +
-        '<button class="btn sec" data-act="offline">' + (off ? 'Оновити карту офлайн' : 'Зберегти карту дільниці офлайн') + '</button></div>';
+    /* підготовка до виїзду: два рядки — схема дільниці і супутник по селах; стан — зеленим/жовтим, дія — праворуч */
+    var offline = '<div class="prow2"><span class="prow2-ic">' + icon('map', 20) + '</span><span class="col" style="flex:1;min-width:0;gap:2px"><b>Схема вулиць</b>' +
+        '<span class="small" id="off-st" style="' + (off ? 'color:#15803D' : 'color:#B45309') + ';font-weight:700">' + (off ? '✓ уся дільниця · ' + dt(off.ts) + (off.fail ? ' · не вдалося ' + off.fail : '') : 'не збережено') + '</span></span>' +
+        '<button class="chip pchip" data-act="offline">' + (off ? 'Оновити' : 'Зберегти') + '</button></div>';
     offline += satCard();
     var backup = '<div class="card"><div class="between"><div class="h2">Резервна копія</div><span class="small ' + (S.meta.lastBackup ? 'mute' : '') + '" style="' + (S.meta.lastBackup ? '' : 'color:#B45309') + '">' + (S.meta.lastBackup ? 'остання ' + dt(S.meta.lastBackup) : 'ще не робили') + '</span></div>' +
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
@@ -3520,7 +3522,7 @@
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
     var phone = installCard(false) + '<div class="col" style="gap:8px"><button class="opt' + (S.meta.keepAwake !== false ? ' on' : '') + '" data-act="keepAwake" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="col" style="gap:2px;text-align:left"><b style="font-size:15px">Екран не гасне під час обходу</b><small>на карті і в картці абонента</small></span><span class="sw' + (S.meta.keepAwake !== false ? ' on' : '') + '"></span></button></div>';
     /* «Я»: щоденне розгорнуте (синхронізація, підготовка до виїзду), рідкісне — у згорнутих «Налаштування» і «Дані та копія» */
-    var prep = '<div class="card prep"><div class="h2">Підготовка до виїзду</div>' + offline + '</div>';
+    var prep = '<div class="card" style="gap:4px"><div class="col" style="gap:2px;padding-bottom:6px"><div class="h2">Підготовка до виїзду</div><span class="small mute">щоб карта працювала в селі без інтернету, краще через Wi-Fi</span></div>' + offline + '</div>';
     var oldBk = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
     var bkSide = '<span class="small" style="' + (oldBk ? 'color:#B45309;font-weight:700' : 'color:#71717A') + '">' + (S.meta.lastBackup ? 'копія ' + dt(S.meta.lastBackup) : 'копії ще немає') + '</span>';
     return syncCard + prep +
