@@ -331,3 +331,33 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .alt-res{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:12px;border-top:1px dashed #D4D4D8}
 .need-f{box-shadow:0 0 0 2px #DC2626 !important;border-radius:14px;background:#FEF2F2 !important}
 .prow.need-f{padding-left:10px;padding-right:10px}
+/* «Візит контролера» — темна картка: головний робочий блок виділяється серед світлих */
+.card.visit{background:#111;color:#fff}
+.card.visit .small.mute,.card.visit .mute{color:#A1A1AA}
+.card.visit .kv{border-top-color:rgba(255,255,255,.1)}
+.card.visit .kv span{color:#A1A1AA}
+.card.visit .kv a{color:#fff}
+.card.visit .ids-n{background:rgba(255,255,255,.12);color:#fff}
+.card.visit .subj summary>svg{color:#A1A1AA}
+.card.visit .btn.sec{background:transparent;color:#fff;border-color:rgba(255,255,255,.25)}
+.card.visit .sercheck,.card.visit .prow,.card.visit .v-sec{border-top-color:rgba(255,255,255,.1)}
+.card.visit .sercheck .pl,.card.visit .prow .pl,.card.visit .v-lab{color:#A1A1AA}
+.card.visit .prow .pv{color:#fff}
+.card.visit .prow .pv.mute{color:#71717A}
+.card.visit .prow > svg{color:#71717A}
+.card.visit .prow.badv .pv{color:#F87171}
+.card.visit .s2{background:transparent;border-color:rgba(255,255,255,.25);color:#fff}
+.card.visit .s2.on{background:#fff;border-color:#fff;color:#111}
+.card.visit .s2.on.ok{background:#16A34A;border-color:#16A34A;color:#fff}
+.card.visit .s2.on.bad{background:#DC2626;border-color:#DC2626;color:#fff}
+.card.visit .photo-btn{background:rgba(255,255,255,.12);color:#fff}
+.card.visit .photo-btn.need{background:#F59E0B;color:#111}
+.card.visit .photo-btn.done{background:#16A34A;color:#fff}
+.card.visit .feeder{background:rgba(255,255,255,.08);color:#A1A1AA}
+.card.visit .feeder input{color:#fff;border-bottom-color:#fff}
+.card.visit .chg{background:rgba(96,165,250,.2);color:#93C5FD}
+.card.visit .need-f{background:rgba(220,38,38,.18) !important;box-shadow:0 0 0 2px #F87171 !important}
+.card.visit .mono{color:inherit}
+.card.visit .input{color:#111}
+/* «Зберегти» під темною карткою — зелене, як у старому застосунку, щоб не зливалось */
+.save-btn{background:#16A34A;color:#fff}
