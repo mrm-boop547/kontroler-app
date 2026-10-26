@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.1';
+  var VERSION = '0.26.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -71,10 +71,12 @@
   var MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
   var MONTHS_GEN = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
   function monthName() { return MONTHS[new Date().getMonth()]; }
-  /* робочі дні (пн–пт) від сьогодні до кінця місяця включно */
+  /* робочі дні контролера — вівторок–субота */
+  function isWorkDay(d) { var w = d.getDay(); return w >= 2 && w <= 6; }
+  /* робочі дні (вт–сб) від сьогодні до кінця місяця включно */
   function workDaysLeft(from) {
     var d = new Date(from || Date.now()); d.setHours(12, 0, 0, 0); var m = d.getMonth(), n = 0;
-    while (d.getMonth() === m) { var w = d.getDay(); if (w !== 0 && w !== 6) n++; d.setDate(d.getDate() + 1); }
+    while (d.getMonth() === m) { if (isWorkDay(d)) n++; d.setDate(d.getDate() + 1); }
     return n;
   }
   function csvCell(v) { v = v == null ? '' : String(v); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
@@ -1408,11 +1410,11 @@
       if (p.created >= t30) { m30++; var au = p.createdBy || '?'; byA[au] = (byA[au] || 0) + 1; if (!first || p.created < first) first = p.created; }
       if (p.created >= t7) wk++;
     });
-    /* темп = точки з поля / робочі дні (пн–пт) від першої такої точки за 30 днів до сьогодні включно */
-    var wd = 0; if (first) { var d0 = new Date(first + 'T12:00:00'), d1 = new Date(); d1.setHours(12, 0, 0, 0); for (var dd = new Date(d0); dd <= d1; dd.setDate(dd.getDate() + 1)) if (dd.getDay() !== 0 && dd.getDay() !== 6) wd++; }
+    /* темп = точки з поля / робочі дні (вт–сб) від першої такої точки за 30 днів до сьогодні включно */
+    var wd = 0; if (first) { var d0 = new Date(first + 'T12:00:00'), d1 = new Date(); d1.setHours(12, 0, 0, 0); for (var dd = new Date(d0); dd <= d1; dd.setDate(dd.getDate() + 1)) if (isWorkDay(dd)) wd++; }
     wd = Math.max(1, wd);
     var perDay = m30 / wd, left = Math.max(0, total - placed), days = perDay > 0 ? Math.ceil(left / perDay) : null;
-    var eta = null; if (days != null && days < 22 * 12 * 5) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } eta = d; }
+    var eta = null; if (days != null && days < 22 * 12 * 5) { var d = new Date(); var n = days; while (n > 0) { d.setDate(d.getDate() + 1); if (isWorkDay(d)) n--; } eta = d; }
     var need = Math.ceil(left / (21 * 12));
     return { byA: byA, total: total, placed: placed, exact: exact, data: data, m30: m30, wk: wk, wd: wd, perDay: perDay, left: left, eta: eta, days: days, need: need, byV: byV };
   }
@@ -1445,7 +1447,7 @@
         '<div class="col" style="gap:8px;font-size:14px;padding-top:12px">' +
         '<div class="between"><span class="mute">Щоб закрити за 12 міс.</span><b>≈' + fmt(c.need) + ' на день</b></div>' +
         '<div class="between"><span class="mute">Це на кожного з <button class="linkbtn" data-act="crewN" style="color:#111;font-weight:800">' + crew() + '</button> контролерів</span><b>≈' + fmt(Math.ceil(c.need / crew())) + ' на день</b></div>' +
-        '<div class="small mute" style="line-height:1.45">Темп: точки з поля за 30 днів ÷ робочі дні (пн–пт) від першої з них. Прогноз відкладає потрібні робочі дні від сьогодні. 12 міс. = 252 робочі дні. Кількість контролерів можна змінити тапом.</div></div></details>' +
+        '<div class="small mute" style="line-height:1.45">Темп: точки з поля за 30 днів ÷ робочі дні (вт–сб) від першої з них. Прогноз відкладає потрібні робочі дні від сьогодні. 12 міс. = 252 робочі дні. Кількість контролерів можна змінити тапом.</div></div></details>' +
 
       (who.length ? sec('Хто вносив за 30 днів') + '<div class="col" style="gap:8px;font-size:14px">' + who.map(function (k) {
         var nm = k === '?' ? 'невідомо' : peerName(k) === 'я' ? (me().name || 'я') : peerName(k);
@@ -1783,7 +1785,7 @@
   var RP = 'month';
   function periodStart(k) {
     var d = new Date(); d.setHours(0, 0, 0, 0);
-    if (k === 'week') { var w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); }
+    if (k === 'week') { var w = (d.getDay() + 5) % 7; d.setDate(d.getDate() - w); }
     if (k === 'month') d.setDate(1);
     if (k === 'cycle') return Date.now() - NORM() * 864e5;
     return d.getTime();
@@ -1814,7 +1816,9 @@
       B.push({ lab: lab, n: L.length, ok: L.filter(function (v) { return v.result === 'ok'; }).length });
     };
     var d0 = function (d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); }, today0 = d0(now), DAY = 864e5;
-    if (k === 'week') for (var i = 6; i >= 0; i--) { var a = today0 - i * DAY; add(a, a + DAY, new Date(a).getDate()); }
+    if (k === 'week') { var WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'], st0 = today0 - ((now.getDay() + 5) % 7) * DAY;
+      /* робочий тиждень вт–сб; неділя й понеділок — лише якщо того дня були відмітки */
+      for (var i = 0; i < 7; i++) { var a = st0 + i * DAY, dw = new Date(a); if (a > today0 && !isWorkDay(dw)) continue; if (!isWorkDay(dw) && !S.visits.some(function (v) { return v.ts >= a && v.ts < a + DAY; })) continue; add(a, a + DAY, WD[dw.getDay()]); } }
     else if (k === 'month') { var m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); for (var t = m0; t <= today0; t += DAY) { var t0 = d0(t + 3600e3 * 3), dn = new Date(t0).getDate(); add(t0, t0 + DAY, dn === 1 || dn % 5 === 0 ? dn : ''); } }
     else { var nW = Math.ceil(NORM() / 7); for (var w = nW - 1; w >= 0; w--) { var e = today0 + DAY - w * 7 * DAY, s0 = e - 7 * DAY; add(s0, e, (w % 6 === 0) ? dt(s0).slice(0, 5) : ''); } }
     var mx = Math.max(5, Math.max.apply(null, B.map(function (x) { return x.n; })));
