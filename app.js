@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.24.0';
+  var VERSION = '0.24.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -3737,7 +3737,10 @@
       inp.value = inp.value + t; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.focus();
     });
     setInterval(function () { if (document.visibilityState === 'visible') ghSync(false); }, 5 * 60 * 1000);
-    setInterval(checkUpdate, 10 * 60 * 1000);
+    setInterval(function () { if (document.visibilityState === 'visible') checkUpdate(); }, 5 * 60 * 1000);
+    /* нова версія вже знайдена, але людина була зайнята — пробуємо оновитись, щойно звільниться */
+    setInterval(function () { if (S.updPending) autoUpdate(); }, 15000);
+    window.addEventListener('hashchange', function () { if (S.updPending) setTimeout(autoUpdate, 800); });
   }
   /* оновлення: version.json завжди з мережі, без кешу; якщо там новіша версія — плашка «Оновити» */
   var swReg = null;
@@ -3746,9 +3749,10 @@
     if (!navigator.onLine) { if (manual) toast('Немає інтернету'); return Promise.resolve(); }
     return fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       if (verNum(j.v) > verNum(VERSION)) {
-        /* при відкритті сторінки ще нічого не введено — оновлюємось одразу, один раз на версію (щоб не зациклитись, якщо CDN ще віддає старий код) */
-        var k = 'kc-upd-' + j.v, tried = false; try { tried = sessionStorage.getItem(k); sessionStorage.setItem(k, '1'); } catch (e) { tried = true; }
-        if (onBoot && !tried) return applyUpdate();
+        /* автооновлення: щойно нічого не вводиться і не зберігається — перезапускаємось у новій версії самі.
+           Один раз на версію (щоб не зациклитись, якщо GitHub Pages ще кілька хвилин віддає старий код) */
+        S.updPending = j.v;
+        if (autoUpdate()) return;
         showUpdate(j.v);
       }
       else if (manual) toast('У вас остання версія ' + VERSION);
@@ -3758,6 +3762,20 @@
     var b = $('#upd');
     if (!b) { b = document.createElement('button'); b.id = 'upd'; b.className = 'upd'; document.body.appendChild(b); b.addEventListener('click', applyUpdate); }
     b.innerHTML = icon('sync', 18) + '<span>Є нова версія ' + esc(v) + '</span><b>Оновити</b>';
+  }
+  /* чи можна зараз непомітно перезапуститись: не друкуємо, не додаємо точку, немає відкритих вікон, не почато зчитування, не йде синхронізація чи завантаження */
+  function updSafe() {
+    if (typingNow() || S.adding || syncBusy || S.offBusy || satBusy) return false;
+    if (document.querySelector('#picker, .seals-ov, .pk-ov, .ov-full, #pe-ov, .sheet-ov')) return false;
+    if (/^#(read|bind|visit)/.test(location.hash || '')) return false;
+    if (/^#card/.test(location.hash || '') && R && (R.val || R.photo || (R.L || []).some(function (x) { return x.st; }) || R.serial)) return false;
+    return true;
+  }
+  function autoUpdate() {
+    var v = S.updPending; if (!v || verNum(v) <= verNum(VERSION) || !updSafe()) return false;
+    var k = 'kc-upd-' + v, tried = false; try { tried = sessionStorage.getItem(k); sessionStorage.setItem(k, '1'); } catch (e) { tried = true; }
+    if (tried) return false;
+    applyUpdate(); return true;
   }
   function applyUpdate() {
     var b = $('#upd'); if (b) b.querySelector('b').textContent = '…';
