@@ -371,3 +371,8 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .btn.vbtn.note-btn{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
 .btn.vbtn.save-btn{background:#16A34A;border-color:#16A34A;color:#fff}
 .btn.vbtn.seals-btn.done{background:#DCFCE7;border-color:#86EFAC;color:#166534}
+/* «Я»: вкладені блоки всередині спільної картки — без власної тіні й фону, розділені лінією */
+.prep{display:flex;flex-direction:column;gap:12px}
+.prep > .card{padding:14px 0 0;border-radius:0;box-shadow:none;background:transparent;border-top:1px solid var(--bg)}
+.prep > .card .h2{font-size:16px}
+.fold-card summary .small{font-weight:600}

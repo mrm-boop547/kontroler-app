@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.23.7';
+  var VERSION = '0.24.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -669,6 +669,7 @@
     jobs.push(setMeta('me', next), setMeta('users', users));
     Promise.all(jobs).then(function () { invalidate(); toast('Дані збережено'); location.hash = '#me'; });
   }
+  document.addEventListener('toggle', function (e) { var d = e.target; if (d && d.getAttribute && d.getAttribute('data-fold')) { S.meFold = S.meFold || {}; S.meFold[d.getAttribute('data-fold')] = d.open; } }, true);
   function renderMe() {
     var u = me(), id = u.id, mk = monthKey();
     var vis = S.visits.filter(function (v) { return v.by === id; }), visM = vis.filter(function (v) { return monthKey(new Date(v.ts)) === mk; });
@@ -682,11 +683,11 @@
         '<a class="iconbtn" href="#profile" aria-label="Редагувати дані контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('edit', 18) + '</a>' +
         '<button class="iconbtn" data-act="logout" aria-label="Змінити контролера" title="Змінити контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('sync', 20) + '</button></div>' +
         '<div class="small mute">' + esc((u.district || 'Здолбунівська') + ' дільниця') + ' · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
-      routeCardHtml() +
       '<div class="card"><div class="h2" style="font-size:15px">Мої дані · ' + monthName().toLowerCase() + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' +
         '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
         '<button class="btn sec" data-act="myPoints" style="height:46px">' + icon('pin', 18) + 'Мої точки на карті</button></div>' +
+      routeCardHtml() +
       settingsBody(true) +
 
       '</div>' + tabs('me');
@@ -3450,6 +3451,17 @@
 
   /* ---------- Налаштування ---------- */
   /* «Я»: спершу те, чим користуються щодня (мої дані, обмін), далі налаштування обходу, внизу — рідкісне (таблиці, офлайн-карта, копія) */
+  /* норма зчитування — налаштування всієї дільниці, окремо від щоденної цілі */
+  function normHtml() {
+    var nd = NORM();
+    return '<div class="col" style="gap:8px"><div class="small mute">Норма зчитування: хто не зчитаний довше, іде в «Список ' + nd + '»</div>' +
+      '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div></div>';
+  }
+  /* згортаний блок; стан (відкрито/закрито) пам'ятаємо, поки застосунок відкритий */
+  function foldBlock(key, title, side, body, cls) {
+    var o = (S.meFold || {})[key];
+    return '<details class="' + (cls || 'card fold-card') + '" data-fold="' + key + '"' + (o ? ' open' : '') + '><summary><span class="row" style="gap:10px;min-width:0"><b>' + title + '</b>' + (side || '') + '</span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' + body + '</div></details>';
+  }
   function routeCardHtml() {
     var nd = NORM();
     var gh = goalHint(), g = routeCfg().limit;
@@ -3457,8 +3469,7 @@
       '<div class="small mute">Стільки найближчих адрес у маршруті на карті. Прогрес видно на картці «Почати обхід».</div>' +
       (gh ? '<div class="between" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;gap:10px"><span class="small">Щоб закрити план за ' + gh.days + ' роб. дн.: ≈ <b>' + gh.raw + '</b> на кожного з ' + gh.crew + '</span>' +
         (g === gh.n ? '<span class="small mute">стоїть</span>' : '<button class="chip" data-act="goalSet" data-v="' + gh.n + '">Поставити ' + gh.n + '</button>') + '</div>' : '') +
-      '<div class="small mute" style="padding-top:4px">Норма зчитування: хто не зчитаний довше, іде в «Список ' + nd + '»</div>' +
-      '<div class="tags">' + [90, 180, 365].map(function (c) { return '<button class="chip fchip' + (nd === c ? ' on' : '') + '" data-act="cycle" data-v="' + c + '">' + c + ' днів</button>'; }).join('') + '</div></div>';
+      '</div>';
   }
   function settingsBody(inMe) {
     var persisted = S.meta._persist, peers = S.meta.peers || {}, off = S.meta.offline, nd = NORM();
@@ -3471,7 +3482,7 @@
     var team = pk.length ? '<div class="sync-sub" style="border-top:1px solid var(--bg);padding-top:14px"><b>Колеги · ' + pk.length + '</b></div><div class="col" style="gap:0">' + pk.map(function (k) { var x = peers[k];
           return '<div class="list-row" style="padding:8px 0">' + icon('user', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.last ? fmt(x.visits || 0) + ' відміток · ' + dt(x.last) : 'ще не надсилав сам') + '</span></div>' +
             '<button class="seal-x" data-act="peerDel" data-v="' + esc(k) + '" aria-label="Прибрати ' + esc(x.name) + '">' + icon('close', 14, 2.4) + '</button></div>'; }).join('') + '</div>' : '';
-    var syncCard = '<div class="card" style="gap:12px"><div class="between"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + infoBtn('sync') + '</div>' + ghCard() + exchange + team + '</div>';
+    var syncCard = '<div class="card" style="gap:12px"><div class="between"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + infoBtn('sync') + '</div>' + ghCard() + foldBlock('xch', 'Обмін без інтернету' + (pk.length ? ' · колеги (' + pk.length + ')' : ''), '', exchange + team, 'fold-card fold-in') + '</div>';
     var route = routeCardHtml();
     var tables = '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
@@ -3485,10 +3496,16 @@
         '<button class="btn" data-act="backup">Зберегти копію (з фото)</button>' +
         '<label class="btn sec" for="imp2">Відновити з файлу</label><input id="imp2" type="file" accept="application/json,application/octet-stream,text/plain,.json" hidden>' +
         '<div class="small mute" style="line-height:1.5">На телефоні ' + fmt(S.points.size) + ' точок і ' + fmt(S.visits.length) + ' відміток. Вони зберігаються лише тут' + (persisted ? ', захист від автоочищення браузером увімкнено' : '') + '. Робіть копію хоча б раз на кілька днів.</div></div>';
-    var phone = installCard(false) + '<div class="card" style="gap:8px"><button class="opt' + (S.meta.keepAwake !== false ? ' on' : '') + '" data-act="keepAwake" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="col" style="gap:2px;text-align:left"><b style="font-size:15px">Екран не гасне під час обходу</b><small>на карті і в картці абонента</small></span><span class="sw' + (S.meta.keepAwake !== false ? ' on' : '') + '"></span></button></div>';
-    return syncCard + phone + (inMe ? '' : sec('Налаштування') + route) + sec('Дані') + tables + offline + backup +
-      '<button class="btn sec" data-act="chkUpd">' + icon('sync', 18) + 'Перевірити оновлення · v' + VERSION + '</button>' +
-      '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>';
+    var phone = installCard(false) + '<div class="col" style="gap:8px"><button class="opt' + (S.meta.keepAwake !== false ? ' on' : '') + '" data-act="keepAwake" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="col" style="gap:2px;text-align:left"><b style="font-size:15px">Екран не гасне під час обходу</b><small>на карті і в картці абонента</small></span><span class="sw' + (S.meta.keepAwake !== false ? ' on' : '') + '"></span></button></div>';
+    /* «Я»: щоденне розгорнуте (синхронізація, підготовка до виїзду), рідкісне — у згорнутих «Налаштування» і «Дані та копія» */
+    var prep = '<div class="card prep"><div class="h2">Підготовка до виїзду</div>' + offline + '</div>';
+    var oldBk = !S.meta.lastBackup || Date.now() - S.meta.lastBackup > 3 * 864e5;
+    var bkSide = '<span class="small" style="' + (oldBk ? 'color:#B45309;font-weight:700' : 'color:#71717A') + '">' + (S.meta.lastBackup ? 'копія ' + dt(S.meta.lastBackup) : 'копії ще немає') + '</span>';
+    return syncCard + prep +
+      foldBlock('set', 'Налаштування', '', (inMe ? '' : route) + normHtml() + phone) +
+      foldBlock('data', 'Дані та копія', bkSide, '<div class="prep">' + backup + tables + '</div>' +
+        '<button class="btn sec" data-act="chkUpd">' + icon('sync', 18) + 'Перевірити оновлення · v' + VERSION + '</button>' +
+        '<div class="small mute">Версія ' + VERSION + ' · пристрій ' + esc(dev()) + ' · карта © OpenStreetMap, супутник © Esri</div>');
   }
   function bindSettings() {
     if ($('#imp2')) $('#imp2').onchange = importFile; if ($('#imp3')) $('#imp3').onchange = importFile;
