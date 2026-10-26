@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.3';
+  var VERSION = '0.26.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1820,8 +1820,8 @@
     };
     var d0 = function (d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); }, today0 = d0(now), DAY = 864e5;
     if (k === 'week') { var WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'], st0 = today0 - ((now.getDay() + 5) % 7) * DAY;
-      /* робочий тиждень вт–сб; неділя й понеділок — лише якщо того дня були відмітки */
-      for (var i = 0; i < 7; i++) { var a = st0 + i * DAY, dw = new Date(a); if (a > today0 && !isWorkDay(dw)) continue; if (!isWorkDay(dw) && !S.visits.some(function (v) { return v.ts >= a && v.ts < a + DAY; })) continue; add(a, a + DAY, WD[dw.getDay()]); } }
+            /* усі 7 днів робочого тижня: вт ср чт пт сб нд пн; вихідні (нд, пн) підписані сірим */
+      for (var i = 0; i < 7; i++) { var a = st0 + i * DAY, dw = new Date(a); add(a, a + DAY, isWorkDay(dw) ? WD[dw.getDay()] : '<span style="opacity:.45">' + WD[dw.getDay()] + '</span>'); } }
     else if (k === 'month') { var m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); for (var t = m0; t <= today0; t += DAY) { var t0 = d0(t + 3600e3 * 3), dn = new Date(t0).getDate(); add(t0, t0 + DAY, dn === 1 || dn % 5 === 0 ? dn : ''); } }
     else { var nW = Math.ceil(NORM() / 7); for (var w = nW - 1; w >= 0; w--) { var e = today0 + DAY - w * 7 * DAY, s0 = e - 7 * DAY; add(s0, e, (w % 6 === 0) ? dt(s0).slice(0, 5) : ''); } }
     var mx = Math.max(5, Math.max.apply(null, B.map(function (x) { return x.n; })));
