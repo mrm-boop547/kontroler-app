@@ -311,3 +311,23 @@ body.kb-open.kb-ui #sheet{display:none !important}
 /* остання відома позиція, поки GPS шукає супутники (наприклад, без інтернету) */
 .me.stale .me-dot{background:#9CA3AF}
 .me.stale .me-acc{background:rgba(113,113,122,.10);border-color:rgba(113,113,122,.35);border-style:dashed}
+/* «Візит контролера»: компактні рядки як у старому застосунку — назва зліва, значення справа, вибір вікном поверх екрана */
+.prows{display:flex;flex-direction:column}
+.prow{display:flex;align-items:center;gap:10px;width:100%;min-height:54px;padding:10px 2px;background:none;border:0;border-top:1px solid var(--bg);text-align:left;font:inherit;color:inherit;cursor:pointer}
+.prow .pl{color:#71717A;font-size:15px;flex:0 1 46%;line-height:1.3}
+.prow .pv{flex:1;text-align:right;font-weight:700;font-size:15px;line-height:1.3;overflow-wrap:anywhere}
+.prow .pv.mute{color:#A1A1AA;font-weight:600}
+.prow > svg{flex-shrink:0;color:#A1A1AA}
+.prow.ro{cursor:default}
+.prow.badv .pv{color:#B91C1C}
+.chg{font-style:normal;font-size:11px;font-weight:700;background:#DBEAFE;color:#1D4ED8;border-radius:8px;padding:2px 6px;margin-left:4px;white-space:nowrap}
+.sercheck{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--bg);padding-top:12px}
+.sercheck .pl{color:#71717A;font-size:15px}
+.seg2{display:flex;gap:8px}
+.s2{flex:1;height:44px;border-radius:14px;border:1.5px solid #E4E4E7;background:#fff;font:inherit;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;color:#111}
+.s2.on{background:#111;border-color:#111;color:#fff}
+.s2.on.ok{background:#16A34A;border-color:#16A34A}
+.s2.on.bad{background:#DC2626;border-color:#DC2626}
+.alt-res{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:12px;border-top:1px dashed #D4D4D8}
+.need-f{box-shadow:0 0 0 2px #DC2626 !important;border-radius:14px;background:#FEF2F2 !important}
+.prow.need-f{padding-left:10px;padding-right:10px}
