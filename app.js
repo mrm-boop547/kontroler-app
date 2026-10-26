@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.25.0';
+  var VERSION = '0.25.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1335,7 +1335,7 @@
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#F59E0B"></span>Список ' + NORM() + '</span><b style="font-size:20px">' + pct(miss, act) + '%</b><span class="small mute">' + fmt(miss) + '</span></div>' +
         '<div class="col"><span class="row small" style="gap:5px;color:#3F3F46"><span class="dot" style="background:#fff;border:2px solid #A1A1AA"></span>Немає даних</span><b style="font-size:20px">' + pct(Math.max(left, 0), act) + '%</b><span class="small mute">' + fmt(Math.max(left, 0)) + '</span></div>' +
       '</div>' + (function () { var st = planStats(); if (!st) return '';
-        return '<div class="between" style="border-top:1px solid var(--bg);padding-top:12px;gap:10px"><span class="col" style="gap:2px"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + plan().villages.length + ' ' + plural(plan().villages.length, 'село', 'села', 'сіл') + '</span><b style="font-size:20px">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + '</b></span><span class="small mute" style="text-align:right">≈' + fmt(st.pace) + ' адрес<br>на день</span></div>'; })() + '</a>';
+        return '<div class="between" style="border-top:1px solid var(--bg);padding-top:12px;gap:10px"><span class="col" style="gap:2px"><span class="small mute" style="font-size:13px">План · ' + monthName().toLowerCase() + ' · ' + plan().villages.length + ' ' + plural(plan().villages.length, 'село', 'села', 'сіл') + '</span><b style="font-size:20px">' + pct(st.done, st.act) + '% · залишилось ' + fmt(st.left) + '</b></span><span class="small mute" style="text-align:right">≈' + fmt(st.pace) + ' адрес<br>на день</span></div>'; })() + '<span class="btn" style="height:50px;gap:8px">' + icon('chart', 18) + 'Детальна аналітика' + icon('right', 16, 2.4) + '</span></a>';
   }
   function statusList() {
     var ps = villagePoints(), c = counts(ps);
@@ -1847,7 +1847,7 @@
         : '<div class="card"><div class="h2" style="font-size:15px">Села · зчитано за ' + NORM() + ' днів</div><div class="col" style="gap:0">' + vrows.join('') + '</div></div>') +
       '<div class="card"><div class="h2" style="font-size:15px">Локації на карті</div><div class="small mute">' + fmt(cv.placed) + ' з ' + fmt(cv.total) + ' (' + pct(cv.placed, cv.total) + '%) · точно прив\'язано ' + fmt(cv.exact) + '</div></div>' +
       '<div class="row" style="gap:8px"><button class="btn" data-act="shareReport" style="flex:1">Надіслати звіт</button><button class="btn sec" data-act="csvVisits" style="flex:1;height:56px">Журнал у Excel</button></div>' +
-      '</div>' + tabs('home');
+      '</div>' + tabs('villages');
   }
   function reportText() {
     var R = reportData(RP), st = planStats(), cv = coverage(), L = ({ day: 'сьогодні ' + dt(Date.now()), week: 'тиждень', month: monthName().toLowerCase(), cycle: 'останні ' + NORM() + ' днів' })[RP];
@@ -3227,8 +3227,7 @@
       /* 1. зведення дільниці: зчитано за норму + план місяця */
       districtCard() +
       /* 2. звіт і бригада поруч; бригада — світло-червона, як на головній */
-      '<div class="grid2 tools"><a href="#report" class="tool">' + icon('chart', 22) + '<b>Звіт</b><span class="small mute">по днях і контролерах</span></a>' +
-        '<a href="#brigade" class="tool brt">' + icon('alert', 22) + '<b>Бригада' + (function () { var n = brigadeList().new.length; return n ? ' · ' + n : ''; })() + '</b><span class="small">' + (function () { var L = brigadeList(); return L.new.length ? 'нові задачі' : L.sent.length ? 'передано ' + L.sent.length : 'нових немає'; })() + '</span></a></div>' +
+      brigadeCard() +
 
       '<div class="small mute" style="padding:8px 4px 0;font-size:13px">Села · смуга — доступ, % — зчитано за ' + NORM() + ' днів</div>' +
       '<div class="card vlist">' + rows.join('') + '</div>' +
