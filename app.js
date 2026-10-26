@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.23.4';
+  var VERSION = '0.23.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2734,7 +2734,7 @@
     var b2 = function (act, v, l, on, kind) { return '<button type="button" class="s2' + (on ? ' on ' + kind : '') + '" data-act="' + act + '" data-v="' + v + '" data-id="' + id + '">' + l + '</button>'; };
     /* порядок і склад полів — точно як «Візит контролера» в старому застосунку */
     app.innerHTML = '<div class="screen" style="padding-bottom:40px">' +
-      (isCard ? cardTop(p) + cardPhotos() + cardFind(p) : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
+      (isCard ? cardTop(p, cardFind(p)) + cardPhotos() : '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0"><div class="small mute">' + esc(p.village || '') + (idx >= 0 ? ' · №' + (idx + 1) + ' у маршруті' : '') + (rn ? ' · маршрут ' + esc(rn) : '') + '</div><div style="font-size:20px;font-weight:800">Візит контролера</div></div></div>') +
       '<div class="card visit">' +
         /* дані абонента згорнуті в один рядок: ПІБ і № лічильника видно одразу, решта по тапу */
         /* дані абонента завжди розгорнуті, як у старому застосунку */
@@ -2794,7 +2794,7 @@
     readUi();
   }
   /* картка абонента = сторінка «Візит контролера» як у старому застосунку; зверху статус і навігація, знизу «Як знайти» та історія */
-  function cardTop(p) {
+  function cardTop(p, inner) {
     var idx = routeIndex(p.id), cv = cycleMap()[p.id], f = p.fields || {}, phone = (f.phone || '').replace(/[^\d+]/g, '');
     var flags = (p.flags || []).filter(function (x) { return FLAGNAME[x]; });
     var navUrl = 'https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=' + p.lat + ',' + p.lon;
@@ -2808,7 +2808,7 @@
         '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
         '<a class="iconbtn" href="' + navUrl + '" target="_blank" rel="noopener" aria-label="Навігація" style="width:46px;height:46px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('nav', 18) + '</a>' +
         (phone ? '<a class="iconbtn" href="tel:' + esc(phone) + '" aria-label="Подзвонити" style="width:46px;height:46px;background:#111;color:#fff;box-shadow:none">' + icon('phone', 18) + '</a>' : '') + '</div>' +
-      '</div>' + dupBox(p);
+      (inner || '') + '</div>' + dupBox(p);
   }
   /* фото в картку абонента — окремо від зчитування: зберігається одразу, без показника і пломб */
   function cardPhotos() {
@@ -2818,7 +2818,7 @@
       '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок"></div>';
   }
   function cardFind(p) {
-    return '<details class="card fold-card"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
+    return '<details class="fold-card fold-in"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div class="field"><label for="note">Орієнтир</label><textarea id="note" class="input" placeholder="Колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
         '<div class="v-sec" style="text-align:left;font-size:15px">Адреса на карті</div>' +

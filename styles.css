@@ -361,3 +361,5 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .card.visit .input{color:#111}
 /* «Зберегти» під темною карткою — зелене, як у старому застосунку, щоб не зливалось */
 .save-btn{background:#16A34A;color:#fff}
+/* «Як знайти адресата» всередині картки статусу: розкривний рядок під кнопками */
+.fold-in{border-top:1px solid var(--bg);padding-top:12px}
