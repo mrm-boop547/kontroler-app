@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.1';
+  var VERSION = '0.27.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2130,17 +2130,26 @@
   }
   /* швидкий результат прямо з карти — без відкриття картки; «Інше…» відкриває повний екран */
   /* скільки адрес у селі вже відвідано цього місяця; тап — приглушити відвідані на карті */
-  /* «пройдене сьогодні»: точки, де я сьогодні був — відмітка, нова точка, редагування, прив'язка */
+  /* «пройдене за період»: точки, де за вибраний період був будь-хто з контролерів — будь-яка відмітка
+     (показник, записка, нема доступу), нова точка, редагування, прив'язка. Решта точок на карті тьмяніша */
+  var TRAIL_OPTS = [['0', 'Вимкнено', 'усі точки однаково яскраві'], ['1', 'Сьогодні', ''], ['3', '3 дні', ''], ['7', 'Тиждень', ''], ['14', '2 тижні', ''], ['m', 'Цей місяць', 'з 1 числа']];
+  function trailMode() { var t = S.meta.trail; return t === false ? '0' : t == null || t === true ? '1' : String(t); }
+  function trailOn() { return trailMode() !== '0'; }
+  function trailFrom() {
+    var t = trailMode(), d = new Date(); d.setHours(0, 0, 0, 0);
+    if (t === 'm') d.setDate(1); else d.setDate(d.getDate() - (Number(t) - 1));
+    return d.getTime();
+  }
   function todayTouched() {
-    var me0 = me().id, t = today(), m = {}, n = 0;
-    S.visits.forEach(function (v) { if ((v.by || me0) === me0 && dayKey(v.ts) === t && !m[v.pointId]) { m[v.pointId] = 1; n++; } });
-    S.points.forEach(function (p) { if (m[p.id]) return; if ((p.createdBy === me0 && p.created === t) || (p.by === me0 && p.updated && dayKey(p.updated) === t)) { m[p.id] = 1; n++; } });
+    var from = trailFrom(), m = {}, n = 0;
+    S.visits.forEach(function (v) { if (v.ts >= from && !m[v.pointId]) { m[v.pointId] = 1; n++; } });
+    S.points.forEach(function (p) { if (m[p.id]) return; var cr = p.created ? new Date(p.created + 'T12:00:00').getTime() : 0; if ((p.updated && p.updated >= from) || cr >= from) { m[p.id] = 1; n++; } });
     m.__n = n; return m;
   }
-  function trailOn() { return S.meta.trail !== false; }
   function trailChip() {
-    var tt = todayTouched(), n = 0; villagePoints().forEach(function (p) { if (tt[p.id]) n++; });
-    return '<button class="tb-item' + (trailOn() && n ? ' on' : '') + '" data-act="trail" aria-label="Пройдене сьогодні: решта точок тьмяніша"><span class="row" style="gap:3px">' + icon('nav', 13, 2.6) + '</span><b>' + n + '</b></button>';
+    var on = trailOn(), n = 0; if (on) { var tt = todayTouched(); villagePoints().forEach(function (p) { if (tt[p.id]) n++; }); }
+    var lab = { '1': 'сьогодні', '3': '3 дні', '7': 'тиждень', '14': '2 тижні', 'm': 'місяць' }[trailMode()];
+    return '<button class="tb-item' + (on && n ? ' on' : '') + '" data-act="trail" aria-label="Пройдене за період"><span class="row" style="gap:3px">' + icon('nav', 13, 2.6) + '</span><b>' + (on ? n : '—') + '</b>' + (on ? '<span class="small" style="margin-left:3px;opacity:.75">' + lab + '</span>' : '') + '</button>';
   }
   function refreshDone() { document.querySelectorAll('[data-act=hideDone]').forEach(function (el) { el.outerHTML = doneChip(el.textContent.indexOf('зчитано') >= 0); }); }
   function doneChip(full) {
@@ -3651,7 +3660,9 @@
       case 'ghOff': closeSheet(); if (confirm('Відключити синхронізацію на цьому телефоні? Дані на телефоні лишаться.')) Promise.all([setMeta('gh', null), setMeta('ghSeen', {}), setMeta('ghLast', null), setMeta('ghErr', null)]).then(function () { render(); }); break;
       case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
       case 'editPoint': openPointEditor(id); break;
-      case 'trail': setMeta('trail', !trailOn()); toast(trailOn() ? 'Пройдене сьогодні: решта точок тьмяніша' : 'Усі точки однаково яскраві'); renderMap.fitNext = false; render(); break;
+      case 'trail': openSheet('Пройдене: яскраві точки, де був будь-хто з контролерів', TRAIL_OPTS.map(function (o) { return { v: o[0], l: o[1], sub: o[2] }; }), trailMode(), function (v) {
+          setMeta('trail', v); renderMap.fitNext = false; render(); toast(v === '0' ? 'Усі точки однаково яскраві' : 'Решта точок тьмяніша');
+        }); break;
       case 'hideDone': setMeta('hideDone', !S.meta.hideDone); renderMap.fitNext = false; render(); break;
       case 'quickUndo': if (S.lastQuick && S.lastQuick.pid === id) { var lq = S.lastQuick; S.lastQuick = null; del('visits', lq.key).then(function () { S.visits = S.visits.filter(function (x) { return x.uid !== lq.uid; }); invalidate(); S.route = computeRoute(); S.sel = id; updateMap(); renderSheet(); refreshDone(); toast('Відмітку скасовано'); }); } break;
       case 'saveFind': saveFind(id); break;
