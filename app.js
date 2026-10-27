@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.0';
+  var VERSION = '0.27.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2140,7 +2140,7 @@
   function trailOn() { return S.meta.trail !== false; }
   function trailChip() {
     var tt = todayTouched(), n = 0; villagePoints().forEach(function (p) { if (tt[p.id]) n++; });
-    return '<button class="tb-item' + (trailOn() && n ? ' on' : '') + '" data-act="trail" aria-label="Пройдене сьогодні: решта точок тьмяніша"><span class="row" style="gap:3px">' + icon('nav', 13, 2.6) + '</span><b>' + n + '</b><span class="small mute" style="margin-left:2px">сьогодні</span></button>';
+    return '<button class="tb-item' + (trailOn() && n ? ' on' : '') + '" data-act="trail" aria-label="Пройдене сьогодні: решта точок тьмяніша"><span class="row" style="gap:3px">' + icon('nav', 13, 2.6) + '</span><b>' + n + '</b></button>';
   }
   function refreshDone() { document.querySelectorAll('[data-act=hideDone]').forEach(function (el) { el.outerHTML = doneChip(el.textContent.indexOf('зчитано') >= 0); }); }
   function doneChip(full) {
