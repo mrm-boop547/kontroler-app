@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.26.9';
+  var VERSION = '0.27.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1948,7 +1948,7 @@
       'circle-color': ['case', ['has', 'col'], ['get', 'col'], ['==', ['get', 'jur'], true], '#7C3AED', ['match', ['get', 'st'], 'g', '#16A34A', 'y', '#F59E0B', 'r', '#DC2626', '#FFFFFF']],
       'circle-stroke-color': ['case', ['==', ['get', 'sel'], true], '#111111', ['has', 'vr'], '#FFFFFF', ['==', ['get', 'st'], 'n'], '#A1A1AA', '#FFFFFF'],
       'circle-stroke-width': ['case', ['==', ['get', 'sel'], true], 3, 2],
-      'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
+      'circle-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1], 'circle-stroke-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     /* відвідані цього місяця — квадрат замість кола: синій з ✓ — показник знято; білий із синьою рамкою — був без показника.
        Малюємо самі (canvas), щоб не залежати від шрифтів карти без інтернету */
     var mk = function (name, fill, border, check) {
@@ -1966,7 +1966,7 @@
       map.addImage('v-off', og.getImageData(0, 0, 33, 33), { pixelRatio: 3 }); }
     map.addLayer({ id: 'pts-off', type: 'symbol', source: 'pts', filter: ['==', ['get', 'off'], true], layout: {
       'icon-image': 'v-off', 'icon-offset': [11, -11], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.9, 1.5], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     /* аварійний будинок: червоний трикутник «!» зліва над точкою (значок відключення — справа) */
     if (!map.hasImage('v-ruin')) { var rc = document.createElement('canvas'); rc.width = rc.height = 36; var rg = rc.getContext('2d');
       rg.lineJoin = 'round'; rg.beginPath(); rg.moveTo(18, 3); rg.lineTo(33.5, 31); rg.lineTo(2.5, 31); rg.closePath(); rg.fillStyle = '#DC2626'; rg.fill(); rg.lineWidth = 3; rg.strokeStyle = '#fff'; rg.stroke();
@@ -1974,13 +1974,13 @@
       map.addImage('v-ruin', rg.getImageData(0, 0, 36, 36), { pixelRatio: 3 }); }
     map.addLayer({ id: 'pts-ruin', type: 'symbol', source: 'pts', filter: ['==', ['get', 'ruin'], true], layout: {
       'icon-image': 'v-ruin', 'icon-offset': [-11, -11], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.9, 1.5], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     mk('v-ok', '#2563EB', '#2563EB', true);
     mk('v-no', '#FFFFFF', '#2563EB', false);
     map.addLayer({ id: 'pts-v', type: 'symbol', source: 'pts', filter: ['has', 'vr'], layout: {
       'icon-image': ['match', ['get', 'vr'], 'ok', 'v-ok', 'v-no'], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.25],
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, 1] } });
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     /* підписи адрес — окреме джерело: якщо шрифти не завантажились без інтернету, точки все одно видно */
     map.addLayer({ id: 'lbl', type: 'symbol', source: 'lbl', minzoom: 16, layout: {
       'text-field': ['step', ['zoom'], ['get', 'h'], 17.6, ['get', 'a']], 'text-font': ['Noto Sans Bold'], 'text-size': 11,
@@ -2026,6 +2026,7 @@
     if (r) r.ids.forEach(function (id, i) { order[id] = i + 1; });
     var feats = [], lbl = [];
     var list = mapMode === 'all' ? allFiltered() : villagePoints(), cm = cycleMap();
+    var TT = mapMode === 'route' && trailOn() && !S.filter ? todayTouched() : null; if (TT && !TT.__n) TT = null;
     /* коло 180: на карті маршруту лише точки, не зчитані довше за норму (+ відвідані сьогодні, щоб бачити пройдене) */
     if (mapMode === 'route') list = routePts(list);
     list.forEach(function (p) {
@@ -2033,13 +2034,15 @@
       var dim = p.id === S.sel ? false : mapMode === 'route' ? (S.filter ? !stMatch(p, S.filter) : (r && r.off ? false : !num)) : mapMode === 'all' ? false : true;
       var g = { type: 'Point', coordinates: [p.lon, p.lat] };
       var cvv = vstate(p); if (cvv && mapMode === 'route' && !S.filter) dim = false; /* відвідані не гасимо: видно, де вже був */
-      var pr = { id: p.id, off: isOff(p), ruin: isRuin(p), jur: isJur(p), st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
+      var fa = !!TT && !TT[p.id] && p.id !== S.sel && !num;
+      var pr = { fa: fa, id: p.id, off: isOff(p), ruin: isRuin(p), jur: isJur(p), st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
       var vs0 = vstate(p); if (vs0) pr.vr = vs0;
       feats.push({ type: 'Feature', geometry: g, properties: pr });
       if (!dim || (mapMode === 'route' && !S.filter)) lbl.push({ type: 'Feature', geometry: g, properties: { h: (p.house || '') + (isOff(p) ? ' · відкл.' : ''), a: addr(p) } });
     });
     map.getSource('pts').setData({ type: 'FeatureCollection', features: feats });
     if (map.getSource('lbl')) map.getSource('lbl').setData({ type: 'FeatureCollection', features: lbl });
+    var tcp = document.querySelector('[data-act=trail]'); if (tcp) tcp.outerHTML = trailChip();
     /* номери маршруту — HTML-мітки: не залежать від шрифтів карти і працюють без інтернету */
     (S.markers || []).forEach(function (mk) { mk.remove(); });
     S.markers = [];
@@ -2100,7 +2103,7 @@
       '<div class="between" style="width:100%;gap:8px">' + villageSelect('vsel').replace('class="vsel"', 'class="vsel mrow-l"') + mapSeg('map') + '</div>' +
       '<div class="pill tilebar" style="padding:0 6px;gap:0;max-width:100%;overflow-x:auto">' + ST_ORDER.map(function (s) {
         return '<button class="tb-item' + (S.filter === s ? ' on' : '') + (S.filter && S.filter !== s ? ' off' : '') + '" data-act="filter" data-st="' + s + '" aria-label="' + ST[s].label + '">' + dotHtml(s) + '<b>' + c[s] + '</b></button>';
-      }).join('') + (function () { var nj = villagePoints().filter(isJur).length; return nj ? '<button class="tb-item' + (S.filter === 'jur' ? ' on' : '') + (S.filter && S.filter !== 'jur' ? ' off' : '') + '" data-act="filter" data-st="jur" aria-label="Юридичні"><span class="dot" style="background:#7C3AED"></span><b>' + nj + '</b></button>' : ''; })() + '<span class="tb-sep"></span>' + doneChip() + '</div>' +
+      }).join('') + (function () { var nj = villagePoints().filter(isJur).length; return nj ? '<button class="tb-item' + (S.filter === 'jur' ? ' on' : '') + (S.filter && S.filter !== 'jur' ? ' off' : '') + '" data-act="filter" data-st="jur" aria-label="Юридичні"><span class="dot" style="background:#7C3AED"></span><b>' + nj + '</b></button>' : ''; })() + '<span class="tb-sep"></span>' + doneChip() + '<span class="tb-sep"></span>' + trailChip() + '</div>' +
       '</div></div>' +
       fabsHtml(true) +
       '<div id="sheet"></div>' + tabs('map');
@@ -2127,6 +2130,18 @@
   }
   /* швидкий результат прямо з карти — без відкриття картки; «Інше…» відкриває повний екран */
   /* скільки адрес у селі вже відвідано цього місяця; тап — приглушити відвідані на карті */
+  /* «пройдене сьогодні»: точки, де я сьогодні був — відмітка, нова точка, редагування, прив'язка */
+  function todayTouched() {
+    var me0 = me().id, t = today(), m = {}, n = 0;
+    S.visits.forEach(function (v) { if ((v.by || me0) === me0 && dayKey(v.ts) === t && !m[v.pointId]) { m[v.pointId] = 1; n++; } });
+    S.points.forEach(function (p) { if (m[p.id]) return; if ((p.createdBy === me0 && p.created === t) || (p.by === me0 && p.updated && dayKey(p.updated) === t)) { m[p.id] = 1; n++; } });
+    m.__n = n; return m;
+  }
+  function trailOn() { return S.meta.trail !== false; }
+  function trailChip() {
+    var tt = todayTouched(), n = 0; villagePoints().forEach(function (p) { if (tt[p.id]) n++; });
+    return '<button class="tb-item' + (trailOn() && n ? ' on' : '') + '" data-act="trail" aria-label="Пройдене сьогодні: решта точок тьмяніша"><span class="row" style="gap:3px">' + icon('nav', 13, 2.6) + '</span><b>' + n + '</b><span class="small mute" style="margin-left:2px">сьогодні</span></button>';
+  }
   function refreshDone() { document.querySelectorAll('[data-act=hideDone]').forEach(function (el) { el.outerHTML = doneChip(el.textContent.indexOf('зчитано') >= 0); }); }
   function doneChip(full) {
     var cm = cycleMap(), ok = 0, v = 0;
@@ -3636,6 +3651,7 @@
       case 'ghOff': closeSheet(); if (confirm('Відключити синхронізацію на цьому телефоні? Дані на телефоні лишаться.')) Promise.all([setMeta('gh', null), setMeta('ghSeen', {}), setMeta('ghLast', null), setMeta('ghErr', null)]).then(function () { render(); }); break;
       case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
       case 'editPoint': openPointEditor(id); break;
+      case 'trail': setMeta('trail', !trailOn()); toast(trailOn() ? 'Пройдене сьогодні: решта точок тьмяніша' : 'Усі точки однаково яскраві'); renderMap.fitNext = false; render(); break;
       case 'hideDone': setMeta('hideDone', !S.meta.hideDone); renderMap.fitNext = false; render(); break;
       case 'quickUndo': if (S.lastQuick && S.lastQuick.pid === id) { var lq = S.lastQuick; S.lastQuick = null; del('visits', lq.key).then(function () { S.visits = S.visits.filter(function (x) { return x.uid !== lq.uid; }); invalidate(); S.route = computeRoute(); S.sel = id; updateMap(); renderSheet(); refreshDone(); toast('Відмітку скасовано'); }); } break;
       case 'saveFind': saveFind(id); break;
