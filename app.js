@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.2';
+  var VERSION = '0.27.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2968,7 +2968,8 @@
         });
       }
     });
-    var draw0 = draw; draw = function () { draw0();
+    /* перемальовування (мітка, доступ, село) не скидає прокрутку: лишаємось там, де натиснули */
+    var draw0 = draw; draw = function () { var sb = ov.querySelector('.seals-body'), y = sb ? sb.scrollTop : 0, oy = ov.scrollTop; draw0(); var sb2 = ov.querySelector('.seals-body'); if (sb2) sb2.scrollTop = y; ov.scrollTop = oy;
       ['#pe-s', '#pe-h'].forEach(function (sel) { var i = ov.querySelector(sel); if (!i) return; i.setAttribute('enterkeyhint', 'done'); i.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); this.blur(); var b = ov.querySelector('[data-pe=save]'); if (b) b.click(); } }; }); loadPhotos(id, '#pe-photos'); bindPhotoInputs(id, ['#pe-ph-m', '#pe-ph-h'], '#pe-photos'); };
     document.body.appendChild(ov); draw();
   }
@@ -3054,6 +3055,7 @@
       }
       if (k === 'save') { R.L = T; var sm = sealSum(); if (sm) R.sealsSel = sm; ov.remove(); var y = window.scrollY; renderRead(R.id); window.scrollTo(0, y); }
     });
+    var draw0 = draw; draw = function () { var sb = ov.querySelector('.seals-body'), y = sb ? sb.scrollTop : 0; draw0(); var sb2 = ov.querySelector('.seals-body'); if (sb2) sb2.scrollTop = y; };
     draw(); document.body.appendChild(ov);
   }
   function saveRead(id) {
