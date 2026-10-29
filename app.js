@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.9';
+  var VERSION = '0.28.0';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -13,7 +13,7 @@
   };
   var ST_ORDER = ['g', 'y', 'r', 'n'];
   var TAGS = [['dog', 'Собака'], ['eve', 'Після 18:00'], ['wk', 'На вихідних'], ['cam', 'Камера'], ['facade', 'На фасаді'],
-    ['call', 'Дзвонити'], ['jur', 'Юридичний'], ['summer', 'Лише влітку'], ['owner', 'Тільки з власником'], ['ruin', 'Аварійний будинок']];
+    ['call', 'Дзвонити'], ['jur', 'Юридичний'], ['summer', 'Лише влітку'], ['owner', 'Тільки з власником'], ['ruin', 'Аварійний будинок'], ['bad', 'Неадекватний споживач']];
   var TAGNAME = {}; TAGS.forEach(function (t) { TAGNAME[t[0]] = t[1]; });
   /* юридичні споживачі: фіолетові на карті, як у MAPS.ME; доступ (зелений/жовтий/червоний) лишається в картці */
   var JUR = '#7C3AED';
@@ -93,9 +93,18 @@
   /* відключений лічильник: позначка вручну (редагування точки) або з даних обленерго — статус установки / примітка «Відключений…» */
   function isOff(p) { if (p.off != null) return !!p.off; var f = p.fields || {}; var is = f.instStatus || ''; return (/відключ/i.test(is) && !/не\s*відключ/i.test(is)) || /^Відключений/.test(f.noteSel || ''); }
   function addr0(p) { return [p.street, p.house].filter(Boolean).join(', ') || (p.note ? p.note.slice(0, 40) : 'Без адреси'); }
-  /* небезпека для контролера: мітка «Собака» або в орієнтирі/коментарі є слова про агресію */
-  var DANGER_RE = /агрес|обережн|неадекват|кусає|кусачий|злий пес|зла собака|пітбул|вівчар|алабай|ротвейлер/i;
-  function isDanger(p) { return (p.tags || []).indexOf('dog') >= 0 || DANGER_RE.test(p.note || ''); }
+  /* небезпека для контролера, за пріоритетом: неадекватний споживач → собака → камера.
+     Береться з міток, а якщо міток немає — з орієнтиру (коментарі з MAPS.ME) */
+  var BAD_RE = /неадекват|випива|п'яниц|агресивн(ий|а) (власник|господар|жін|чолов|спожив)|обережно|скандал|погрожу|божевіль/i;
+  var DOG_RE = /собак|пес\b|псина|вівчар|пітбул|алабай|ротвейлер|🐶/i;
+  var CAM_RE = /камер/i;
+  function isDanger(p) {
+    var t = p.tags || [], n = p.note || '';
+    if (t.indexOf('bad') >= 0 || BAD_RE.test(n)) return 'bad';
+    if (t.indexOf('dog') >= 0 || DOG_RE.test(n)) return 'dog';
+    if (t.indexOf('cam') >= 0 || CAM_RE.test(n)) return 'cam';
+    return '';
+  }
   function isRuin(p) { return (p.tags || []).indexOf('ruin') >= 0; }
   function addr(p) { return addr0(p) + (isOff(p) ? ' (відключено)' : ''); }
   function icon(name, size, sw) {
@@ -2000,13 +2009,27 @@
     map.addLayer({ id: 'pts-ruin', type: 'symbol', source: 'pts', filter: ['==', ['get', 'ruin'], true], layout: {
       'icon-image': 'v-ruin', 'icon-offset': [-11, -11], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.9, 1.5], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
-    /* небезпека (собака тощо): жовтий трикутник «!» ліворуч від точки, на рівні точки — не налазить на підпис адреси знизу */
-    if (!map.hasImage('v-dng')) { var dc = document.createElement('canvas'); dc.width = dc.height = 36; var dg = dc.getContext('2d');
-      dg.lineJoin = 'round'; dg.beginPath(); dg.moveTo(18, 3); dg.lineTo(33.5, 31); dg.lineTo(2.5, 31); dg.closePath(); dg.fillStyle = '#F59E0B'; dg.fill(); dg.lineWidth = 3; dg.strokeStyle = '#fff'; dg.stroke();
-      dg.strokeStyle = '#111'; dg.lineWidth = 3.5; dg.lineCap = 'round'; dg.beginPath(); dg.moveTo(18, 12); dg.lineTo(18, 20); dg.stroke(); dg.beginPath(); dg.arc(18, 25.5, 1.8, 0, Math.PI * 2); dg.fillStyle = '#111'; dg.fill();
-      map.addImage('v-dng', dg.getImageData(0, 0, 36, 36), { pixelRatio: 3 }); }
-    map.addLayer({ id: 'pts-dng', type: 'symbol', source: 'pts', filter: ['==', ['get', 'dng'], true], layout: {
-      'icon-image': 'v-dng', 'icon-offset': [-18, 4], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.35], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+    /* небезпека ліворуч від точки, на рівні точки (не налазить на підпис адреси знизу), жовта:
+       трикутник «!» — неадекватний споживач, лапа — собака, камера — камера */
+    var yel = function (name, draw) {
+      if (map.hasImage(name)) return; var c = document.createElement('canvas'); c.width = c.height = 36; var g = c.getContext('2d');
+      if (name === 'v-bad') { g.lineJoin = 'round'; g.beginPath(); g.moveTo(18, 3); g.lineTo(33.5, 31); g.lineTo(2.5, 31); g.closePath(); }
+      else { g.beginPath(); g.arc(18, 18, 15.5, 0, Math.PI * 2); }
+      g.fillStyle = '#F59E0B'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
+      g.fillStyle = '#111'; g.strokeStyle = '#111'; draw(g);
+      map.addImage(name, g.getImageData(0, 0, 36, 36), { pixelRatio: 3 });
+    };
+    yel('v-bad', function (g) { g.lineWidth = 3.5; g.lineCap = 'round'; g.beginPath(); g.moveTo(18, 12); g.lineTo(18, 20); g.stroke(); g.beginPath(); g.arc(18, 25.5, 1.8, 0, Math.PI * 2); g.fill(); });
+    yel('v-dog', function (g) {
+      g.beginPath(); g.ellipse(18, 22.5, 6.2, 5.2, 0, 0, Math.PI * 2); g.fill();
+      [[10.5, 15.5, 2.4], [14.8, 10.8, 2.5], [21.2, 10.8, 2.5], [25.5, 15.5, 2.4]].forEach(function (t) { g.beginPath(); g.arc(t[0], t[1], t[2], 0, Math.PI * 2); g.fill(); });
+    });
+    yel('v-cam', function (g) {
+      g.beginPath(); g.moveTo(10, 13); g.lineTo(14, 13); g.lineTo(15.5, 10.5); g.lineTo(20.5, 10.5); g.lineTo(22, 13); g.lineTo(26, 13); g.quadraticCurveTo(28, 13, 28, 15); g.lineTo(28, 24); g.quadraticCurveTo(28, 26, 26, 26); g.lineTo(10, 26); g.quadraticCurveTo(8, 26, 8, 24); g.lineTo(8, 15); g.quadraticCurveTo(8, 13, 10, 13); g.closePath(); g.fill();
+      g.beginPath(); g.arc(18, 19.3, 4.2, 0, Math.PI * 2); g.fillStyle = '#F59E0B'; g.fill(); g.beginPath(); g.arc(18, 19.3, 2.2, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
+    });
+    map.addLayer({ id: 'pts-dng', type: 'symbol', source: 'pts', filter: ['has', 'dng'], layout: {
+      'icon-image': ['match', ['get', 'dng'], 'bad', 'v-bad', 'dog', 'v-dog', 'v-cam'], 'icon-offset': [-18, 4], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.35], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     mk('v-ok', '#2563EB', '#2563EB', true);
     mk('v-no', '#FFFFFF', '#2563EB', false);
@@ -2068,7 +2091,8 @@
       var g = { type: 'Point', coordinates: [p.lon, p.lat] };
       var cvv = vstate(p); if (cvv && mapMode === 'route' && !S.filter) dim = false; /* відвідані не гасимо: видно, де вже був */
       var fa = !!TT && !TT[p.id] && p.id !== S.sel && !num;
-      var pr = { fa: fa, id: p.id, off: isOff(p), ruin: isRuin(p), dng: isDanger(p), jur: isJur(p), st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
+      var pr = { fa: fa, id: p.id, off: isOff(p), ruin: isRuin(p), jur: isJur(p), st: p.status, num: S.filter ? 0 : num, sel: p.id === S.sel, dim: dim || (!!cvv && !!S.meta.hideDone && p.id !== S.sel) };
+      var dg0 = isDanger(p); if (dg0) pr.dng = dg0;
       var vs0 = vstate(p); if (vs0) pr.vr = vs0;
       feats.push({ type: 'Feature', geometry: g, properties: pr });
       if (!dim || (mapMode === 'route' && !S.filter)) lbl.push({ type: 'Feature', geometry: g, properties: { h: (p.house || '') + (isOff(p) ? ' · відкл.' : ''), a: addr(p) } });
