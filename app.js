@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.5';
+  var VERSION = '0.27.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1031,6 +1031,9 @@
       }).join('') + (dup.length ? '<p style="color:#B91C1C;margin-top:8px"><b>Кілька телефонів під одним іменем:</b> ' + esc(dup.join(', ')) + '. Найімовірніше, телефон налаштували з чужої резервної копії. На тому телефоні: «Я» → кнопка зі стрілками біля імені («Змінити контролера») → увійти під своїм ПІБ і табельним. Олівець для цього не підходить: він переносить усі записи старого імені.</p>' : '');
   }
   function showInfo(k) {
+    if (k === 'ptflags') return infoSheet('Особливості точки', '<p><b>Юридичний споживач.</b> Точка фіолетова на карті; доступ (зелений, жовтий, червоний) лишається в картці.</p>' +
+      '<p><b>Лічильник відключено.</b> На карті й у назві з\'являється «(відключено)». Знімати так само: фото лічильника і актуальний показник.</p>' +
+      '<p><b>Аварійний будинок.</b> Ніхто не живе, загроза обриву проводів. Статус одразу «Не живуть», точка потрапляє в «Викликати бригаду», на карті червоний трикутник «!».</p>');
     if (k === 'sat') return infoSheet('Супутник без інтернету', '<p>Вибери село на головній і натисни «Зберегти супутник». Застосунок завантажить знімки навколо всіх точок села на всіх наближеннях, до окремих будинків. Одне село ≈10–20 МБ, 1–2 хв. Краще через Wi-Fi або перед виїздом.</p><p>Без інтернету карта показує збережене так само, як з інтернетом. Тримаємо до ' + SAT_MAX + ' сіл; найстаріші прибираються самі, або хрестиком.</p><p class="mute">Знімки © Esri. Для особистої роботи в полі; при впровадженні на все обленерго супутник для офлайну варто оформити ліцензією.</p>');
     if (k === 'sync') {
       var g = gh();
@@ -2953,12 +2956,11 @@
         '<div class="card"><div class="h2" style="font-size:16px">Доступ до лічильника</div><div class="grid2" style="gap:8px">' + ST_ORDER.map(function (k) {
           return '<button class="opt' + (E.st === k ? ' on' : '') + '" data-pe="st" data-v="' + k + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:52px">' + dotHtml(k) + '<b style="font-size:15px">' + ST[k].label + '</b></button>';
         }).join('') + '</div></div>' +
-        '<div class="card"><button class="opt' + (E.tags.indexOf('jur') >= 0 ? ' on jur' : '') + '" data-pe="tag" data-v="jur" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span class="dot" style="background:' + JUR + '"></span><b style="font-size:15px">Юридичний споживач</b></span><span class="sw' + (E.tags.indexOf('jur') >= 0 ? ' on' : '') + '"></span></button>' +
+        '<div class="card"><div class="between"><div class="h2" style="font-size:16px">Особливості точки</div>' + infoBtn('ptflags') + '</div><button class="opt' + (E.tags.indexOf('jur') >= 0 ? ' on jur' : '') + '" data-pe="tag" data-v="jur" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span class="dot" style="background:' + JUR + '"></span><b style="font-size:15px">Юридичний споживач</b></span><span class="sw' + (E.tags.indexOf('jur') >= 0 ? ' on' : '') + '"></span></button>' +
           '<button class="opt' + (E.off ? ' on' : '') + '" data-pe="off" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><b style="font-size:15px">Лічильник відключено</b><span class="sw' + (E.off ? ' on' : '') + '"></span></button>' +
-          '<div class="small mute">На карті й у назві з\'явиться «(відключено)». Знімати так само: фото лічильника і актуальний показник.</div>' +
           /* аварійний будинок — такий самий перемикач, як юридичний і відключений */
           '<button class="opt' + (E.tags.indexOf('ruin') >= 0 ? ' on ruin' : '') + '" data-pe="tag" data-v="ruin" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span style="color:#DC2626;display:flex">' + icon('alert', 16, 2.6) + '</span><b style="font-size:15px">Аварійний будинок</b></span><span class="sw' + (E.tags.indexOf('ruin') >= 0 ? ' on ruin' : '') + '"></span></button>' +
-          '<div class="small mute">Ніхто не живе, загроза обриву проводів: статус «Не живуть», задача для бригади, червоний трикутник на карті.</div></div>' +
+          '</div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Адреса</div>' +
           '<div class="field"><label>Село</label><button type="button" class="input selbtn" data-pe="v"><span class="' + (E.v ? '' : 'mute') + '">' + esc(E.v || 'Без села') + '</span>' + icon('down', 18, 2.4) + '</button></div>' +
           '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="pe-s">Вулиця</label><input id="pe-s" class="input" value="' + esc(keep.s) + '"></div><div class="field"><label for="pe-h">Будинок</label><input id="pe-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(keep.h) + '"></div></div></div>' +
