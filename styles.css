@@ -411,3 +411,4 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .satc .mute{color:#15803D;opacity:.7}
 .satx{width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;color:#166534;cursor:pointer}
 #sat-st:empty{display:none}
+.sw.on.ruin,.opt.on.ruin .sw{background:#DC2626}.opt.on.ruin{background:#FEF2F2;color:#111;border-color:#DC2626}

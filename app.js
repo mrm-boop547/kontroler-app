@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.4';
+  var VERSION = '0.27.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2955,11 +2955,14 @@
         }).join('') + '</div></div>' +
         '<div class="card"><button class="opt' + (E.tags.indexOf('jur') >= 0 ? ' on jur' : '') + '" data-pe="tag" data-v="jur" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span class="dot" style="background:' + JUR + '"></span><b style="font-size:15px">Юридичний споживач</b></span><span class="sw' + (E.tags.indexOf('jur') >= 0 ? ' on' : '') + '"></span></button>' +
           '<button class="opt' + (E.off ? ' on' : '') + '" data-pe="off" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><b style="font-size:15px">Лічильник відключено</b><span class="sw' + (E.off ? ' on' : '') + '"></span></button>' +
-          '<div class="small mute">На карті й у назві з\'явиться «(відключено)». Знімати так само: фото лічильника і актуальний показник.</div></div>' +
+          '<div class="small mute">На карті й у назві з\'явиться «(відключено)». Знімати так само: фото лічильника і актуальний показник.</div>' +
+          /* аварійний будинок — такий самий перемикач, як юридичний і відключений */
+          '<button class="opt' + (E.tags.indexOf('ruin') >= 0 ? ' on ruin' : '') + '" data-pe="tag" data-v="ruin" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span style="color:#DC2626;display:flex">' + icon('alert', 16, 2.6) + '</span><b style="font-size:15px">Аварійний будинок</b></span><span class="sw' + (E.tags.indexOf('ruin') >= 0 ? ' on ruin' : '') + '"></span></button>' +
+          '<div class="small mute">Ніхто не живе, загроза обриву проводів: статус «Не живуть», задача для бригади, червоний трикутник на карті.</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Адреса</div>' +
           '<div class="field"><label>Село</label><button type="button" class="input selbtn" data-pe="v"><span class="' + (E.v ? '' : 'mute') + '">' + esc(E.v || 'Без села') + '</span>' + icon('down', 18, 2.4) + '</button></div>' +
           '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="pe-s">Вулиця</label><input id="pe-s" class="input" value="' + esc(keep.s) + '"></div><div class="field"><label for="pe-h">Будинок</label><input id="pe-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(keep.h) + '"></div></div></div>' +
-        '<div class="card"><div class="h2" style="font-size:16px">Мітки</div><div class="tags">' + TAGS.map(function (t) { return '<button class="tag' + (E.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-pe="tag" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
+        '<div class="card"><div class="h2" style="font-size:16px">Мітки</div><div class="tags">' + TAGS.filter(function (t) { return t[0] !== 'jur' && t[0] !== 'ruin'; }).map(function (t) { return '<button class="tag' + (E.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-pe="tag" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Як знайти</div><textarea id="pe-n" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(keep.n) + '</textarea>' +
           '<button class="btn sec" data-pe="bind" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Пересунути точку на карті</span><span class="small mute">' + esc(p.src || '') + '</span></button></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Фото</div><div class="small mute" style="margin-top:-6px">Де захований лічильник, хвіртка, будинок. Зберігається одразу, без показника.</div>' +
