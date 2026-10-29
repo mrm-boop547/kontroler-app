@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.3';
+  var VERSION = '0.27.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -345,7 +345,26 @@
       if (err.code === 1) { navigator.geolocation.clearWatch(watchId); watchId = null; if (Date.now() - (startGps.warned || 0) > 60000) { startGps.warned = Date.now(); toast('Дозвольте доступ до геолокації'); } return; }
       /* немає сигналу або тайм-аут: перезапускаємо стеження, GPS-модуль продовжує шукати супутники */
       clearTimeout(gpsRetry); gpsRetry = setTimeout(restartGps, 3000);
-    }, { enableHighAccuracy: true, maximumAge: 10000 });
+    }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+    S.gpsStart = Date.now();
+  }
+  /* сторож: Chrome на Android іноді «засинає» стеження без жодної помилки — тоді місце не оновлюється ніколи.
+     Якщо 40 с немає жодного свіжого визначення — перезапускаємо стеження */
+  setInterval(function () {
+    if (watchId === null || document.visibilityState !== 'visible') return;
+    var fresh = S.pos && !S.pos.stale && Date.now() - S.pos.ts < 40000;
+    if (!fresh && Date.now() - (S.gpsStart || 0) > 40000) restartGps();
+  }, 10000);
+  /* кнопка «Моя позиція» без місця: пояснюємо точну причину і одразу пробуємо знову */
+  function gpsWhy() {
+    restartGps();
+    var say = function (st) {
+      if (st === 'denied') toast('Геолокацію заборонено для цього сайту. Chrome → ⋮ → Налаштування → Налаштування сайтів → Місцезнаходження → дозволити');
+      else if (!navigator.onLine) toast('Шукаю супутники без інтернету, це до 1–3 хв. Краще на відкритому місці');
+      else toast('Шукаю GPS… Якщо довго, перевірте, що на телефоні увімкнено «Місцезнаходження»');
+    };
+    if (navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: 'geolocation' }).then(function (r) { say(r.state); }, function () { say(''); });
+    else say('');
   }
   function restartGps() { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } startGps(); }
   function onGps(f) { gpsListeners.push(f); }
@@ -3576,7 +3595,7 @@
       case 'startRoute': S.filter = null; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; renderMap.fitNext = true; if (S.route && !S.route.ids.length && !S.route.off) toast(routeCfg().round === '180' ? 'Немає адрес кола ' + NORM() + ' на сьогодні в цьому селі' : 'Усі адреси цього місяця вже пройдені'); break;
       case 'filter': e.preventDefault(); var st = el.getAttribute('data-st'); S.filter = S.filter === st ? null : st; S.sel = null;
         if (location.hash !== '#map') go('#map'); else { updateMap(); renderMap.fitNext = false; render(); fitTo(villagePoints().filter(function (p) { return !S.filter || stMatch(p, S.filter); })); } break;
-      case 'locate': if (S.pos) { updateMe(); if (mapMode === 'bind') { S.moved = true; pinJump([S.pos.lon, S.pos.lat], Math.max(map.getZoom(), 18)); } else map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); if (S.pos.stale) toast('Остання відома позиція (сіра). GPS ще шукає супутники'); } else toast(navigator.onLine ? 'Шукаю GPS… Перевірте, чи дозволено геолокацію' : 'Шукаю супутники без інтернету, це до 1–3 хв. Краще на відкритому місці'); break;
+      case 'locate': if (S.pos) { updateMe(); if (mapMode === 'bind') { S.moved = true; pinJump([S.pos.lon, S.pos.lat], Math.max(map.getZoom(), 18)); } else map.easeTo({ center: [S.pos.lon, S.pos.lat], zoom: Math.max(map.getZoom(), 16.5) }); if (S.pos.stale) toast('Остання відома позиція (сіра). GPS ще шукає супутники'); } else gpsWhy(); break;
       case 'layer': setLayer(el.getAttribute('data-l')); render(); break;
       case 'skip': S.skipped[S.sel] = 1; S.route = computeRoute(); S.sel = S.route && S.route.ids[0]; updateMap(); renderSheet(); toast('Адресу пропущено до кінця дня'); break;
       case 'saveCard': saveCard(id); break;
