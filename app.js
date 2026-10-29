@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.0';
+  var VERSION = '0.28.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -945,7 +945,10 @@
        тож пересилати їх ще раз не треба. Раніше кожен телефон вивантажував дані всієї команди, файл ріс до мегабайтів,
        і GitHub міг відповідати помилкою 500 */
     var me0 = me().id;
-    d.points = d.points.filter(function (p) { return !p.by || p.by === me0; });
+    /* плюс будь-яка точка, якої немає у файлах інших телефонів (ghRx), хоч би ким підписана: інакше точки, внесені
+       під іншим входом, з копії чи до зміни табельного, ніколи не потрапляють на сервер */
+    var rx = S.meta.ghRx || null;
+    d.points = d.points.filter(function (p) { return !p.by || p.by === me0 || (rx && !rx[p.id]); });
     d.visits = d.visits.filter(function (v) { return !v.by || v.by === me0; });
     d.points = d.points.map(function (p) { var c = Object.assign({}, p); delete c.fields; c.lite = true; return c; });
     d.visits = d.visits.map(function (v) { var c = { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; if (v.form || v.sealList || v.br) c.br = visitWhy(v); return c; });
@@ -965,7 +968,9 @@
     if (!gh() || !me().login) return Promise.resolve();
     if (!navigator.onLine) { if (manual) toast('Немає інтернету. Синхронізую, коли з\'явиться'); return Promise.resolve(); }
     if (syncBusy) return Promise.resolve(); syncBusy = true;
-    var seen = Object.assign({}, S.meta.ghSeen || {}), got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st'), files = Object.assign({}, S.meta.ghFiles || {}), clash = false;
+    /* ghRx — id точок, які вже лежать у файлах інших телефонів. Перший раз перечитуємо всі файли, щоб його зібрати */
+    var rx = S.meta.ghRx ? Object.assign({}, S.meta.ghRx) : null, seen = rx ? Object.assign({}, S.meta.ghSeen || {}) : {}; rx = rx || {};
+    var got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st'), files = Object.assign({}, S.meta.ghFiles || {}), clash = false;
     if (st && manual) st.textContent = 'Синхронізую…';
     /* зрозуміла причина помилки: код відповіді сервера і що з ним робити */
     var fail = function (e) {
@@ -1004,12 +1009,15 @@
           var own = fr.inst ? fr.inst === inst() : (fr.device === dev() && fr.id === me().id);
           if (fr.device === dev() && fr.inst && fr.inst !== inst()) clash = true;
           if (own) { seen[f.path] = f.sha; files[f.path].own = true; return; }
+          (d.points || []).forEach(function (q) { rx[q.id] = 1; });
           return mergeData(d).then(function (R) { got.vis += R.vis; got.pts += R.newPts + R.updPts; if (R.shared) got.sh = 1; got.from++; seen[f.path] = f.sha; });
         }).catch(function (e) { files[f.path] = Object.assign(files[f.path] || { name: f.name }, { err: (e && e.status) || 'помилка' }); }); });
       });
       /* 2. відправляємо свій файл */
       return chain.then(function () {
-        var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(litePackage())) }, kb = Math.round(body.content.length * 0.75 / 1024);
+        S.meta.ghRx = rx;
+        var pk = litePackage(); S.meta.ghOut = { pts: pk.points.length, vis: pk.visits.length };
+        var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(pk)) }, kb = Math.round(body.content.length * 0.75 / 1024);
         if (mySha) body.sha = mySha;
         var put = function () { return ghReq('/contents/' + mine, { method: 'PUT', body: body }); };
         return put().then(function (r) {
@@ -1019,9 +1027,9 @@
         }).then(ok).then(function (r) { return r.json(); }).catch(step('запис файлу цього телефона, ' + kb + ' КБ'));
       }).then(function (res) {
         seen[mine] = res && res.content && res.content.sha;
-        files[mine] = { name: me().name || '', id: me().id, inst: inst(), dev: dev(), app: VERSION, ts: Date.now(), own: true };
+        files[mine] = { name: me().name || '', id: me().id, inst: inst(), dev: dev(), app: VERSION, ts: Date.now(), own: true, pts: S.meta.ghOut.pts, vis: S.meta.ghOut.vis };
         syncBusy = false;
-        var jobs = [setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now()), setMeta('ghFiles', files)];
+        var jobs = [setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now()), setMeta('ghFiles', files), setMeta('ghRx', rx), setMeta('ghOut', S.meta.ghOut)];
         /* інший телефон має той самий код пристрою (відновлено з чужої копії) — беремо собі новий, наступна синхронізація піде в окремий файл */
         if (clash) { jobs.push(setMeta('ghOldFile', { path: mine, sha: seen[mine] }), setMeta('device', Math.random().toString(36).slice(2, 8))); toast('Цей телефон отримав власний код пристрою'); }
         return Promise.all(jobs).then(refreshSyncBadge);
@@ -1055,7 +1063,7 @@
         '<p>Обидва способи безпечно поєднуються: відмітки лише додаються, з двох версій точки лишається новіша, повтор нічого не дублює.</p>' +
         '<p><b>Новий контролер.</b> Достатньо токена: на першому екрані «Підключитися до спільної бази». Карта береться з бази точок на сервері; оновлюй її кнопкою нижче після великих змін (нові села, імпорт).</p>' +
         '<p><b>Колеги.</b> Хрестик прибирає контролера зі списку (звільнився, тестовий акаунт) і видаляє його файл із сервера. Його відмітки в історії лишаються. Якщо він знову надішле дані, повернеться в список.</p>' +
-        (g ? '<p class="mute">Репозиторій: ' + esc(g.repo) + ' · відмічено ' + fmt(S.visits.filter(function (v) { return v.by === me().id; }).length) + ' моїх · надіслано ' + (S.meta.lastSyncOut ? dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '—') + '</p>' : '') + (g ? srvList() : ''),
+        (g ? '<p class="mute">Репозиторій: ' + esc(g.repo) + ' · відмічено ' + fmt(S.visits.filter(function (v) { return v.by === me().id; }).length) + ' моїх · надіслано ' + (S.meta.lastSyncOut ? dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '—') + (S.meta.ghOut ? ' · у файлі цього телефона ' + fmt(S.meta.ghOut.pts) + ' точок' : '') + '</p>' : '') + (g ? srvList() : ''),
         g ? '<button class="btn sec" data-act="ghBase">Оновити базу точок для нових контролерів</button><button class="btn sec" data-act="ghOff" style="color:#B91C1C">Відключити цей телефон від сервера</button>' : '');
     }
   }
