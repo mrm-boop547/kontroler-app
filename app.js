@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.6';
+  var VERSION = '0.27.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2957,7 +2957,7 @@
           return '<button class="opt' + (E.st === k ? ' on' : '') + '" data-pe="st" data-v="' + k + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:52px">' + dotHtml(k) + '<b style="font-size:15px">' + ST[k].label + '</b></button>';
         }).join('') + '</div></div>' +
         '<div class="card"><div class="between"><div class="h2" style="font-size:16px">Особливості точки</div>' + infoBtn('ptflags') + '</div><button class="opt' + (E.tags.indexOf('jur') >= 0 ? ' on jur' : '') + '" data-pe="tag" data-v="jur" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span class="dot" style="background:' + JUR + '"></span><b style="font-size:15px">Юридичний споживач</b></span><span class="sw' + (E.tags.indexOf('jur') >= 0 ? ' on' : '') + '"></span></button>' +
-          '<button class="opt' + (E.off ? ' on' : '') + '" data-pe="off" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><b style="font-size:15px">Лічильник відключено</b><span class="sw' + (E.off ? ' on' : '') + '"></span></button>' +
+          '<button class="opt' + (E.off ? ' on' : '') + '" data-pe="off" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><svg width="18" height="18" viewBox="0 0 33 33" aria-hidden="true" style="flex-shrink:0"><circle cx="16.5" cy="16.5" r="14.5" fill="#111" stroke="#fff" stroke-width="2.5"/><path d="M11.3 12.9A6.5 6.5 0 1 0 21.7 12.9" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/><path d="M16.5 8v7" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></svg><b style="font-size:15px">Лічильник відключено</b></span><span class="sw' + (E.off ? ' on' : '') + '"></span></button>' +
           /* аварійний будинок — такий самий перемикач, як юридичний і відключений */
           '<button class="opt' + (E.tags.indexOf('ruin') >= 0 ? ' on ruin' : '') + '" data-pe="tag" data-v="ruin" style="flex-direction:row;align-items:center;justify-content:space-between;min-height:56px"><span class="row" style="gap:8px"><span style="color:#DC2626;display:flex">' + icon('alert', 16, 2.6) + '</span><b style="font-size:15px">Аварійний будинок</b></span><span class="sw' + (E.tags.indexOf('ruin') >= 0 ? ' on ruin' : '') + '"></span></button>' +
           '</div>' +
