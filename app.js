@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.27.8';
+  var VERSION = '0.27.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2000,13 +2000,13 @@
     map.addLayer({ id: 'pts-ruin', type: 'symbol', source: 'pts', filter: ['==', ['get', 'ruin'], true], layout: {
       'icon-image': 'v-ruin', 'icon-offset': [-11, -11], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.9, 1.5], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
-    /* небезпека (собака тощо): жовтий трикутник «!» зліва під точкою, біля номера будинку */
+    /* небезпека (собака тощо): жовтий трикутник «!» ліворуч від точки, на рівні точки — не налазить на підпис адреси знизу */
     if (!map.hasImage('v-dng')) { var dc = document.createElement('canvas'); dc.width = dc.height = 36; var dg = dc.getContext('2d');
       dg.lineJoin = 'round'; dg.beginPath(); dg.moveTo(18, 3); dg.lineTo(33.5, 31); dg.lineTo(2.5, 31); dg.closePath(); dg.fillStyle = '#F59E0B'; dg.fill(); dg.lineWidth = 3; dg.strokeStyle = '#fff'; dg.stroke();
       dg.strokeStyle = '#111'; dg.lineWidth = 3.5; dg.lineCap = 'round'; dg.beginPath(); dg.moveTo(18, 12); dg.lineTo(18, 20); dg.stroke(); dg.beginPath(); dg.arc(18, 25.5, 1.8, 0, Math.PI * 2); dg.fillStyle = '#111'; dg.fill();
       map.addImage('v-dng', dg.getImageData(0, 0, 36, 36), { pixelRatio: 3 }); }
     map.addLayer({ id: 'pts-dng', type: 'symbol', source: 'pts', filter: ['==', ['get', 'dng'], true], layout: {
-      'icon-image': 'v-dng', 'icon-offset': [-11, 10], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.35], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      'icon-image': 'v-dng', 'icon-offset': [-18, 4], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.35], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     mk('v-ok', '#2563EB', '#2563EB', true);
     mk('v-no', '#FFFFFF', '#2563EB', false);
