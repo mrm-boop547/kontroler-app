@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.1';
+  var VERSION = '0.28.2';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -949,7 +949,8 @@
        під іншим входом, з копії чи до зміни табельного, ніколи не потрапляють на сервер */
     var rx = S.meta.ghRx || null;
     d.points = d.points.filter(function (p) { return !p.by || p.by === me0 || (rx && !rx[p.id]); });
-    d.visits = d.visits.filter(function (v) { return !v.by || v.by === me0; });
+    var rxv = S.meta.ghRxV || null;
+    d.visits = d.visits.filter(function (v) { return !v.by || v.by === me0 || (rxv && !rxv[v.uid]); });
     d.points = d.points.map(function (p) { var c = Object.assign({}, p); delete c.fields; c.lite = true; return c; });
     d.visits = d.visits.map(function (v) { var c = { uid: v.uid, pointId: v.pointId, result: v.result, ts: v.ts, by: v.by, prof: v.prof }; if (v.form || v.sealList || v.br) c.br = visitWhy(v); return c; });
     return d;
@@ -969,7 +970,7 @@
     if (!navigator.onLine) { if (manual) toast('Немає інтернету. Синхронізую, коли з\'явиться'); return Promise.resolve(); }
     if (syncBusy) return Promise.resolve(); syncBusy = true;
     /* ghRx — id точок, які вже лежать у файлах інших телефонів. Перший раз перечитуємо всі файли, щоб його зібрати */
-    var rx = S.meta.ghRx ? Object.assign({}, S.meta.ghRx) : null, seen = rx ? Object.assign({}, S.meta.ghSeen || {}) : {}; rx = rx || {};
+    var rx = S.meta.ghRx && S.meta.ghRxV ? Object.assign({}, S.meta.ghRx) : null, seen = rx ? Object.assign({}, S.meta.ghSeen || {}) : {}, rxv = rx ? Object.assign({}, S.meta.ghRxV) : {}; rx = rx || {};
     var got = { vis: 0, pts: 0, from: 0 }, mine = ghFile(), st = $('#gh-st'), files = Object.assign({}, S.meta.ghFiles || {}), clash = false;
     if (st && manual) st.textContent = 'Синхронізую…';
     /* зрозуміла причина помилки: код відповіді сервера і що з ним робити */
@@ -1009,13 +1010,13 @@
           var own = fr.inst ? fr.inst === inst() : (fr.device === dev() && fr.id === me().id);
           if (fr.device === dev() && fr.inst && fr.inst !== inst()) clash = true;
           if (own) { seen[f.path] = f.sha; files[f.path].own = true; return; }
-          (d.points || []).forEach(function (q) { rx[q.id] = 1; });
+          (d.points || []).forEach(function (q) { rx[q.id] = 1; }); (d.visits || []).forEach(function (v) { if (v.uid) rxv[v.uid] = 1; });
           return mergeData(d).then(function (R) { got.vis += R.vis; got.pts += R.newPts + R.updPts; if (R.shared) got.sh = 1; got.from++; seen[f.path] = f.sha; });
         }).catch(function (e) { files[f.path] = Object.assign(files[f.path] || { name: f.name }, { err: (e && e.status) || 'помилка' }); }); });
       });
       /* 2. відправляємо свій файл */
       return chain.then(function () {
-        S.meta.ghRx = rx;
+        S.meta.ghRx = rx; S.meta.ghRxV = rxv;
         var pk = litePackage(); S.meta.ghOut = { pts: pk.points.length, vis: pk.visits.length };
         var body = { message: 'sync ' + (me().name || '') + ' ' + new Date().toISOString(), content: b64(JSON.stringify(pk)) }, kb = Math.round(body.content.length * 0.75 / 1024);
         if (mySha) body.sha = mySha;
@@ -1029,7 +1030,7 @@
         seen[mine] = res && res.content && res.content.sha;
         files[mine] = { name: me().name || '', id: me().id, inst: inst(), dev: dev(), app: VERSION, ts: Date.now(), own: true, pts: S.meta.ghOut.pts, vis: S.meta.ghOut.vis };
         syncBusy = false;
-        var jobs = [setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now()), setMeta('ghFiles', files), setMeta('ghRx', rx), setMeta('ghOut', S.meta.ghOut)];
+        var jobs = [setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now()), setMeta('ghFiles', files), setMeta('ghRx', rx), setMeta('ghRxV', rxv), setMeta('ghOut', S.meta.ghOut)];
         /* інший телефон має той самий код пристрою (відновлено з чужої копії) — беремо собі новий, наступна синхронізація піде в окремий файл */
         if (clash) { jobs.push(setMeta('ghOldFile', { path: mine, sha: seen[mine] }), setMeta('device', Math.random().toString(36).slice(2, 8))); toast('Цей телефон отримав власний код пристрою'); }
         return Promise.all(jobs).then(refreshSyncBadge);
@@ -1042,6 +1043,30 @@
     }).catch(function (e) { return Promise.resolve(e).then(fail, fail); });
   }
   /* хто є на сервері: по файлу на кожен телефон — ім'я, версія, коли надсилав, скільки точок і відміток */
+  /* записи, які є лише на цьому телефоні (їх немає у файлах колег), але підписані не тим, хто увійшов.
+     Так буває після входу під іншим ім'ям чи табельним або з чужої копії. Контролер може одним тапом записати їх на себе */
+  function strays() {
+    var rx = S.meta.ghRx, rxv = S.meta.ghRxV, m = me().id, by = {}, P = [], V = [];
+    if (!rx || !rxv) return null;
+    S.points.forEach(function (p) { var a = p.createdBy || p.by; if (!a || p.src === 'MAPS.ME' || rx[p.id] || (p.createdBy === m || (!p.createdBy && p.by === m))) return; P.push(p); (by[a] = by[a] || { p: 0, v: 0 }).p++; });
+    S.visits.forEach(function (v) { if (!v.by || v.by === m || !v.uid || rxv[v.uid]) return; V.push(v); (by[v.by] = by[v.by] || { p: 0, v: 0 }).v++; });
+    return { P: P, V: V, by: by };
+  }
+  function straysBlock() {
+    var st = strays(); if (!st || !(st.P.length + st.V.length)) return '';
+    return '<div class="card" style="gap:8px;background:#FEF3C7;margin-top:8px"><b>Записи цього телефона під іншим іменем</b>' +
+      '<div class="small" style="line-height:1.45">Їх немає в жодного колеги, отже внесені на цьому телефоні. Якщо це ваші, запишіть їх на себе: вони з\'являться в аналітиці під вашим іменем і в колег після синхронізації.</div>' +
+      Object.keys(st.by).map(function (k) { return '<div class="between small"><span>' + esc(whoName(k)) + '</span><b>' + fmt(st.by[k].p) + ' точок · ' + fmt(st.by[k].v) + ' відміток</b></div>'; }).join('') +
+      '<button class="btn" data-act="straysMine" style="height:44px">Це мої, записати на ' + esc(me().name || 'мене') + '</button></div>';
+  }
+  function straysMine() {
+    var st = strays(); if (!st) return; var m = me().id, t = Date.now();
+    if (!confirm('Записати на ' + (me().name || 'вас') + ': ' + st.P.length + ' точок і ' + st.V.length + ' відміток?')) return;
+    var tx = db.transaction(['points', 'visits'], 'readwrite');
+    st.P.forEach(function (p) { p.createdBy = m; p.by = m; p.updated = t; tx.objectStore('points').put(p); });
+    st.V.forEach(function (v) { v.by = m; if (v.id != null) tx.objectStore('visits').put(v); });
+    tx.oncomplete = function () { invalidate(); toast('Записано на вас. Синхронізую…'); ghSync(true).then(function () { bgRender(); }); };
+  }
   function srvList() {
     var F = S.meta.ghFiles || {}, ks = Object.keys(F); if (!ks.length) return '<p class="mute">Список телефонів на сервері з\'явиться після першої синхронізації.</p>';
     var byName = {}; ks.forEach(function (k) { var n = (F[k].name || '?').trim(); (byName[n] = byName[n] || []).push(F[k]); });
@@ -3598,7 +3623,7 @@
     var team = pk.length ? '<div class="sync-sub" style="border-top:1px solid var(--bg);padding-top:14px"><b>Колеги · ' + pk.length + '</b></div><div class="col" style="gap:0">' + pk.map(function (k) { var x = peers[k];
           return '<div class="list-row" style="padding:8px 0">' + icon('user', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.last ? fmt(x.visits || 0) + ' відміток · ' + dt(x.last) : 'ще не надсилав сам') + '</span></div>' +
             '<button class="seal-x" data-act="peerDel" data-v="' + esc(k) + '" aria-label="Прибрати ' + esc(x.name) + '">' + icon('close', 14, 2.4) + '</button></div>'; }).join('') + '</div>' : '';
-    var syncCard = '<div class="card" style="gap:12px"><div class="between"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + infoBtn('sync') + '</div>' + ghCard() + foldBlock('xch', 'Обмін без інтернету' + (pk.length ? ' · колеги (' + pk.length + ')' : ''), '', exchange + team, 'fold-card fold-in') + '</div>';
+    var syncCard = '<div class="card" style="gap:12px"><div class="between"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + infoBtn('sync') + '</div>' + ghCard() + straysBlock() + foldBlock('xch', 'Обмін без інтернету' + (pk.length ? ' · колеги (' + pk.length + ')' : ''), '', exchange + team, 'fold-card fold-in') + '</div>';
     var route = routeCardHtml();
     var tables = '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
@@ -3726,6 +3751,7 @@
       case 'ghJoin': ghJoin(); break;
       case 'ghBase': closeSheet(); ghBaseUpload(); break;
       case 'ghSync': ghSync(true); break;
+      case 'straysMine': straysMine(); break;
       case 'ghOff': closeSheet(); if (confirm('Відключити синхронізацію на цьому телефоні? Дані на телефоні лишаться.')) Promise.all([setMeta('gh', null), setMeta('ghSeen', {}), setMeta('ghLast', null), setMeta('ghErr', null)]).then(function () { render(); }); break;
       case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
       case 'editPoint': openPointEditor(id); break;
