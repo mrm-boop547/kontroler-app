@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.4';
+  var VERSION = '0.28.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -600,7 +600,7 @@
     document.body.classList.remove('fopen');
     var name = h[0] || 'home', arg = h[1] ? decodeURIComponent(h[1]) : null;
     /* аналітика щоразу відкривається на «Сьогодні»; вибраний період тримається, лише поки ви на цьому екрані */
-    if (name === 'report' && S.lastScreen !== 'report') RP = 'day';
+    if (name === 'report' && S.lastScreen !== 'report') { RP = 'day'; RO = 0; }
     S.lastScreen = name;
     offGps();
     if (name !== 'bind' && S.layerBeforeBind) { var lb = S.layerBeforeBind; S.layerBeforeBind = null; if (map) setLayer(lb); else setMeta('layer', lb); }
@@ -1860,16 +1860,21 @@
   }
 
   /* ---------- Звіт ---------- */
-  var RP = 'day';
-  function periodStart(k) {
-    var d = new Date(); d.setHours(0, 0, 0, 0);
-    if (k === 'week') { var w = (d.getDay() + 5) % 7; d.setDate(d.getDate() - w); }
-    if (k === 'month') d.setDate(1);
-    if (k === 'cycle') return Date.now() - NORM() * 864e5;
-    return d.getTime();
+  var RP = 'day', RO = 0; /* RO — зсув періоду назад: 0 поточний, -1 попередній… */
+  function periodRange(k, off) {
+    off = off || 0; var d = new Date(), e; d.setHours(0, 0, 0, 0);
+    if (k === 'cycle') return { from: Date.now() - NORM() * 864e5, to: Infinity, lab: 'Останні ' + NORM() + ' днів' };
+    if (k === 'day') { d.setDate(d.getDate() + off); e = new Date(d); e.setDate(e.getDate() + 1);
+      return { from: d.getTime(), to: e.getTime(), lab: off === 0 ? 'Сьогодні' : off === -1 ? 'Вчора · ' + dt(d.getTime()) : WDN[d.getDay()] + ', ' + dt(d.getTime()) }; }
+    if (k === 'week') { d.setDate(d.getDate() - (d.getDay() + 5) % 7 + off * 7); e = new Date(d); e.setDate(e.getDate() + 7);
+      return { from: d.getTime(), to: e.getTime(), lab: off === 0 ? 'Цей тиждень' : dt(d.getTime()).slice(0, 5) + '–' + dt(e.getTime() - 864e5).slice(0, 5) }; }
+    d.setDate(1); d.setMonth(d.getMonth() + off); e = new Date(d); e.setMonth(e.getMonth() + 1);
+    return { from: d.getTime(), to: e.getTime(), lab: MONTHS[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '') };
   }
+  var WDN = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'Пʼятниця', 'Субота'];
+  function periodStart(k) { return periodRange(k, k === RP ? RO : 0).from; }
   function reportData(k) {
-    var from = periodStart(k), vs = S.visits.filter(function (v) { return v.ts >= from; }), byDay = {}, R = { total: vs.length, ok: 0, none: 0, blocked: 0, empty: 0, mine: 0, km: 0, hours: 0 };
+    var pr = periodRange(k, RO), from = pr.from, to = pr.to, vs = S.visits.filter(function (v) { return v.ts >= from && v.ts < to; }), byDay = {}, R = { total: vs.length, ok: 0, none: 0, blocked: 0, empty: 0, mine: 0, km: 0, hours: 0 };
     vs.forEach(function (v) { R[v.result] = (R[v.result] || 0) + 1; if (!v.by || v.by === me().id) R.mine++; (byDay[dayKey(v.ts)] = byDay[dayKey(v.ts)] || []).push(v); });
     /* робочий час дня = від першого до останнього візиту (+10 хв на перший), відстань — між послідовними візитами з GPS */
     Object.keys(byDay).forEach(function (d) {
@@ -1883,13 +1888,13 @@
     /* розбивка по контролерах: візити, зчитано, нові точки за період */
     var W = {}, wk = function (id) { id = id || me().id; return W[id] = W[id] || { id: id, v: 0, ok: 0, miss: 0, note: 0, pts: 0 }; };
     vs.forEach(function (v) { var w = wk(v.by); w.v++; if (v.result === 'ok') w.ok++; if (v.result === 'none' || v.result === 'blocked') w.miss++; if (v.result === 'note') w.note = (w.note || 0) + 1; });
-    var fromDay = dayKey(from); S.points.forEach(function (p) { if (p.createdBy && (p.created || '') >= fromDay) wk(p.createdBy).pts++; });
+    var fromDay = dayKey(from), toDay = to === Infinity ? '9999' : dayKey(to); S.points.forEach(function (p) { if (p.createdBy && (p.created || '') >= fromDay && (p.created || '') < toDay) wk(p.createdBy).pts++; });
     R.who = Object.keys(W).map(function (k) { return W[k]; }).sort(function (a, b) { return b.v - a.v || b.pts - a.pts; });
     return R;
   }
   /* графік за вибраний період: тиждень — 7 днів, місяць — дні місяця, 180 днів — по тижнях */
   function reportChart(k) {
-    var B = [], now = new Date(), add = function (from, to, lab) {
+    var pr = periodRange(k, RO), B = [], now = RO && k !== 'cycle' ? new Date(pr.to - 864e5) : new Date(), add = function (from, to, lab) {
       var L = S.visits.filter(function (v) { return v.ts >= from && v.ts < to; });
       B.push({ lab: lab, n: L.length, ok: L.filter(function (v) { return v.result === 'ok'; }).length });
     };
@@ -1897,7 +1902,7 @@
     if (k === 'week') { var WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'], st0 = today0 - ((now.getDay() + 5) % 7) * DAY;
             /* усі 7 днів робочого тижня: вт ср чт пт сб нд пн; вихідні (нд, пн) підписані сірим */
       for (var i = 0; i < 7; i++) { var a = st0 + i * DAY, dw = new Date(a); add(a, a + DAY, isWorkDay(dw) ? WD[dw.getDay()] : '<span style="opacity:.45">' + WD[dw.getDay()] + '</span>'); } }
-    else if (k === 'month') { var m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); for (var t = m0; t <= today0; t += DAY) { var t0 = d0(t + 3600e3 * 3), dn = new Date(t0).getDate(); add(t0, t0 + DAY, dn === 1 || dn % 5 === 0 ? dn : ''); } }
+    else if (k === 'month') { var m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); for (var t = m0; t <= today0 && t < pr.to; t += DAY) { var t0 = d0(t + 3600e3 * 3), dn = new Date(t0).getDate(); add(t0, t0 + DAY, dn === 1 || dn % 5 === 0 ? dn : ''); } }
     else { var nW = Math.ceil(NORM() / 7); for (var w = nW - 1; w >= 0; w--) { var e = today0 + DAY - w * 7 * DAY, s0 = e - 7 * DAY; add(s0, e, (w % 6 === 0) ? dt(s0).slice(0, 5) : ''); } }
     var mx = Math.max(5, Math.max.apply(null, B.map(function (x) { return x.n; })));
     return '<div class="chart14" style="grid-template-columns:repeat(' + B.length + ',minmax(0,1fr));gap:' + (B.length > 20 ? 2 : 4) + 'px">' + B.map(function (x) {
@@ -1909,7 +1914,9 @@
     var others = R.who.filter(function (w) { return w.id !== me().id; });
     app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Детальна аналітика</h1></div>' +
       '<div class="seg" style="align-self:flex-start">' + [['day', 'Сьогодні'], ['week', 'Тиждень'], ['month', 'Місяць'], ['cycle', NORM() + ' днів']].map(function (x) { return '<button data-act="rp" data-v="' + x[0] + '" class="' + (RP === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="card dark" style="gap:12px"><div class="small mute">' + ({ day: 'Сьогодні', week: 'Цей тиждень', month: monthName(), cycle: 'Останні ' + NORM() + ' днів' })[RP] + ' · днів з обходом: ' + R.days + '</div>' +
+      (RP === 'cycle' ? '' : (function () { var pr = periodRange(RP, RO), ar = function (dir, on) { return '<button class="iconbtn" data-act="ro" data-v="' + dir + '" aria-label="' + (dir < 0 ? 'Попередній період' : 'Наступний період') + '"' + (on ? '' : ' disabled') + ' style="width:40px;height:40px;box-shadow:none;' + (on ? '' : 'opacity:.3') + '">' + icon(dir < 0 ? 'back' : 'right', 18, 2.4) + '</button>'; };
+        return '<div class="between" style="background:#fff;border-radius:16px;padding:6px">' + ar(-1, RO > -60) + '<b style="font-size:16px">' + esc(pr.lab) + '</b>' + ar(1, RO < 0) + '</div>'; })()) +
+      '<div class="card dark" style="gap:12px"><div class="small mute">' + periodRange(RP, RO).lab + ' · днів з обходом: ' + R.days + '</div>' +
         '<div class="grid3"><div class="col"><b style="font-size:28px">' + fmt(R.total) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:28px">' + fmt(R.ok) + '</b><span class="small mute">зчитано · ' + pct(R.ok, R.total) + '%</span></div>' +
         '<div class="col"><b style="font-size:28px">' + fmt(R.note || 0) + '</b><span class="small mute">візитів (записок)</span></div></div>' +
         '<div class="small mute">≈ ' + (R.days ? Math.round(R.total / R.days) : 0) + ' адрес на день обходу</div></div>' +
@@ -1934,7 +1941,7 @@
       '</div>' + tabs('villages');
   }
   function reportText() {
-    var R = reportData(RP), st = planStats(), cv = coverage(), L = ({ day: 'сьогодні ' + dt(Date.now()), week: 'тиждень', month: monthName().toLowerCase(), cycle: 'останні ' + NORM() + ' днів' })[RP];
+    var R = reportData(RP), st = planStats(), cv = coverage(), L = RO ? periodRange(RP, RO).lab.toLowerCase() : ({ day: 'сьогодні ' + dt(Date.now()), week: 'тиждень', month: monthName().toLowerCase(), cycle: 'останні ' + NORM() + ' днів' })[RP];
     return ['Звіт контролера' + (me().name ? ' ' + me().name : '') + ' · ' + L,
       'Адрес пройдено: ' + R.total + ', зчитано: ' + R.ok + ' (' + pct(R.ok, R.total) + '%)',
       'Візитів (залишено записок): ' + (R.note || 0) + (R.noteOk ? ', з них уже передали показник: ' + R.noteOk : ''),
@@ -3799,7 +3806,8 @@
         }); break;
       case 'spQr': spQr(); break;
       case 'spScan': spScan(); break;
-      case 'rp': RP = el.getAttribute('data-v'); renderReport(); break;
+      case 'rp': RP = el.getAttribute('data-v'); RO = 0; renderReport(); break;
+      case 'ro': RO = Math.min(0, RO + (+el.getAttribute('data-v'))); var sy0 = window.scrollY; renderReport(); window.scrollTo(0, sy0); break;
       case 'shareReport': shareReport(); break;
       case 'pick': doPick(el); break;
       case 'routeCfg': routeCfgSheet(); break;
