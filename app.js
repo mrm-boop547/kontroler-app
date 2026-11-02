@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.7';
+  var VERSION = '0.28.8';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1043,16 +1043,38 @@
         var jobs = [setMeta('ghSeen', seen), setMeta('ghLast', Date.now()), setMeta('ghErr', null), setMeta('lastSyncOut', Date.now()), setMeta('ghFiles', files), setMeta('ghRx', rx), setMeta('ghRxV', rxv), setMeta('ghOut', S.meta.ghOut)];
         /* інший телефон має той самий код пристрою (відновлено з чужої копії) — беремо собі новий, наступна синхронізація піде в окремий файл */
         if (clash) { jobs.push(setMeta('ghOldFile', { path: mine, sha: seen[mine] }), setMeta('device', Math.random().toString(36).slice(2, 8))); toast('Цей телефон отримав власний код пристрою'); }
-        return Promise.all(jobs).then(refreshSyncBadge);
+        return Promise.all(jobs).then(fixAuthors).then(function (n) { if (n) got.fix = n; }).then(refreshSyncBadge);
       }).then(function () {
         var txt = got.vis || got.pts ? 'Отримано: ' + got.vis + ' відміток, ' + got.pts + ' точок' : 'Синхронізовано, нового від колег немає';
         if (manual || got.vis || got.pts) toast(txt);
         if (got.sh && !manual && !(got.vis || got.pts)) toast('Оновлено план і налаштування дільниці');
-        if (got.vis || got.pts || got.sh || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) bgRender(); }
+        if (got.fix && manual) toast('Уточнено автора ' + got.fix + ' записів за телефоном');
+        if (got.vis || got.pts || got.sh || got.fix || manual) { var h = location.hash || '#home'; if (/^#(map|all)/.test(h)) { updateMap(); renderSheetSoft(); } else if (!/^#(card|read|visit|bind)/.test(h)) bgRender(); }
       });
     }).catch(function (e) { return Promise.resolve(e).then(fail, fail); });
   }
   /* хто є на сервері: по файлу на кожен телефон — ім'я, версія, коли надсилав, скільки точок і відміток */
+  /* автор за телефоном. ID точки = 'n' + код телефона + час, ID відмітки = код телефона + '-' + час, а кожен файл
+     на сервері каже, чий це телефон. Якщо запис створено на телефоні колеги, а підписаний він кимось, хто має
+     свій інший телефон (так буває після входу під чужим ім'ям), запис віддаємо власнику телефона.
+     Спільний телефон кількох контролерів (лише на ньому вони й працюють) не чіпаємо. Правило однакове на всіх телефонах,
+     тож дату зміни не чіпаємо і конфліктів немає */
+  function fixAuthors() {
+    var F = S.meta.ghFiles || {}, own = {}, devs = {};
+    Object.keys(F).forEach(function (k) { var f = F[k]; if (!f.dev || !f.id) return; (devs[f.id] = devs[f.id] || {})[f.dev] = 1; if (!own[f.dev] || (f.ts || 0) > own[f.dev].ts) own[f.dev] = { id: f.id, ts: f.ts || 0 }; });
+    var D = Object.keys(own).sort(function (a, b) { return b.length - a.length; });
+    var hasOther = function (who, dv) { return Object.keys(devs[who] || {}).some(function (x) { return x !== dv; }); };
+    var ownerOf = function (key, re) { for (var i = 0; i < D.length; i++) if (key.indexOf(D[i]) === 0 && re.test(key.slice(D[i].length))) return D[i]; return null; };
+    var P = [], V = [];
+    S.points.forEach(function (p) { if (!p.id || p.id[0] !== 'n' || !p.createdBy) return; var dv = ownerOf(p.id.slice(1), /^[0-9a-z]{7,9}$/); if (!dv) return;
+      var o = own[dv].id, a = p.createdBy; if (a === o || !hasOther(a, dv)) return; p.createdBy = o; if (p.by === a) p.by = o; P.push(p); });
+    S.visits.forEach(function (v) { if (!v.uid || !v.by) return; var dv = ownerOf(v.uid, /^-[0-9a-z]{7,9}$/); if (!dv) return;
+      var o = own[dv].id, a = v.by; if (a === o || !hasOther(a, dv)) return; v.by = o; V.push(v); });
+    if (!P.length && !V.length) return Promise.resolve(0);
+    return new Promise(function (ok) { var tx = db.transaction(['points', 'visits'], 'readwrite');
+      P.forEach(function (p) { tx.objectStore('points').put(p); }); V.forEach(function (v) { if (v.id != null) tx.objectStore('visits').put(v); });
+      tx.oncomplete = tx.onerror = function () { invalidate(); ok(P.length + V.length); }; });
+  }
   /* записи, які є лише на цьому телефоні (їх немає у файлах колег), але підписані не тим, хто увійшов.
      Так буває після входу під іншим ім'ям чи табельним або з чужої копії. Контролер може одним тапом записати їх на себе */
   function strays() {
