@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.5';
+  var VERSION = '0.28.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1458,7 +1458,7 @@
       statusList() +
       '<a href="#map" data-act="startRoute" class="card big dark" style="gap:16px">' +
         '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px"><span style="font-size:22px;font-weight:800">Почати обхід</span>' +
-        '<span class="small mute" style="font-size:13px">маршрут ' + (r ? r.ids.length : 0) + ' адрес · ' + km + (hrs ? ' · ≈ ' + hrs + ' год' : '') + '</span></div>' +
+        '<span class="small mute" style="font-size:13px">маршрут ' + (r ? r.ids.length : 0) + ' адрес · ' + km + '</span></div>' +
         '<span style="width:52px;height:52px;border-radius:26px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + icon('go', 22, 2.4) + '</span></div>' +
         '<div class="col" style="gap:8px">' + (first ? '<div class="between small" style="font-size:13px"><span class="mute">Перша адреса</span><span>' + esc(addr(first)) + (S.pos ? ' · ' + fdist(dist(S.pos, first)) : '') + '</span></div>' : '') +
         goalLine() + '</div></a>' +
@@ -1774,7 +1774,7 @@
         var foc = SP.focus === o.i;
         return '<button class="sec-row' + (foc ? ' on' : '') + '" data-act="secPick" data-v="' + o.i + '"><span class="dot" style="background:' + SEC_COL[o.i % SEC_COL.length] + ';width:14px;height:14px"></span>' +
           '<span class="col" style="flex-grow:1;min-width:0;gap:1px"><b>' + esc(SP.crew[o.i]) + (mine === o.i ? ' · я' : '') + '</b><span class="small mute">' + o.streets + ' вулиць · ' + o.n + ' адрес</span></span>' +
-          '<span class="col" style="align-items:flex-end;gap:1px;flex-shrink:0"><b>' + o.left + ' чекають</b><span class="small mute">≈ ' + (o.min / 60).toFixed(1).replace('.', ',') + ' год</span></span></button>' +
+          '<b style="flex-shrink:0">' + o.left + ' чекають</b></button>' +
           (foc && SP.saved ? '<button class="btn sec" data-act="secMine" data-v="' + o.i + '" style="height:42px;font-size:13px">' + (mine === o.i ? 'Це я ✓ — мій маршрут лише по цих вулицях' : 'Це я') + '</button>' : '');
       }).join('') + '</div>' +
       (SP.mode === 'manual' ? '<div class="small mute">Торкніться вулиці, щоб вибрати, хто її бере</div><div class="col" style="gap:4px">' + names.map(function (n) {
