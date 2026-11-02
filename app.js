@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.3';
+  var VERSION = '0.28.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -640,12 +640,15 @@
     return 'u' + h.toString(36);
   }
   function renderLogin() {
-    var users = S.meta.users || [];
+    var users = (S.meta.users || []).slice(), m0 = S.meta.me;
+    if (m0 && m0.id && m0.name && !users.some(function (x) { return x.id === m0.id; })) users.unshift({ id: m0.id, name: m0.name, tab: m0.tab || '' });
+    if (m0 && m0.id) users.sort(function (a, b) { return (b.id === m0.id) - (a.id === m0.id); });
     app.innerHTML = '<div class="screen"><div class="empty" style="justify-content:flex-start;padding-top:32px">' +
       '<div class="col" style="gap:6px"><div class="small mute" style="font-size:13px">Карта контролера</div><h1 class="h1">Хто працює?</h1>' +
       '<div class="small mute" style="line-height:1.5">Усі візити, показники й нові точки записуються на контролера, який увійшов. Колеги бачитимуть, хто що вніс.</div></div>' +
       (users.length ? '<div class="col" style="gap:8px"><div class="small mute">Вже входили на цьому телефоні</div>' + users.map(function (u) {
-        return '<button class="pk-row" data-act="loginAs" data-v="' + esc(u.id) + '"><span class="col" style="gap:2px"><span>' + esc(u.name) + '</span><span class="small" style="opacity:.6">' + (u.tab ? 'таб. № ' + esc(u.tab) : 'без табельного') + '</span></span>' + icon('right', 18, 2.4) + '</button>';
+        return '<div class="row" style="gap:8px"><button class="pk-row" style="flex:1;min-width:0" data-act="loginAs" data-v="' + esc(u.id) + '"><span class="col" style="gap:2px"><span>' + esc(u.name) + (m0 && u.id === m0.id ? ' <span class="small" style="opacity:.6">· останній</span>' : '') + '</span><span class="small" style="opacity:.6">' + (u.tab ? 'таб. № ' + esc(u.tab) : 'без табельного') + '</span></span>' + icon('right', 18, 2.4) + '</button>' +
+          (m0 && u.id === m0.id ? '' : '<button class="iconbtn" data-act="userForget" data-v="' + esc(u.id) + '" aria-label="Прибрати зі списку" style="box-shadow:none;width:44px;height:44px;flex-shrink:0">' + icon('close', 18) + '</button>') + '</div>';
       }).join('') + '<div class="small mute" style="padding-top:6px">Або новий контролер</div></div>' : '') +
       '<div class="card" style="gap:12px"><div class="field"><label for="lg-n">Прізвище та ім\'я</label><input id="lg-n" class="input" autocomplete="name" placeholder="Прізвище Ім\'я"></div>' +
       '<div class="field"><label for="lg-t">Табельний номер</label><input id="lg-t" class="input" inputmode="numeric" placeholder="Напр. 10452"></div>' +
@@ -720,8 +723,9 @@
       '<div class="card big dark" style="gap:14px"><div class="row" style="gap:14px"><span style="width:56px;height:56px;border-radius:28px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0">' + esc(ini) + '</span>' +
         '<div class="col" style="gap:2px;min-width:0;flex-grow:1"><b style="font-size:20px">' + esc(u.name) + '</b><span class="small mute">' + (u.tab ? 'Табельний № ' + esc(u.tab) : 'Без табельного номера') + ' · ID ' + esc(id) + '</span></div>' +
         '<a class="iconbtn" href="#profile" aria-label="Редагувати дані контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('edit', 18) + '</a>' +
-        '<button class="iconbtn" data-act="logout" aria-label="Змінити контролера" title="Змінити контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('sync', 20) + '</button></div>' +
-        '<div class="small mute">' + esc((u.district || 'Здолбунівська') + ' дільниця') + ' · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
+        '</div>' +
+        '<div class="small mute">' + esc((u.district || 'Здолбунівська') + ' дільниця') + ' · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div>' +
+        '<button class="btn" data-act="logout" style="height:44px;background:#2A2A2E;color:#fff">' + icon('user', 18) + 'Вийти / змінити контролера</button></div>' +
       '<div class="card"><div class="between"><div class="h2" style="font-size:15px">Мої дані · ' + mkName + '</div><div class="row" style="gap:6px">' + mArrow(-1, mk > first) + mArrow(1, mk < curMk) + '</div></div>' +
         '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' + (boundM ? '<div class="small mute">Прив\'язано за місяць: ' + fmt(boundM) + '</div>' : '') +
         '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
@@ -3696,8 +3700,12 @@
       case 'dupMerge': if (confirm('Об\'єднати дві точки в одну? Візити, фото й дані перейдуть у цю картку.')) mergeDup(id, el.getAttribute('data-o')); break;
       case 'dupNo': notDup(id, el.getAttribute('data-o')); break;
       case 'login': loginSubmit(); break;
-      case 'loginAs': var lu = (S.meta.users || []).filter(function (x) { return x.id === el.getAttribute('data-v'); })[0]; if (lu) doLogin(lu); break;
-      case 'logout': setMeta('me', Object.assign({}, me(), { login: false })).then(function () { go('#login'); }); break;
+      case 'loginAs': var lu = (S.meta.users || []).concat(S.meta.me ? [S.meta.me] : []).filter(function (x) { return x.id === el.getAttribute('data-v'); })[0]; if (lu) doLogin({ id: lu.id, name: lu.name, tab: lu.tab || '' }); break;
+      case 'logout': if (!confirm('Вийти з облікового запису ' + (me().name || '') + '?\n\nДані на телефоні лишаються. Увійти знову можна тапом по імені.')) break;
+        setMeta('me', Object.assign({}, me(), { login: false })).then(function () { S.route = null; go('#login'); }); break;
+      case 'userForget': (function () { var id = el.getAttribute('data-v'), u = (S.meta.users || []).filter(function (x) { return x.id === id; })[0];
+        if (!confirm('Прибрати «' + (u ? u.name : id) + '» зі списку входу? Записи цього контролера на телефоні лишаться.')) return;
+        setMeta('users', (S.meta.users || []).filter(function (x) { return x.id !== id; })).then(render); })(); break;
       case 'myPoints': setMeta('allF', { st: [], cy: [], mine: true }).then(function () { go('#all'); }); break;
       case 'allWho': var nf = Object.assign({ st: [], cy: [] }, S.meta.allF || {}); nf.mine = false; nf.who = el.getAttribute('data-v') || null; setMeta('allF', nf); renderAll.fitNext = true; render(); break;
       case 'whoMap': setMeta('allF', { st: [], cy: [], who: el.getAttribute('data-v') }).then(function () { setMeta('allMin', true); renderAll.fitNext = true; go('#all'); }); break;
