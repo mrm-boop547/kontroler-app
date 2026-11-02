@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.6';
+  var VERSION = '0.28.7';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -865,7 +865,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev(), inst: inst() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
+      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -915,7 +915,10 @@
     tx.oncomplete = function () {
       var peers = Object.assign({}, S.meta.peers || {}), jobs0 = [];
       Object.keys(al).forEach(function (o) { if (peers[o] && !peers[al[o]]) peers[al[o]] = peers[o]; delete peers[o]; });
-      var hid = S.meta.peersHidden || {};
+      /* прибрані колеги — спільний список: прибрали на одному телефоні, зникає на всіх. Повертається лише той,
+         хто надіслав свій файл ПІСЛЯ прибирання (тобто й далі працює) */
+      var hid = Object.assign({}, S.meta.peersHidden || {}); Object.keys(d.peersHidden || {}).forEach(function (k) { if (!hid[k] || d.peersHidden[k] > hid[k]) hid[k] = d.peersHidden[k]; }); jobs0.push(setMeta('peersHidden', hid));
+      Object.keys(hid).forEach(function (k) { if (peers[k] && !peers[k].local && (peers[k].sent || 0) < hid[k]) delete peers[k]; });
       Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k] && !hid[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from && d.from.id !== me().id && (!hid[d.from.id] || (d.exported || 0) > hid[d.from.id])) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
       var dvs = Object.assign({}, S.meta.deletedVillages || {}); Object.keys(d.deletedVillages || {}).forEach(function (v) { if (!dvs[v] || dvs[v] < d.deletedVillages[v]) dvs[v] = d.deletedVillages[v]; }); jobs0.push(setMeta('deletedVillages', dvs));
@@ -1102,12 +1105,14 @@
   /* прибрати контролера: зі списку колег і (якщо підключено) його файли з сервера; відмітки в історії лишаються */
   function peerDel(id) {
     var x = (S.meta.peers || {})[id]; if (!x) return;
-    if (!confirm('Прибрати «' + x.name + '» зі списку колег?' + (gh() ? ' Його файл буде видалено з сервера.' : '') + ' Відмітки в історії лишаться.')) return;
+    var act = x.sent && Date.now() - x.sent < 14 * 864e5;
+    if (!confirm('Прибрати «' + x.name + '» зі списку колег на всіх телефонах?' + (act ? '\n\nВін синхронізувався за останні 14 днів, тож його дані на сервері лишаються. Якщо він надішле нові дані, знову з\'явиться в списку.' : gh() ? ' Його старий файл буде видалено з сервера.' : '') + ' Відмітки в історії лишаться.')) return;
     var peers = Object.assign({}, S.meta.peers); delete peers[id];
     var hid = Object.assign({}, S.meta.peersHidden || {}); hid[id] = Date.now();
     Promise.all([setMeta('peers', peers), setMeta('peersHidden', hid)]).then(function () {
       toast('Прибрано: ' + x.name); var y = window.scrollY; render(); window.scrollTo(0, y);
-      if (!gh() || !navigator.onLine) return;
+      scheduleSync();
+      if (!gh() || !navigator.onLine || act) return;
       ghReq('/contents/sync').then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
         (list || []).filter(function (f) { return f.name.indexOf(id + '-') === 0; }).forEach(function (f) {
           ghReq('/contents/' + f.path, { method: 'DELETE', body: { message: 'remove ' + x.name, sha: f.sha } }).then(function () {
