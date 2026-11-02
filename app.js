@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.2';
+  var VERSION = '0.28.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -707,11 +707,14 @@
   }
   document.addEventListener('toggle', function (e) { var d = e.target; if (d && d.getAttribute && d.getAttribute('data-fold')) { S.meFold = S.meFold || {}; S.meFold[d.getAttribute('data-fold')] = d.open; } }, true);
   function renderMe() {
-    var u = me(), id = u.id, mk = monthKey();
+    var u = me(), id = u.id, curMk = monthKey(), mk = S.meMon && S.meMon < curMk ? S.meMon : curMk;
+    var mkName = MONTHS[+mk.slice(5) - 1].toLowerCase() + (mk.slice(0, 4) !== curMk.slice(0, 4) ? ' ' + mk.slice(0, 4) : '');
     var vis = S.visits.filter(function (v) { return v.by === id; }), visM = vis.filter(function (v) { return monthKey(new Date(v.ts)) === mk; });
     var readM = visM.filter(function (v) { return v.result === 'ok'; }).length;
-    var added = 0, addedM = 0, bound = 0;
-    S.points.forEach(function (p) { if (p.createdBy === id) { added++; if ((p.created || '').slice(0, 7) === mk) addedM++; } if (p.by === id && p.bound && /GPS|вручну/.test(p.src || '')) bound++; });
+    var added = 0, addedM = 0, bound = 0, boundM = 0, first = curMk;
+    vis.forEach(function (v) { var k = monthKey(new Date(v.ts)); if (k < first) first = k; });
+    S.points.forEach(function (p) { if (p.createdBy === id) { added++; if ((p.created || '').slice(0, 7) === mk) addedM++; if (p.created && p.created.slice(0, 7) < first) first = p.created.slice(0, 7); } if (p.by === id && p.bound && /GPS|вручну/.test(p.src || '')) { bound++; if (monthKey(new Date(p.bound)) === mk) boundM++; } });
+    var mArrow = function (dir, on) { return '<button class="iconbtn" data-act="meMon" data-v="' + dir + '" aria-label="' + (dir < 0 ? 'Попередній місяць' : 'Наступний місяць') + '"' + (on ? '' : ' disabled') + ' style="width:36px;height:36px;box-shadow:none;background:var(--bg);' + (on ? '' : 'opacity:.3') + '">' + icon(dir < 0 ? 'back' : 'right', 16, 2.4) + '</button>'; };
     var ini = u.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
     app.innerHTML = '<div class="screen">' +
       '<div class="card big dark" style="gap:14px"><div class="row" style="gap:14px"><span style="width:56px;height:56px;border-radius:28px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0">' + esc(ini) + '</span>' +
@@ -719,8 +722,8 @@
         '<a class="iconbtn" href="#profile" aria-label="Редагувати дані контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('edit', 18) + '</a>' +
         '<button class="iconbtn" data-act="logout" aria-label="Змінити контролера" title="Змінити контролера" style="background:#2A2A2E;color:#fff;box-shadow:none;flex-shrink:0;width:48px;height:48px">' + icon('sync', 20) + '</button></div>' +
         '<div class="small mute">' + esc((u.district || 'Здолбунівська') + ' дільниця') + ' · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div></div>' +
-      '<div class="card"><div class="h2" style="font-size:15px">Мої дані · ' + monthName().toLowerCase() + '</div>' +
-        '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' +
+      '<div class="card"><div class="between"><div class="h2" style="font-size:15px">Мої дані · ' + mkName + '</div><div class="row" style="gap:6px">' + mArrow(-1, mk > first) + mArrow(1, mk < curMk) + '</div></div>' +
+        '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' + (boundM ? '<div class="small mute">Прив\'язано за місяць: ' + fmt(boundM) + '</div>' : '') +
         '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
         '<button class="btn sec" data-act="myPoints" style="height:46px">' + icon('pin', 18) + 'Мої точки на карті</button></div>' +
       routeCardHtml() +
@@ -3752,6 +3755,7 @@
       case 'ghBase': closeSheet(); ghBaseUpload(); break;
       case 'ghSync': ghSync(true); break;
       case 'straysMine': straysMine(); break;
+      case 'meMon': (function () { var c = monthKey(), m0 = S.meMon && S.meMon < c ? S.meMon : c, y = +m0.slice(0, 4), mo = +m0.slice(5) - 1 + (+el.getAttribute('data-v')); var k = monthKey(new Date(y, mo, 1)); S.meMon = k >= c ? null : k; var sy = window.scrollY; render(); window.scrollTo(0, sy); })(); break;
       case 'ghOff': closeSheet(); if (confirm('Відключити синхронізацію на цьому телефоні? Дані на телефоні лишаться.')) Promise.all([setMeta('gh', null), setMeta('ghSeen', {}), setMeta('ghLast', null), setMeta('ghErr', null)]).then(function () { render(); }); break;
       case 'noRead': openSheet('Чому не знято', [{ v: 'none', l: 'Нема доступу', sub: 'нікого немає, закрито, собака' }, { v: 'empty', l: 'Не живуть', sub: 'прибрати з обходу' }], null, function (v) { quickVisit(id, v); }); break;
       case 'editPoint': openPointEditor(id); break;
