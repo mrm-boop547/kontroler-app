@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.8';
+  var VERSION = '0.28.9';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -865,7 +865,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev(), inst: inst() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
+      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, peersShown: S.meta.peersShown || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -918,6 +918,9 @@
       /* прибрані колеги — спільний список: прибрали на одному телефоні, зникає на всіх. Повертається лише той,
          хто надіслав свій файл ПІСЛЯ прибирання (тобто й далі працює) */
       var hid = Object.assign({}, S.meta.peersHidden || {}); Object.keys(d.peersHidden || {}).forEach(function (k) { if (!hid[k] || d.peersHidden[k] > hid[k]) hid[k] = d.peersHidden[k]; }); jobs0.push(setMeta('peersHidden', hid));
+      /* «Повернути» — теж спільне: новіша мітка повернення скасовує прибирання */
+      var shw = Object.assign({}, S.meta.peersShown || {}); Object.keys(d.peersShown || {}).forEach(function (k) { if (!shw[k] || d.peersShown[k] > shw[k]) shw[k] = d.peersShown[k]; }); jobs0.push(setMeta('peersShown', shw));
+      Object.keys(hid).forEach(function (k) { if (hid[k] <= (shw[k] || 0)) delete hid[k]; });
       Object.keys(hid).forEach(function (k) { if (peers[k] && !peers[k].local && (peers[k].sent || 0) < hid[k]) delete peers[k]; });
       Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k] && !hid[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from && d.from.id !== me().id && (!hid[d.from.id] || (d.exported || 0) > hid[d.from.id])) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
@@ -1099,12 +1102,20 @@
     st.V.forEach(function (v) { v.by = m; if (v.id != null) tx.objectStore('visits').put(v); });
     tx.oncomplete = function () { invalidate(); toast('Записано на вас. Синхронізую…'); ghSync(true).then(function () { bgRender(); }); };
   }
+  function peerHidden(id) { var h = (S.meta.peersHidden || {})[id] || 0; return !!id && h > ((S.meta.peersShown || {})[id] || 0); }
+  /* повернути прибраного колегу на всіх телефонах */
+  function peerShow(id) {
+    var F = S.meta.ghFiles || {}, f = null; Object.keys(F).forEach(function (k) { if (F[k].id === id && (!f || (F[k].ts || 0) > (f.ts || 0))) f = F[k]; });
+    var shw = Object.assign({}, S.meta.peersShown || {}); shw[id] = Date.now();
+    var peers = Object.assign({}, S.meta.peers || {}); if (f && !peers[id]) peers[id] = { name: f.name || 'колега', last: f.ts || null, sent: f.ts, visits: f.vis || 0 };
+    Promise.all([setMeta('peersShown', shw), setMeta('peers', peers)]).then(function () { toast('Повернуто: ' + ((f && f.name) || 'колега') + '. Синхронізую…'); ghSync(true).then(function () { bgRender(); }); });
+  }
   function srvList() {
     var F = S.meta.ghFiles || {}, ks = Object.keys(F); if (!ks.length) return '<p class="mute">Список телефонів на сервері з\'явиться після першої синхронізації.</p>';
     var byName = {}; ks.forEach(function (k) { var n = (F[k].name || '?').trim(); (byName[n] = byName[n] || []).push(F[k]); });
     var dup = Object.keys(byName).filter(function (n) { var L = byName[n]; return L.length > 1 && L.some(function (x) { return x.inst && L.some(function (y) { return y.inst && y.inst !== x.inst; }); }); });
     return '<p style="margin-top:6px"><b>Телефони на сервері · ' + ks.length + '</b></p>' + ks.sort(function (a, b) { return (F[b].ts || 0) - (F[a].ts || 0); }).map(function (k) { var x = F[k];
-        return '<div class="between" style="padding:6px 0;border-top:1px solid var(--bg);gap:8px"><span class="col" style="gap:0;min-width:0"><b>' + esc(x.name || '?') + (x.own ? ' (цей телефон)' : '') + '</b><span class="small mute">' + (x.app ? 'v' + esc(x.app) : 'стара версія') + (x.ts ? ' · ' + dt(x.ts) + ' ' + tm(x.ts) : '') + (x.err ? ' · не вдалося прочитати (' + esc(String(x.err)) + ')' : '') + '</span></span><span class="small" style="text-align:right;white-space:nowrap">' + (x.pts != null ? fmt(x.pts) + ' точок<br>' + fmt(x.vis) + ' відміток' : '') + '</span></div>';
+        return '<div class="between" style="padding:6px 0;border-top:1px solid var(--bg);gap:8px"><span class="col" style="gap:0;min-width:0"><b>' + esc(x.name || '?') + (x.own ? ' (цей телефон)' : '') + '</b><span class="small mute">' + (x.app ? 'v' + esc(x.app) : 'стара версія') + (x.ts ? ' · ' + dt(x.ts) + ' ' + tm(x.ts) : '') + (x.err ? ' · не вдалося прочитати (' + esc(String(x.err)) + ')' : '') + (peerHidden(x.id) && !x.own ? ' · <b style="color:#B45309">прибраний зі списку колег</b>' : '') + '</span>' + (peerHidden(x.id) && !x.own ? '<button class="chip" data-act="peerShow" data-v="' + esc(x.id) + '" style="align-self:flex-start;margin-top:6px">Повернути</button>' : '') + '</span><span class="small" style="text-align:right;white-space:nowrap">' + (x.pts != null ? fmt(x.pts) + ' точок<br>' + fmt(x.vis) + ' відміток' : '') + '</span></div>';
       }).join('') + (dup.length ? '<p style="color:#B91C1C;margin-top:8px"><b>Кілька телефонів під одним іменем:</b> ' + esc(dup.join(', ')) + '. Найімовірніше, телефон налаштували з чужої резервної копії. На тому телефоні: «Я» → кнопка зі стрілками біля імені («Змінити контролера») → увійти під своїм ПІБ і табельним. Олівець для цього не підходить: він переносить усі записи старого імені.</p>' : '');
   }
   function showInfo(k) {
@@ -1119,7 +1130,7 @@
         '<p><b>Без інтернету.</b> «Надіслати» відкриває меню Android: вибери Quick Share (Обмін поблизу) або Bluetooth. Колега приймає файл кнопкою «Прийняти».</p>' +
         '<p>Обидва способи безпечно поєднуються: відмітки лише додаються, з двох версій точки лишається новіша, повтор нічого не дублює.</p>' +
         '<p><b>Новий контролер.</b> Достатньо токена: на першому екрані «Підключитися до спільної бази». Карта береться з бази точок на сервері; оновлюй її кнопкою нижче після великих змін (нові села, імпорт).</p>' +
-        '<p><b>Колеги.</b> Хрестик прибирає контролера зі списку (звільнився, тестовий акаунт) і видаляє його файл із сервера. Його відмітки в історії лишаються. Якщо він знову надішле дані, повернеться в список.</p>' +
+        '<p><b>Колеги.</b> Хрестик прибирає контролера зі списку (звільнився, тестовий акаунт) і видаляє його файл із сервера. Його відмітки в історії лишаються. Якщо він знову надішле дані, повернеться в список. Прибрали помилково: у списку «Телефони на сервері» нижче натисни «Повернути» біля його імені.</p>' +
         (g ? '<p class="mute">Репозиторій: ' + esc(g.repo) + ' · відмічено ' + fmt(S.visits.filter(function (v) { return v.by === me().id; }).length) + ' моїх · надіслано ' + (S.meta.lastSyncOut ? dt(S.meta.lastSyncOut) + ' ' + tm(S.meta.lastSyncOut) : '—') + (S.meta.ghOut ? ' · у файлі цього телефона ' + fmt(S.meta.ghOut.pts) + ' точок' : '') + '</p>' : '') + (g ? srvList() : ''),
         g ? '<button class="btn sec" data-act="ghBase">Оновити базу точок для нових контролерів</button><button class="btn sec" data-act="ghOff" style="color:#B91C1C">Відключити цей телефон від сервера</button>' : '');
     }
@@ -3792,6 +3803,7 @@
       case 'delVillage': delVillage(el.getAttribute('data-v')); break;
       case 'info': showInfo(el.getAttribute('data-v')); break;
       case 'peerDel': peerDel(el.getAttribute('data-v')); break;
+      case 'peerShow': peerShow(el.getAttribute('data-v')); break;
       case 'ghConnect': ghConnect(); break;
       case 'ghJoin': ghJoin(); break;
       case 'ghBase': closeSheet(); ghBaseUpload(); break;
