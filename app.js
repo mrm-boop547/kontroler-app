@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.9';
+  var VERSION = '0.28.10';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -129,6 +129,8 @@
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || '') + '</svg>';
   }
   function dotHtml(st) { return '<span class="dot ' + st + '"></span>'; }
+  /* точка в списках: юридичний завжди фіолетовий, побутовий за доступом (як на карті) */
+  function pDot(p) { return isJur(p) ? '<span class="dot" style="background:' + JUR + '"></span>' : dotHtml(p.status); }
 
   /* ---------- база даних ---------- */
   var db;
@@ -2410,7 +2412,7 @@
     if (S.meta.sheetMin) {
       el.innerHTML = '<div class="sheet mini"><button class="grip" data-act="toggleSheet" aria-label="Розгорнути панель"></button>' +
         '<div class="row"><button class="row" data-act="toggleSheet" style="flex-grow:1;min-width:0;border:0;background:transparent;padding:0;font-size:16px;font-weight:800;color:#111;text-align:left">' +
-        (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : dotHtml(p.status)) +
+        (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : pDot(p)) +
         '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span>' + (d ? '<span class="small mute" style="flex-shrink:0">' + d + '</span>' : '') + '</button>' +
         '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:44px;height:44px;border:1.5px solid #E4E4E7;box-shadow:none;flex-shrink:0">' + icon('edit', 16) + '</button>' +
         '<a class="iconbtn" href="#card/' + p.id + '" aria-label="Відкрити картку" style="background:#111;color:#fff;box-shadow:none;width:44px;height:44px">' + icon('arrow', 18, 2.4) + '</a></div></div>';
@@ -2423,7 +2425,7 @@
       '<div class="row" style="font-size:18px;font-weight:800">' + (idx >= 0 ? '<span class="numbadge">' + (idx + 1) + '</span>' : '') + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(addr(p)) + '</span></div>' +
       sheetIds(p) +
       '<div class="small mute">' + (idx === 0 ? 'Наступна' : idx > 0 ? 'У маршруті' : 'Поза маршрутом') + (d ? ' · ' + d : '') + ' · ' + ST[p.status].label.toLowerCase() + '</div>' +
-      '</div>' + dotHtml(p.status) + '</div>' +
+      '</div>' + pDot(p) + '</div>' +
       quickHtml(p, idx) +
       '<div class="row"><a class="btn" href="#card/' + p.id + '" style="flex-grow:1;height:52px">Відкрити картку ' + icon('arrow', 18, 2.4) + '</a>' +
       '<button class="iconbtn" data-act="editPoint" data-id="' + p.id + '" aria-label="Редагувати точку" style="width:52px;height:52px;border:1.5px solid #E4E4E7;box-shadow:none">' + icon('edit', 18) + '</button>' +
@@ -2589,7 +2591,7 @@
     var vh = vs.map(function (v) { return '<button class="list-row" data-act="aqVillage" data-v="' + esc(v.name) + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + icon('village', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(v.name) + '</b><span class="small mute">село · ' + v.n + ' точок · відкрити маршрут</span></div>' + icon('right', 16, 2.4) + '</button>'; }).join('');
     box.innerHTML = '<div class="card" style="padding:6px 14px;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.08);max-height:46vh;overflow-y:auto">' + vh +
       (r.list.length || vs.length ? r.list.map(function (p) {
-        return '<button class="list-row" data-act="aqPick" data-id="' + p.id + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div><span class="small">' + fdist(dist(r.ref, p)) + '</span></button>';
+        return '<button class="list-row" data-act="aqPick" data-id="' + p.id + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + pDot(p) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div><span class="small">' + fdist(dist(r.ref, p)) + '</span></button>';
       }).join('') + (r.total > 8 ? '<div class="small mute" style="padding:8px 0">Ще ' + (r.total - 8) + ' — уточніть запит</div>' : '')
         : '<div class="small mute" style="padding:12px 0">Нічого не знайдено. Торкніться карти там, де лічильник, щоб додати точку.</div>') + '</div>';
   }
@@ -2721,7 +2723,7 @@
     var o = p.dupOf && S.points.get(p.dupOf) ? { p: S.points.get(p.dupOf), d: dist(p, S.points.get(p.dupOf)) } : findDup(p);
     if (!o) return '';
     return '<div class="card" style="background:#FEF3C7;gap:10px"><div class="h2" style="font-size:15px;color:#92400E">Можливий дубль</div>' +
-      '<a class="list-row" href="#card/' + o.p.id + '" style="border:0;padding:0">' + dotHtml(o.p.status) + '<div class="col" style="flex-grow:1"><b>' + esc(addr(o.p)) + '</b><span class="small mute">' + Math.round(o.d) + ' м · вніс: ' + esc(authorOf(o.p)) + '</span></div>' + icon('right', 16, 2.4) + '</a>' +
+      '<a class="list-row" href="#card/' + o.p.id + '" style="border:0;padding:0">' + pDot(o.p) + '<div class="col" style="flex-grow:1"><b>' + esc(addr(o.p)) + '</b><span class="small mute">' + Math.round(o.d) + ' м · вніс: ' + esc(authorOf(o.p)) + '</span></div>' + icon('right', 16, 2.4) + '</a>' +
       '<div class="row" style="gap:8px"><button class="btn" data-act="dupMerge" data-id="' + p.id + '" data-o="' + o.p.id + '" style="flex:1;height:46px;font-size:14px">Об\'єднати в цю</button>' +
       '<button class="btn sec" data-act="dupNo" data-id="' + p.id + '" data-o="' + o.p.id + '" style="flex:1;height:46px">Це різні</button></div></div>';
   }
@@ -3494,7 +3496,7 @@
     /* групи за селами: вибране село першим, далі за абеткою; всередині — за відстанню */
     var g = {}; list.forEach(function (p) { var k = p.village || 'Без села'; (g[k] = g[k] || []).push(p); });
     var keys = Object.keys(g).sort(function (a2, b2) { if (a2 === cur) return -1; if (b2 === cur) return 1; return ukSort(a2, b2); });
-    var row = function (p) { return '<a class="list-row" href="#card/' + p.id + '">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + p.flags.filter(function (f) { return QUEUE_FLAGS.indexOf(f) >= 0; }).map(function (f) { return FLAGNAME[f]; }).join(', ') + '</span></div>' + (S.pos ? '<span class="small">' + fdist(dist(ref, p)) + '</span>' : '') + '</a>'; };
+    var row = function (p) { return '<a class="list-row" href="#card/' + p.id + '">' + pDot(p) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + p.flags.filter(function (f) { return QUEUE_FLAGS.indexOf(f) >= 0; }).map(function (f) { return FLAGNAME[f]; }).join(', ') + '</span></div>' + (S.pos ? '<span class="small">' + fdist(dist(ref, p)) + '</span>' : '') + '</a>'; };
     app.innerHTML = '<div class="screen"><div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><h1 class="h1" style="font-size:24px">Уточнити в полі</h1></div>' +
       '<div class="tags"><button class="chip' + (!QF ? ' on' : '') + '" data-act="qf" data-v="">Усі · ' + qp.length + '</button>' + QUEUE_FLAGS.filter(function (f) { return c[f]; }).map(function (f) {
         return '<button class="chip' + (QF === f ? ' on' : '') + '" data-act="qf" data-v="' + f + '">' + FLAGNAME[f] + ' · ' + c[f] + '</button>';
@@ -3635,7 +3637,7 @@
       if (ref) res.sort(function (a, b) { return dist(ref, a) - dist(ref, b); });
       else res.sort(function (a, b) { return (a.street || '').localeCompare(b.street || '', 'uk') || (parseInt(a.house) || 0) - (parseInt(b.house) || 0); });
       $('#lres').innerHTML = res.length ? res.slice(0, 120).map(function (p) {
-        return '<a class="list-row" href="#card/' + p.id + '">' + dotHtml(p.status) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div>' + (ref ? '<span class="small">' + fdist(dist(ref, p)) + '</span>' : '') + '</a>';
+        return '<a class="list-row" href="#card/' + p.id + '">' + pDot(p) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div>' + (ref ? '<span class="small">' + fdist(dist(ref, p)) + '</span>' : '') + '</a>';
       }).join('') : '<div class="list-row mute">Нічого не знайдено</div>';
     };
     inp.oninput = function () { clearTimeout(run._t); run._t = setTimeout(run, 150); };
