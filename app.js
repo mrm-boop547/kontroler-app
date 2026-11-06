@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.10';
+  var VERSION = '0.28.11';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1929,6 +1929,7 @@
     var W = {}, wk = function (id) { id = id || me().id; return W[id] = W[id] || { id: id, v: 0, ok: 0, miss: 0, note: 0, pts: 0 }; };
     vs.forEach(function (v) { var w = wk(v.by); w.v++; if (v.result === 'ok') w.ok++; if (v.result === 'none' || v.result === 'blocked') w.miss++; if (v.result === 'note') w.note = (w.note || 0) + 1; });
     var fromDay = dayKey(from), toDay = to === Infinity ? '9999' : dayKey(to); S.points.forEach(function (p) { if (p.createdBy && (p.created || '') >= fromDay && (p.created || '') < toDay) wk(p.createdBy).pts++; });
+    R.pts = Object.keys(W).reduce(function (a, k) { return a + W[k].pts; }, 0);
     R.who = Object.keys(W).map(function (k) { return W[k]; }).sort(function (a, b) { return b.v - a.v || b.pts - a.pts; });
     return R;
   }
@@ -1957,15 +1958,15 @@
       (RP === 'cycle' ? '' : (function () { var pr = periodRange(RP, RO), ar = function (dir, on) { return '<button class="iconbtn" data-act="ro" data-v="' + dir + '" aria-label="' + (dir < 0 ? 'Попередній період' : 'Наступний період') + '"' + (on ? '' : ' disabled') + ' style="width:40px;height:40px;box-shadow:none;' + (on ? '' : 'opacity:.3') + '">' + icon(dir < 0 ? 'back' : 'right', 18, 2.4) + '</button>'; };
         return '<div class="between" style="background:#fff;border-radius:16px;padding:6px">' + ar(-1, RO > -60) + '<b style="font-size:16px">' + esc(pr.lab) + '</b>' + ar(1, RO < 0) + '</div>'; })()) +
       '<div class="card dark" style="gap:12px"><div class="small mute">' + periodRange(RP, RO).lab + ' · днів з обходом: ' + R.days + '</div>' +
-        '<div class="grid3"><div class="col"><b style="font-size:28px">' + fmt(R.total) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:28px">' + fmt(R.ok) + '</b><span class="small mute">зчитано · ' + pct(R.ok, R.total) + '%</span></div>' +
-        '<div class="col"><b style="font-size:28px">' + fmt(R.note || 0) + '</b><span class="small mute">візитів (записок)</span></div></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 12px"><div class="col"><b style="font-size:28px">' + fmt(R.total) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:28px">' + fmt(R.ok) + '</b><span class="small mute">зчитано · ' + pct(R.ok, R.total) + '%</span></div>' +
+        '<div class="col"><b style="font-size:28px">' + fmt(R.pts) + '</b><span class="small mute">нових точок на карті' + (R.who.filter(function (w) { return w.pts; }).length > 1 ? ' · усі контролери' : '') + '</span></div><div class="col"><b style="font-size:28px">' + fmt(R.note || 0) + '</b><span class="small mute">візитів (записок)</span></div></div>' +
         '<div class="small mute">≈ ' + (R.days ? Math.round(R.total / R.days) : 0) + ' адрес на день обходу</div></div>' +
       '<div class="card"><div class="h2" style="font-size:15px">Результати обходу</div>' + RESULTS.map(function (r) {
         var n = R[r[0]] || 0; return '<div class="between"><span>' + r[1] + '</span><span class="row"><span style="width:110px;height:8px;border-radius:4px;background:#F1F1F3;overflow:hidden;display:flex"><span style="width:' + pct(n, R.total) + '%;background:' + (r[0] === 'ok' ? '#16A34A' : r[0] === 'empty' ? '#A1A1AA' : r[0] === 'note' ? '#111111' : '#F59E0B') + '"></span></span><b style="width:40px;text-align:right">' + n + '</b></span></div>';
       }).join('') + '</div>' +
       /* графік — лише для тижня, місяця і 180 днів; для «Сьогодні» окремого блоку немає */
       (RP === 'day' ? '' : '<div class="card"><div class="h2" style="font-size:15px">' + ({ week: 'По днях тижня', month: 'По днях місяця', cycle: 'По тижнях за ' + NORM() + ' днів' })[RP] + '</div>' + reportChart(RP) + '</div>') +
-      (others.length ? '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div><span class="small mute">адреси · зчитано · нові точки</span></div>' +
+      (others.length ? '<div class="card" style="gap:4px"><div class="between"><div class="h2" style="font-size:15px">По контролерах</div></div>' +
         /* мій рядок — першим і виділеним, з підписами чисел; навіть якщо відміток ще немає */
         (function () { var mid = me().id, mw = R.who.filter(function (w) { return w.id === mid; })[0] || { id: mid, v: 0, ok: 0, pts: 0, miss: 0, note: 0 };
           var stat = function (n, l) { return '<div class="col" style="gap:0"><b style="font-size:24px;line-height:1.1">' + fmt(n) + '</b><span style="font-size:12px;color:#A1A1AA">' + l + '</span></div>'; };
@@ -1974,8 +1975,9 @@
             ((mw.miss || mw.note) ? '<span style="font-size:13px;color:#A1A1AA">' + [mw.miss ? 'нема доступу ' + mw.miss : '', mw.note ? 'записок ' + mw.note : ''].filter(Boolean).join(' · ') + '</span>' : '') + '</button>'; })() +
         (R.who.filter(function (w) { return w.id !== me().id; }).length ? R.who.filter(function (w) { return w.id !== me().id; }).map(function (w) {
           return '<button class="list-row" data-act="whoMap" data-v="' + esc(w.id) + '" style="border-left:0;border-right:0;border-bottom:0;background:none;width:100%;text-align:left;padding:10px 0">' + icon('user', 18) +
-            '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(whoName(w.id)) + '</b><span class="small mute">' + pct(w.ok, w.v) + '% зчитано' + (w.note ? ' · візитів ' + w.note : '') + (w.miss ? ' · нема доступу ' + w.miss : '') + '</span></div>' +
-            '<b style="width:36px;text-align:right">' + w.v + '</b><b style="width:36px;text-align:right">' + w.ok + '</b><b style="width:36px;text-align:right">' + w.pts + '</b>' + icon('right', 14, 2.4) + '</button>';
+            '<div class="col" style="flex-grow:1;min-width:0;gap:6px"><div class="between"><b>' + esc(whoName(w.id)) + '</b>' + icon('right', 14, 2.4) + '</div>' +
+            '<div class="grid3" style="width:100%">' + [[w.v, 'адрес'], [w.ok, 'зчитано · ' + pct(w.ok, w.v) + '%'], [w.pts, 'нові точки']].map(function (x) { return '<div class="col" style="gap:0"><b style="font-size:20px;line-height:1.1">' + fmt(x[0]) + '</b><span class="small mute">' + x[1] + '</span></div>'; }).join('') + '</div>' +
+            ((w.note || w.miss) ? '<span class="small mute">' + [w.note ? 'записок ' + w.note : '', w.miss ? 'нема доступу ' + w.miss : ''].filter(Boolean).join(' · ') + '</span>' : '') + '</div></button>';
         }).join('') : '<div class="small mute" style="padding:8px 0">Відміток колег за цей період немає. Вони з\'являються після синхронізації («Я» → «Синхронізація»).</div>') + '</div>' : '') +
       '<div class="row" style="gap:8px"><button class="btn" data-act="shareReport" style="flex:1">Надіслати звіт</button><button class="btn sec" data-act="csvVisits" style="flex:1;height:56px">Журнал у Excel</button></div>' +
       '</div>' + tabs('villages');
@@ -1986,6 +1988,7 @@
       'Адрес пройдено: ' + R.total + ', зчитано: ' + R.ok + ' (' + pct(R.ok, R.total) + '%)',
       'Візитів (залишено записок): ' + (R.note || 0) + (R.noteOk ? ', з них уже передали показник: ' + R.noteOk : ''),
       'Нема доступу: ' + ((R.none || 0) + (R.blocked || 0)) + ', не живуть: ' + (R.empty || 0),
+      'Нових точок на карті: ' + (R.pts || 0) + (R.who.filter(function (w) { return w.pts; }).length > 1 ? ' (' + R.who.filter(function (w) { return w.pts; }).map(function (w) { return whoName(w.id) + ' ' + w.pts; }).join(', ') + ')' : ''),
       'Днів: ' + R.days + ', в середньому ' + (R.days ? Math.round(R.total / R.days) : 0) + ' адрес/день',
       st ? 'План ' + monthName().toLowerCase() + ': ' + pct(st.done, st.act) + '%, залишилось ' + st.left + ' адрес, ' + st.days + ' роб. днів' : '',
       'Локації на карті: ' + fmt(cv.placed) + ' з ' + fmt(cv.total) + ' (' + pct(cv.placed, cv.total) + '%)'].filter(Boolean).join('\n');
