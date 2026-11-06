@@ -8,7 +8,8 @@ window.MAP_STYLE = function (layer) {
     glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
     sources: {
       osm: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenStreetMap' },
-      esri: { type: 'raster', tileSize: 256, maxzoom: 19,
+      /* maxzoom 18: у селах на z19 Esri підставляє грубий (пікселізований) знімок; з 18 карта збільшує сама і лишається чіткою */
+      esri: { type: 'raster', tileSize: 256, maxzoom: 18,
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
         attribution: 'Esri, Maxar' }
     },

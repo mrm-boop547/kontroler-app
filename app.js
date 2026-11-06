@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.11';
+  var VERSION = '0.28.12';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1124,7 +1124,7 @@
     if (k === 'ptflags') return infoSheet('Особливості точки', '<p><b>Юридичний споживач.</b> Точка фіолетова на карті; доступ (зелений, жовтий, червоний) лишається в картці.</p>' +
       '<p><b>Лічильник відключено.</b> На карті й у назві з\'являється «(відключено)». Знімати так само: фото лічильника і актуальний показник.</p>' +
       '<p><b>Аварійний будинок.</b> Ніхто не живе, загроза обриву проводів. Статус одразу «Не живуть», точка потрапляє в «Викликати бригаду», на карті червоний трикутник «!».</p>');
-    if (k === 'sat') return infoSheet('Супутник без інтернету', '<p>Вибери село на головній і натисни «Зберегти супутник». Застосунок завантажить знімки навколо всіх точок села на всіх наближеннях, до окремих будинків. Одне село ≈10–20 МБ, 1–2 хв. Краще через Wi-Fi або перед виїздом.</p><p>Без інтернету карта показує збережене так само, як з інтернетом. Тримаємо до ' + SAT_MAX + ' сіл; найстаріші прибираються самі, або хрестиком.</p><p class="mute">Знімки © Esri. Для особистої роботи в полі; при впровадженні на все обленерго супутник для офлайну варто оформити ліцензією.</p>');
+    if (k === 'sat') return infoSheet('Супутник без інтернету', '<p>Вибери село на головній і натисни «Зберегти супутник». Застосунок знайде межі села на карті OpenStreetMap і завантажить знімки всього села з запасом довкола, до окремих будинків, а також навколо всіх внесених точок. Якщо меж на карті немає, береться район навколо точок. Одне село ≈10–30 МБ, 1–3 хв. Для вже збережених сіл натисни «Оновити», щоб дозавантажити. Краще через Wi-Fi або перед виїздом.</p><p>Без інтернету карта показує збережене так само, як з інтернетом. Тримаємо до ' + SAT_MAX + ' сіл; найстаріші прибираються самі, або хрестиком.</p><p class="mute">Знімки © Esri. Для особистої роботи в полі; при впровадженні на все обленерго супутник для офлайну варто оформити ліцензією.</p>');
     if (k === 'sync') {
       var g = gh();
       return infoSheet('Синхронізація', '<p><b>Через інтернет.</b> Працює сама: при відкритті застосунку, коли з\'являється інтернет, через 15 с після кожної відмітки і кожні 5 хв. Без інтернету все зберігається на телефоні і піде пізніше.</p>' +
@@ -1224,27 +1224,77 @@
      Окреме сховище (не чиститься автоматично); з'являється без інтернету так само, як із ним. Тримаємо до 6 сіл. */
   var SAT = 'sat-v1', SAT_MAX = 6;
   function satUrl(z, x, y) { return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + y + '/' + x; }
+  /* межі села з OpenStreetMap (адміністративні або забудови) — щоб довге село вздовж дороги
+     потрапляло в офлайн-супутник повністю, а не лише навколо внесених точок */
+  function satGeo(v) {
+    var ps = villagePoints(v); if (!ps.length || !navigator.onLine) return Promise.resolve(null);
+    var la = 0, lo = 0; ps.forEach(function (p) { la += p.lat; lo += p.lon; }); la /= ps.length; lo /= ps.length;
+    var u = 'https://nominatim.openstreetmap.org/search?format=jsonv2&polygon_geojson=1&polygon_threshold=0.00003&limit=8&countrycodes=ua&accept-language=uk&bounded=1&viewbox=' +
+      (lo - 0.15) + ',' + (la + 0.1) + ',' + (lo + 0.15) + ',' + (la - 0.1) + '&q=' + encodeURIComponent(String(v).replace(/\s*\(.*\)\s*$/, ''));
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, t = setTimeout(function () { ctl && ctl.abort(); }, 12000);
+    return fetch(u, ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.ok ? r.json() : []; }).then(function (js) {
+      clearTimeout(t);
+      var best = null, bd = 1e9;
+      (js || []).forEach(function (j) {
+        var g = j.geojson; if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) return;
+        if (!/^(boundary|place|landuse)$/.test(j.category || j.class || '')) return;
+        var d = Math.abs(+j.lat - la) + Math.abs(+j.lon - lo); if (d < bd) { bd = d; best = g; }
+      });
+      if (!best || bd > 0.08) return null;
+      var polys = best.type === 'Polygon' ? [best.coordinates] : best.coordinates, rings = [];
+      polys.forEach(function (pl) { if (pl[0] && pl[0].length > 3) rings.push(pl[0].map(function (c) { return [Math.round(c[0] * 1e5) / 1e5, Math.round(c[1] * 1e5) / 1e5]; })); });
+      if (!rings.length) return null;
+      var m = Object.assign({}, S.meta.satGeo || {}); m[v] = { rings: rings, ts: Date.now() };
+      return setMeta('satGeo', m).then(function () { return m[v]; });
+    }).catch(function () { clearTimeout(t); return null; });
+  }
+  /* які тайли зберегти: з межами села — все село + запас довкола; без меж — навколо точок.
+     z13–14 — прямокутник, z15–16 — +1 км, z17 — +500 м, z18 — село +300 м (від точок +200 м).
+     z19 не беремо: у селах Esri на z19 дає грубіший знімок, ніж на z18 (див. maxzoom у mapstyle.js) */
   function satTiles(v) {
     var ps = villagePoints(v); if (!ps.length) return [];
-    var a = 90, b = -90, c = 180, d = -180;
-    ps.forEach(function (p) { a = Math.min(a, p.lat); b = Math.max(b, p.lat); c = Math.min(c, p.lon); d = Math.max(d, p.lon); });
-    var pad = 0.0025; a -= pad; b += pad; c -= pad * 1.5; d += pad * 1.5;
-    var out = {}, add = function (z, x, y) { out[z + '/' + x + '/' + y] = 1; };
-    for (var z = 13; z <= 19; z++) {
-      if (z <= 16) { var t1 = tileXY(b, c, z), t2 = tileXY(a, d, z); for (var x = t1.x; x <= t2.x; x++) for (var y = t1.y; y <= t2.y; y++) add(z, x, y); }
-      else { var r = z === 19 ? 0 : 1; ps.forEach(function (p) { var t = tileXY(p.lat, p.lon, z); for (var i = -r; i <= r; i++) for (var j = -r; j <= r; j++) add(z, t.x + i, t.y + j); }); }
-    }
-    return Object.keys(out).map(function (k) { var q = k.split('/'); return satUrl(+q[0], +q[1], +q[2]); });
+    var geo = (S.meta.satGeo || {})[v], rings = geo && geo.rings || [];
+    var a = 90, b = -90, c = 180, d = -180, ext = function (lat, lon) { a = Math.min(a, lat); b = Math.max(b, lat); c = Math.min(c, lon); d = Math.max(d, lon); };
+    ps.forEach(function (p) { ext(p.lat, p.lon); }); rings.forEach(function (r) { r.forEach(function (q) { ext(q[1], q[0]); }); });
+    var kx = 111320 * Math.cos((a + b) / 2 * Math.PI / 180), ky = 110540;
+    var segs = []; rings.forEach(function (r) { for (var i = 1; i < r.length; i++) segs.push([r[i - 1][0] * kx, r[i - 1][1] * ky, r[i][0] * kx, r[i][1] * ky]); });
+    var pts = ps.map(function (p) { return [p.lon * kx, p.lat * ky]; });
+    var inside = function (x, y) { var inn = false; rings.forEach(function (r) { for (var i = 0, j = r.length - 1; i < r.length; j = i++) { var xi = r[i][0] * kx, yi = r[i][1] * ky, xj = r[j][0] * kx, yj = r[j][1] * ky; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inn = !inn; } }); return inn; };
+    var dSeg = function (x, y, s) { var dx = s[2] - s[0], dy = s[3] - s[1], L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((x - s[0]) * dx + (y - s[1]) * dy) / L)) : 0, ex = s[0] + t * dx - x, ey = s[1] + t * dy - y; return ex * ex + ey * ey; };
+    /* тайл потрібен, якщо його центр ближче за buf (+ пів діагоналі тайла) до села або до точки */
+    var near = function (x, y, bufArea, bufPt) {
+      var b2 = bufPt * bufPt; for (var i = 0; i < pts.length; i++) { var ex = pts[i][0] - x, ey = pts[i][1] - y; if (ex * ex + ey * ey <= b2) return true; }
+      if (!rings.length || bufArea < 0) return false; if (inside(x, y)) return true;
+      var a2 = bufArea * bufArea; for (var k = 0; k < segs.length; k++) if (dSeg(x, y, segs[k]) <= a2) return true; return false;
+    };
+    var build = function (cfg) {
+      var out = [];
+      for (var z = 13; z <= 18; z++) {
+        var n = Math.pow(2, z), tm = 40075016 * Math.cos((a + b) / 2 * Math.PI / 180) / n, half = tm * 0.71, bf = cfg[z], pad = Math.max(bf[0], bf[1]) + tm;
+        var t1 = tileXY(b + pad / ky, c - pad / kx, z), t2 = tileXY(a - pad / ky, d + pad / kx, z);
+        for (var x = t1.x; x <= t2.x; x++) for (var y = t1.y; y <= t2.y; y++) {
+          if (z > 14) { var lon = (x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + 0.5) / n))) * 180 / Math.PI;
+            if (!near(lon * kx, lat * ky, bf[0] < 0 ? -1 : bf[0] + half, bf[1] + half)) continue; }
+          out.push(satUrl(z, x, y));
+        }
+      }
+      return out;
+    };
+    /* [запас від меж села, запас від точок] у метрах; великі населені пункти — скромніше, щоб не роздути сховище */
+    var list = build({ 13: [1000, 1000], 14: [1000, 1000], 15: [1000, 1000], 16: [1000, 1000], 17: [500, 500], 18: [300, 200] });
+    if (list.length > 4000) list = build({ 13: [500, 500], 14: [500, 500], 15: [500, 500], 16: [500, 500], 17: [300, 300], 18: [100, 150] });
+    if (list.length > 6000) list = build({ 13: [300, 300], 14: [300, 300], 15: [300, 300], 16: [300, 300], 17: [-1, 200], 18: [-1, 100] });
+    return list;
   }
   var satBusy = false;
   function satDownload(v) {
     if (!v || v === ALL) return toast('Спершу виберіть село');
     if (!navigator.onLine) return toast('Потрібен інтернет');
     if (satBusy) return toast('Вже завантажую'); satBusy = true;
-    var list = satTiles(v), total = list.length, ok = 0, fail = 0, bytes = 0, i = 0;
+    var list = [], total = 0, ok = 0, fail = 0, bytes = 0, i = 0;
     var set = function (t) { var el = $('#sat-st'); if (el) el.textContent = t; };
-    set('Завантажую ' + v + '… 0%');
-    caches.open(SAT).then(function (cache) {
+    set('Шукаю межі села ' + v + '…');
+    satGeo(v).then(function (g) { list = satTiles(v); total = list.length; set((g ? 'Межі села знайдено. ' : '') + 'Завантажую ' + v + '… 0%'); return caches.open(SAT); }).then(function (cache) {
       var worker = function () {
         if (i >= total) return Promise.resolve();
         var u = list[i++];
@@ -4001,6 +4051,6 @@
     if (swReg) jobs.push(swReg.update().catch(function () {}));
     Promise.all(jobs).then(go, go); setTimeout(go, 4000);
   }
-  window.__app = { S: S, invalidate: function () { invalidate(); }, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; }, selPoint: function (id) { selPoint(id); } };
+  window.__app = { S: S, invalidate: function () { invalidate(); }, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; }, selPoint: function (id) { selPoint(id); }, satTiles: satTiles };
   boot();
 })();
