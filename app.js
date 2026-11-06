@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.12';
+  var VERSION = '0.28.13';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -271,7 +271,15 @@
 
   /* ---------- хто я: ідентифікатор пристрою для синхронізації між контролерами ---------- */
   function me() { return S.meta.me || { id: 'local', name: '' }; }
-  function peerName(id) { if (!id || id === me().id) return 'я'; var p = (S.meta.peers || {})[id]; return p && p.name ? p.name : 'колега'; }
+  /* ім'я колеги: зі списку колег, а якщо його звідти прибрали — з довідника імен (не чиститься, спільний для всіх телефонів)
+     або з файлів на сервері. Так записи прибраного колеги не показуються як «Контролер t111» */
+  function knownName(id) {
+    var p = (S.meta.peers || {})[id]; if (p && p.name) return p.name;
+    var n = (S.meta.names || {})[id]; if (n) return n;
+    var F = S.meta.ghFiles || {}, best = null; Object.keys(F).forEach(function (k) { if (F[k].id === id && F[k].name && (!best || (F[k].ts || 0) > (best.ts || 0))) best = F[k]; });
+    return best ? best.name : '';
+  }
+  function peerName(id) { if (!id || id === me().id) return 'я'; return knownName(id) || 'колега'; }
   /* кожна зміна точки ставить час і автора — так злиття від кількох контролерів знає, яка версія новіша */
   /* id нової точки містить код пристрою — дві точки з різних телефонів ніколи не отримають однаковий id */
   function dev() { return S.meta.device || me().id; }
@@ -863,11 +871,15 @@
        • візити — журнал лише на додавання, кожен має унікальний uid → просто об'єднуємо, конфліктів немає;
        • точки — перемагає новіша версія (поле updated), автор у полі by;
        • видалення — «надгробки» з часом, щоб видалена точка не повернулась від колеги. */
+  function namesBook() {
+    var o = Object.assign({}, S.meta.names || {}), pe = S.meta.peers || {}; Object.keys(pe).forEach(function (k) { if (pe[k] && pe[k].name) o[k] = pe[k].name; });
+    if (me().id && me().name) o[me().id] = me().name; return o;
+  }
   function syncPackage() {
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev(), inst: inst() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, peersShown: S.meta.peersShown || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
+      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, peersShown: S.meta.peersShown || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, names: namesBook(), brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -916,6 +928,9 @@
     if (d.idAlias) S.points.forEach(function (p) { var a1 = fix(p.by), a2 = fix(p.createdBy); if (a1 !== p.by || a2 !== p.createdBy) { p.by = a1; p.createdBy = a2; P.put(p); } });
     tx.oncomplete = function () {
       var peers = Object.assign({}, S.meta.peers || {}), jobs0 = [];
+      /* довідник імен: доповнюємо з файлу колеги (його власне ім'я — найсвіжіше) */
+      var nb0 = Object.assign({}, S.meta.names || {}, d.names || {}); Object.keys(d.peers || {}).forEach(function (k) { if (d.peers[k] && d.peers[k].name && !nb0[k]) nb0[k] = d.peers[k].name; });
+      if (d.from && d.from.id && d.from.name) nb0[d.from.id] = d.from.name; delete nb0[me().id]; jobs0.push(setMeta('names', nb0));
       Object.keys(al).forEach(function (o) { if (peers[o] && !peers[al[o]]) peers[al[o]] = peers[o]; delete peers[o]; });
       /* прибрані колеги — спільний список: прибрали на одному телефоні, зникає на всіх. Повертається лише той,
          хто надіслав свій файл ПІСЛЯ прибирання (тобто й далі працює) */
