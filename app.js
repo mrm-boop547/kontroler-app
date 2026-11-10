@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.13';
+  var VERSION = '0.28.14';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2094,7 +2094,7 @@
        а Android може скинути графіку (WebGL). Перезавантажуємо тайли супутника при поверненні, появі мережі,
        відновленні графіки та після помилок тайлів */
     map.on('error', function (e) { if (e && e.sourceId === 'esri') refreshSat(false, 8000); });
-    map.on('webglcontextrestored', function () { refreshSat(true); });
+    map.on('webglcontextrestored', function () { reloadTiles(); });
     map.getCanvas().addEventListener('webglcontextlost', function (ev) { ev.preventDefault(); }, false);
     /* підстраховка: якщо після зміни шару наші точки зникли, повертаємо їх */
     map.on('styledata', function () { if (map.isStyleLoaded() && !map.getLayer('pts')) addLayers(); });
@@ -2110,6 +2110,30 @@
     map.on('movestart', function (e) { if (e.originalEvent) S.moved = true; });
     map.on('moveend', function () { if (mapMode === 'bind' && S.moved && $('#bindBtn')) $('#bindBtn').disabled = false; });
     map.on('error', function (e) { if (e && e.error && !/Failed to fetch|NetworkError|AJAXError/.test(e.error.message)) console.warn('map', e.error.message); });
+  }
+  /* Після згортання Android часто скидає графіку (WebGL): точки малюються заново, а вже завантажені тайли
+     супутника і схеми — ні, лишається порожній сірий фон. Раніше перезавантаження робилось лише з інтернетом,
+     тож без мережі карта лишалась порожньою. Тепер тайли перечитуються завжди (без мережі — зі збереженого),
+     а якщо графіка так і не відновилась — карта створюється заново на тому ж місці */
+  function reloadTiles() {
+    if (!map) return;
+    try { var sc = map.style && map.style.sourceCaches; ['esri', 'osm'].forEach(function (k) { if (sc && sc[k] && sc[k].reload) sc[k].reload(); }); map.triggerRepaint(); }
+    catch (x) { try { mapReady = false; map.setStyle(MAP_STYLE(S.meta.layer || 'scheme'), { diff: false }); } catch (y) {} }
+  }
+  function rebuildMap() {
+    if (!map) return;
+    var c = map.getCenter(), z = map.getZoom(), bg = map.getBearing();
+    try { map.remove(); } catch (x) {}
+    Array.prototype.forEach.call(document.querySelectorAll('.compass'), function (e) { e.remove(); });
+    map = null; mapReady = false; var el = $('#map'); if (el) el.innerHTML = '';
+    initMap(); map.jumpTo({ center: c, zoom: z, bearing: bg });
+    map.once('style.load', function () { setTimeout(render, 50); });
+  }
+  function mapWake() {
+    if (!map) return;
+    var gl = map.painter && map.painter.context && map.painter.context.gl;
+    if (gl && gl.isContextLost && gl.isContextLost()) { setTimeout(function () { if (map && gl.isContextLost()) rebuildMap(); }, 2500); return; }
+    reloadTiles();
   }
   var satT = 0, satTimer = null;
   function refreshSat(force, delay) {
@@ -3973,7 +3997,7 @@
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
     checkUpdate(false, true);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000) refreshSat(true, 400); if (awayMs > 60000 && watchId !== null) restartGps(); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000) setTimeout(mapWake, 400); if (awayMs > 60000 && watchId !== null) restartGps(); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
     window.addEventListener('online', function () { refreshSyncBadge(); refreshSat(true, 800); ghSync(false); });
     window.addEventListener('offline', function () { refreshSyncBadge(); });
     window.addEventListener('resize', function () { placeFabs(); });
@@ -4066,6 +4090,6 @@
     if (swReg) jobs.push(swReg.update().catch(function () {}));
     Promise.all(jobs).then(go, go); setTimeout(go, 4000);
   }
-  window.__app = { S: S, invalidate: function () { invalidate(); }, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; }, selPoint: function (id) { selPoint(id); }, satTiles: satTiles };
+  window.__app = { S: S, invalidate: function () { invalidate(); }, computeRoute: computeRoute, autoSplit: autoSplit, applySplitCode: applySplitCode, spPayload: function () { return spPayload(); }, map: function () { return map; }, selPoint: function (id) { selPoint(id); }, satTiles: satTiles, mapWake: function () { mapWake(); }, rebuildMap: function () { rebuildMap(); } };
   boot();
 })();
