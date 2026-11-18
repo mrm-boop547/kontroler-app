@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.14';
+  var VERSION = '0.28.15';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -1124,8 +1124,8 @@
   function peerShow(id) {
     var F = S.meta.ghFiles || {}, f = null; Object.keys(F).forEach(function (k) { if (F[k].id === id && (!f || (F[k].ts || 0) > (f.ts || 0))) f = F[k]; });
     var shw = Object.assign({}, S.meta.peersShown || {}); shw[id] = Date.now();
-    var peers = Object.assign({}, S.meta.peers || {}); if (f && !peers[id]) peers[id] = { name: f.name || 'колега', last: f.ts || null, sent: f.ts, visits: f.vis || 0 };
-    Promise.all([setMeta('peersShown', shw), setMeta('peers', peers)]).then(function () { toast('Повернуто: ' + ((f && f.name) || 'колега') + '. Синхронізую…'); ghSync(true).then(function () { bgRender(); }); });
+    var peers = Object.assign({}, S.meta.peers || {}); if (!peers[id]) peers[id] = f ? { name: f.name || knownName(id) || 'колега', last: f.ts || null, sent: f.ts, visits: f.vis || 0 } : { name: knownName(id) || 'колега', last: null, visits: 0 };
+    Promise.all([setMeta('peersShown', shw), setMeta('peers', peers)]).then(function () { toast('Повернуто: ' + (peers[id].name) + '. Синхронізую…'); ghSync(true).then(function () { bgRender(); }); });
   }
   function srvList() {
     var F = S.meta.ghFiles || {}, ks = Object.keys(F); if (!ks.length) return '<p class="mute">Список телефонів на сервері з\'явиться після першої синхронізації.</p>';
@@ -3769,7 +3769,12 @@
     var team = pk.length ? '<div class="sync-sub" style="border-top:1px solid var(--bg);padding-top:14px"><b>Колеги · ' + pk.length + '</b></div><div class="col" style="gap:0">' + pk.map(function (k) { var x = peers[k];
           return '<div class="list-row" style="padding:8px 0">' + icon('user', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(x.name) + '</b><span class="small mute">' + (x.last ? fmt(x.visits || 0) + ' відміток · ' + dt(x.last) : 'ще не надсилав сам') + '</span></div>' +
             '<button class="seal-x" data-act="peerDel" data-v="' + esc(k) + '" aria-label="Прибрати ' + esc(x.name) + '">' + icon('close', 14, 2.4) + '</button></div>'; }).join('') + '</div>' : '';
-    var syncCard = '<div class="card" style="gap:12px"><div class="between"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + infoBtn('sync') + '</div>' + ghCard() + straysBlock() + foldBlock('xch', 'Обмін без інтернету' + (pk.length ? ' · колеги (' + pk.length + ')' : ''), '', exchange + team, 'fold-card fold-in') + '</div>';
+    /* прибрані колеги видно тут же, з датою і кнопкою «Повернути» — щоб не шукати їх у довідці */
+    var hidK = Object.keys(S.meta.peersHidden || {}).filter(function (k) { return k !== me().id && peerHidden(k) && knownName(k); });
+    if (hidK.length) team += '<div class="col" style="gap:0;margin-top:6px"><span class="small mute" style="padding-top:6px">Прибрані зі списку</span>' + hidK.map(function (k) {
+      return '<div class="list-row" style="padding:8px 0;opacity:.75">' + icon('user', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(knownName(k)) + '</b><span class="small mute">прибрано ' + dt(S.meta.peersHidden[k]) + '</span></div>' +
+        '<button class="chip" data-act="peerShow" data-v="' + esc(k) + '">Повернути</button></div>'; }).join('') + '</div>';
+    var syncCard = '<div class="card" style="gap:12px"><div class="between"><div class="row" style="gap:10px">' + icon('sync', 22) + '<div class="h2">Синхронізація</div></div>' + infoBtn('sync') + '</div>' + ghCard() + straysBlock() + foldBlock('xch', 'Обмін без інтернету' + (pk.length ? ' · колеги (' + pk.length + ')' : '') + (hidK.length ? ' · прибрані (' + hidK.length + ')' : ''), '', exchange + team, 'fold-card fold-in') + '</div>';
     var route = routeCardHtml();
     var tables = '<div class="card"><div class="row" style="gap:10px">' + icon('table', 22) + '<div class="h2">Таблиці для Excel</div></div>' +
         '<button class="btn sec" data-act="csvPoints">Абоненти: адреси, статуси, показники</button>' +
