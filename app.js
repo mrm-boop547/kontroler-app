@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.16';
+  var VERSION = '0.28.17';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2567,7 +2567,9 @@
     n = n.charAt(0).toUpperCase() + n.slice(1);
     var key = function (t) { return t.toLowerCase().replace(/[^а-яіїєґa-z' ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' '); };
     var same = villages().filter(function (x) { return key(x.name) === key(n); })[0];
-    if (same) { toast('Таке село вже є: ' + same.name); return cb(same.name); }
+    /* село вже є (наприклад, бачу його через свої точки) — все одно позначаємо як додане зараз, щоб воно дійшло й до колег */
+    if (same) { var ad0 = Object.assign({}, S.meta.villAdded || {}); ad0[same.name] = Date.now(); var ex0 = (S.meta.extraVillages || []).filter(function (v) { return v !== same.name; }).concat([same.name]);
+      return Promise.all([setMeta('villAdded', ad0), setMeta('extraVillages', ex0)]).then(function () { toast('Таке село вже є: ' + same.name + '. Позначено для колег'); cb(same.name); }); }
     var ex = (S.meta.extraVillages || []).concat([n]), ad = Object.assign({}, S.meta.villAdded || {}); ad[n] = Date.now();
     Promise.all([setMeta('extraVillages', ex), setMeta('villAdded', ad)]).then(function () { toast('Додано село: ' + n); cb(n); });
   }
