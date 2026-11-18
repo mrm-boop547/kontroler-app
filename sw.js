@@ -1,5 +1,5 @@
 /* Офлайн: оболонка застосунку — з кешу; тайли карти, шрифти — кешуються під час перегляду. */
-var SHELL = 'shell-v0.28.19';
+var SHELL = 'shell-v0.28.20';
 var OFFLINE = 'offline-v1'; /* карта дільниці, збережена кнопкою «Зберегти карту офлайн» — не чиститься автоматично */
 var TILES = 'tiles-v1';
 var SAT = 'sat-v1'; /* супутник, збережений по селах кнопкою — не чиститься автоматично */
@@ -36,7 +36,7 @@ self.addEventListener('fetch', function (e) {
   /* опис джерела карти: з мережею — свіжий, без мережі (або за 4 с) — той, під який збережено офлайн-тайли */
   if (/tiles\.openfreemap\.org\/planet$/.test(url)) {
     e.respondWith(new Promise(function (ok) {
-      var done = false, fb = function () { if (done) return; done = true; caches.open(OFFLINE).then(function (c) { return c.match(url); }).then(function (h) { return h || caches.match(req); }).then(ok); };
+      var done = false, fb = function () { if (done) return; done = true; caches.open(OFFLINE).then(function (c) { return c.match(url, { ignoreVary: true }); }).then(function (h) { return h || caches.match(req, { ignoreVary: true }); }).then(ok); };
       var t = setTimeout(fb, 4000);
       fetch(req).then(function (res) {
         if (done) return; if (!res.ok) return fb(); done = true; clearTimeout(t);
@@ -48,7 +48,10 @@ self.addEventListener('fetch', function (e) {
   if (isTile(url)) {
     /* завантаження «наперед» сторінка кладе у своє сховище сама — тут не дублюємо */
     if (url.indexOf('#kc-off') >= 0) return;
-    e.respondWith(caches.match(req).then(function (hit) {
+    /* ignoreVary: збережені кнопкою тайли лежать під простою адресою (без заголовка Origin), а карта просить
+       їх із заголовком. Якщо сервер відповідав з «Vary: Origin», такий запит не знаходив збережене, і без мережі
+       карта показувала лише грубіші тайли з випадкового кешу перегляду */
+    e.respondWith(caches.match(req, { ignoreVary: true }).then(function (hit) {
       var net = fetch(req).then(function (res) {
         if (res && (res.ok || res.type === 'opaque')) { var cp = res.clone(); caches.open(TILES).then(function (c) { c.put(req, cp); trim(); }); }
         return res;
