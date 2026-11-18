@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.18';
+  var VERSION = '0.28.19';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2091,6 +2091,7 @@
       var bng = map.getBearing(), vis = Math.abs(bng) > 1 && document.getElementById('map').style.display !== 'none';
       comp.style.display = vis ? 'flex' : 'none'; comp.firstChild.style.transform = 'rotate(' + (-bng) + 'deg)';
     };
+    map.on('idle', harvestStreets);
     map.on('rotate', syncComp); map.on('moveend', syncComp); syncComp(); map.__syncComp = syncComp;
     map.on('style.load', addLayers);
     /* супутник «відвалювався» після згортання: запити тайлів, що впали у фоні, карта більше не повторює,
@@ -2667,7 +2668,7 @@
     updateMap(); renderSheet();
   }
   /* пошук прямо на карті «Мітки»: адреса, ПІБ, серійний, номер прилада, телефон; найближчі — першими */
-  var AQ = '';
+  var AQ = '', AQ_ST = {};
   function searchPoints(q, max) {
     q = q.toLowerCase(); var res = [];
     S.points.forEach(function (p) {
@@ -2681,6 +2682,38 @@
     res.sort(function (a, b) { return exact(a) - exact(b) || dist(ref, a) - dist(ref, b); });
     return { list: res.slice(0, max || 8), total: res.length, ref: ref };
   }
+  /* довідник вулиць з карти OpenStreetMap: збираємо назви з уже завантажених ділянок карти (і зі збережених офлайн),
+     щоб шукати вулицю навіть там, де ще немає жодної нашої точки. Зберігається на телефоні, росте з кожним переглядом */
+  var streetIdx = null, harvestT = 0, harvestSave = null;
+  function stIdx() { if (!streetIdx) streetIdx = Object.assign({}, S.meta.osmStreets || {}); return streetIdx; }
+  function harvestStreets() {
+    if (!map || !map.getSource || !map.getSource('osm') || Date.now() - harvestT < 2500) return; harvestT = Date.now();
+    var idx = stIdx(), add = 0, fs;
+    try { fs = map.querySourceFeatures('osm', { sourceLayer: 'transportation_name' }); } catch (x) { return; }
+    fs.forEach(function (f) {
+      var n = f.properties && (f.properties['name:uk'] || f.properties.name); if (!n || n.length < 3) return;
+      var g = f.geometry, cs = g.type === 'LineString' ? g.coordinates : g.type === 'MultiLineString' ? [].concat.apply([], g.coordinates) : null; if (!cs || !cs.length) return;
+      var lon = 0, lat = 0, w = 180, e = -180, so = 90, no = -90; cs.forEach(function (c) { w = Math.min(w, c[0]); e = Math.max(e, c[0]); so = Math.min(so, c[1]); no = Math.max(no, c[1]); });
+      lon = (w + e) / 2; lat = (so + no) / 2;
+      /* та сама назва в іншому селі — окремий запис (ключ: назва + клітинка ~5 км) */
+      var key = n + '|' + Math.round(lat * 20) + ':' + Math.round(lon * 14), o = idx[key];
+      if (!o) { idx[key] = { n: n, b: [+w.toFixed(5), +so.toFixed(5), +e.toFixed(5), +no.toFixed(5)] }; add++; }
+      else { var b = o.b, nb = [Math.min(b[0], w), Math.min(b[1], so), Math.max(b[2], e), Math.max(b[3], no)].map(function (x) { return +x.toFixed(5); }); if (nb.join() !== b.join()) { o.b = nb; add++; } }
+    });
+    if (add) { var ks = Object.keys(idx); if (ks.length > 6000) ks.slice(0, ks.length - 6000).forEach(function (k) { delete idx[k]; });
+      clearTimeout(harvestSave); harvestSave = setTimeout(function () { setMeta('osmStreets', idx); }, 4000); }
+  }
+  function searchStreets(q, ref) {
+    var stop = { 'вул': 1, 'вул.': 1, 'вулиця': 1, 'пров': 1, 'пров.': 1, 'провулок': 1 };
+    var ws = q.toLowerCase().split(/[\s,]+/).filter(function (w) { return w.length > 1 && !stop[w] && !/^\d/.test(w); });
+    if (!ws.length) return [];
+    var idx = stIdx(), out = [];
+    Object.keys(idx).forEach(function (k) { var o = idx[k], nl = o.n.toLowerCase(); if (ws.every(function (w) { return nl.indexOf(w) >= 0; })) {
+      var c = { lat: (o.b[1] + o.b[3]) / 2, lon: (o.b[0] + o.b[2]) / 2 }; out.push({ k: k, n: o.n, b: o.b, c: c, d: ref ? dist(ref, c) : 0 }); } });
+    out.sort(function (a, b) { return a.d - b.d; });
+    /* село — за найближчою нашою точкою (до 3 км) */
+    return out.slice(0, 4).map(function (s0) { var best = null, bd = 3000; S.points.forEach(function (p) { if (!p.village) return; var d = dist(s0.c, p); if (d < bd) { bd = d; best = p.village; } }); s0.v = best; return s0; });
+  }
   function drawAq() {
     var box = $('#aqres'); if (!box) return;
     var sh = $('#sheet'); if (sh) sh.style.display = AQ ? 'none' : '';
@@ -2689,8 +2722,14 @@
     var r = searchPoints(AQ, 8), ql = AQ.toLowerCase();
     var vs = villages().filter(function (v) { return v.name !== 'Без села' && v.name.toLowerCase().split(/[\s-]+/).concat([v.name.toLowerCase()]).some(function (w) { return w.indexOf(ql) === 0; }); }).slice(0, 4);
     var vh = vs.map(function (v) { return '<button class="list-row" data-act="aqVillage" data-v="' + esc(v.name) + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + icon('village', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(v.name) + '</b><span class="small mute">село · ' + v.n + ' точок · відкрити маршрут</span></div>' + icon('right', 16, 2.4) + '</button>'; }).join('');
+    /* вулиці з карти: показуємо, коли серед наших точок такої вулиці немає або запит саме про вулицю без номера */
+    var streetsHave = {}; r.list.forEach(function (p) { if (p.street) streetsHave[p.street.toLowerCase()] = 1; });
+    var ss = searchStreets(AQ, S.pos || (map && map.getCenter ? { lat: map.getCenter().lat, lon: map.getCenter().lng } : null)).filter(function (x) {
+      return !Object.keys(streetsHave).some(function (h) { return x.n.toLowerCase().indexOf(h) >= 0 || h.indexOf(x.n.toLowerCase()) >= 0; }); }).slice(0, 3);
+    AQ_ST = {}; ss.forEach(function (x) { AQ_ST[x.k] = x.b; });
+    var sh2 = ss.map(function (x) { return '<button class="list-row" data-act="aqStreet" data-v="' + esc(x.k) + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + icon('streets', 18) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(x.n) + '</b><span class="small mute">' + (x.v ? esc(x.v) + ' · ' : '') + 'вулиця на карті, точок ще немає</span></div>' + (x.d ? '<span class="small mute">' + fdist(x.d) + '</span>' : '') + '</button>'; }).join('');
     box.innerHTML = '<div class="card" style="padding:6px 14px;gap:0;box-shadow:0 6px 20px rgba(0,0,0,.08);max-height:46vh;overflow-y:auto">' + vh +
-      (r.list.length || vs.length ? r.list.map(function (p) {
+      (r.list.length || vs.length || ss.length ? sh2 + r.list.map(function (p) {
         return '<button class="list-row" data-act="aqPick" data-id="' + p.id + '" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left">' + pDot(p) + '<div class="col" style="flex-grow:1;min-width:0"><b>' + esc(addr(p)) + '</b><span class="small mute">' + esc(p.village || 'Без села') + ((p.fields || {}).fio ? ' · ' + esc(p.fields.fio) : '') + '</span></div><span class="small">' + fdist(dist(r.ref, p)) + '</span></button>';
       }).join('') + (r.total > 8 ? '<div class="small mute" style="padding:8px 0">Ще ' + (r.total - 8) + ' — уточніть запит</div>' : '')
         : '<div class="small mute" style="padding:12px 0">Нічого не знайдено. Торкніться карти там, де лічильник, щоб додати точку.</div>') + '</div>';
@@ -3904,6 +3943,7 @@
       case 'install': if (installEvt) { installEvt.prompt(); installEvt.userChoice.then(function () { installEvt = null; render(); }); } break;
       case 'installHide': setMeta('installHide', true).then(render); break;
       case 'keepAwake': setMeta('keepAwake', S.meta.keepAwake === false).then(function () { syncWake(); var y = window.scrollY; render(); window.scrollTo(0, y); }); break;
+      case 'aqStreet': (function () { var b = AQ_ST[el.getAttribute('data-v')]; AQ = ''; S.sel = null; renderAll.fitNext = false; renderMap.fitNext = false; render(); if (b && map) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, maxZoom: 17.5, duration: 600 }); })(); break;
       case 'aqVillage': AQ = ''; setMeta('village', el.getAttribute('data-v')).then(function () { S.route = null; S.sel = null; S.filter = null; renderMap.fitNext = true; go('#map'); }); break;
       case 'mapTab': e.preventDefault(); S.sel = null; renderMap.fitNext = false; renderAll.fitNext = false; go('#' + el.getAttribute('data-v')); break;
       case 'crewN': var cn = parseInt(prompt('Скільки контролерів працює на дільниці?', crew()), 10); if (cn > 0 && cn < 100) shareSet('crewN', cn).then(function () { var y = window.scrollY; render(); window.scrollTo(0, y); var f = document.querySelector('.cv details'); if (f) f.open = true; }); break;
