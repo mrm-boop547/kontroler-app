@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.15';
+  var VERSION = '0.28.16';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -203,11 +203,13 @@
   function ukSort(a, b) { var na = /^Без /.test(a), nb = /^Без /.test(b); if (na !== nb) return na ? 1 : -1; return String(a).localeCompare(String(b), 'uk', { sensitivity: 'base' }); }
   /* заголовки-літери для довгих списків: А, Б, В… */
   function letterHeads(opts) { var last = ''; return opts.map(function (o) { var L = (o.l || '').charAt(0).toUpperCase(); if (/^Без /.test(o.l)) L = '—'; if (L !== last && !o.head) { last = L; return Object.assign({}, o, { head: L }); } last = L; return o; }); }
+  /* село вважається видаленим, лише якщо його видалили ПІСЛЯ останнього додавання: так село, яке колись
+     видаляли, можна додати знову, і воно з'явиться в усіх (раніше стара позначка «видалено» ховала його в колег) */
+  function villDel(v, dv, ad) { dv = dv || S.meta.deletedVillages || {}; ad = ad || S.meta.villAdded || {}; return !!dv[v] && dv[v] > (ad[v] || 0); }
   function villages() {
     var c = {}; S.points.forEach(function (p) { var k = p.village || 'Без села'; c[k] = (c[k] || 0) + 1; });
     /* села, додані вручну, видно ще до першої точки в них */
-    var dv = S.meta.deletedVillages || {};
-    (S.meta.extraVillages || []).forEach(function (v) { if (!c[v] && !dv[v]) c[v] = 0; });
+    (S.meta.extraVillages || []).forEach(function (v) { if (!c[v] && !villDel(v)) c[v] = 0; });
     return Object.keys(c).sort(ukSort).map(function (k) { return { name: k, n: c[k] }; });
   }
   function visitsOf(pid) { return S.visits.filter(function (v) { return v.pointId === pid; }).sort(function (a, b) { return b.ts - a.ts; }); }
@@ -879,7 +881,7 @@
     var pts = []; S.points.forEach(function (p) { if (p.updated || (p.src && p.src !== 'MAPS.ME')) pts.push(p); });
     return { type: 'kontroler-sync', v: 1, app: VERSION, from: Object.assign({}, me(), { device: dev(), inst: inst() }), exported: Date.now(), month: monthKey(),
       points: pts, visits: S.visits.map(function (v) { var c = Object.assign({}, v); delete c.id; return c; }), deleted: S.meta.deleted || {},
-      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, peersShown: S.meta.peersShown || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, names: namesBook(), brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
+      idAlias: S.meta.idAlias || {}, peersHidden: S.meta.peersHidden || {}, peersShown: S.meta.peersShown || {}, extraVillages: S.meta.extraVillages || [], deletedVillages: S.meta.deletedVillages || {}, villAdded: S.meta.villAdded || {}, names: namesBook(), brigade: S.meta.brigade || {}, merged: S.meta.merged || {}, peers: S.meta.peers || {}, plan: S.meta.plan || null, splits: S.meta.splits || {}, shared: (function () { var o = {}; SHARED.forEach(function (k) { if (S.meta[k] != null) o[k] = S.meta[k]; }); return o; })(), sharedTs: S.meta.sharedTs || {} };
   }
   function exportSync() {
     if (!me().login) return go('#login');
@@ -942,7 +944,8 @@
       Object.keys(d.peers || {}).forEach(function (k) { if (k !== me().id && !peers[k] && !hid[k]) peers[k] = { name: d.peers[k].name, last: null, visits: 0, via: d.from && d.from.name }; });
       if (d.from && d.from.id !== me().id && (!hid[d.from.id] || (d.exported || 0) > hid[d.from.id])) peers[d.from.id] = { name: d.from.name || 'колега', last: Date.now(), sent: d.exported, visits: (d.visits || []).filter(function (v) { return v.by === d.from.id; }).length };
       var dvs = Object.assign({}, S.meta.deletedVillages || {}); Object.keys(d.deletedVillages || {}).forEach(function (v) { if (!dvs[v] || dvs[v] < d.deletedVillages[v]) dvs[v] = d.deletedVillages[v]; }); jobs0.push(setMeta('deletedVillages', dvs));
-      var exv = (S.meta.extraVillages || []).filter(function (v) { return !dvs[v]; }); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0 && !dvs[v]) exv.push(v); });
+      var vad = Object.assign({}, S.meta.villAdded || {}); Object.keys(d.villAdded || {}).forEach(function (v) { if (!vad[v] || vad[v] < d.villAdded[v]) vad[v] = d.villAdded[v]; }); jobs0.push(setMeta('villAdded', vad));
+      var exv = (S.meta.extraVillages || []).filter(function (v) { return !villDel(v, dvs, vad); }); (d.extraVillages || []).forEach(function (v) { if (exv.indexOf(v) < 0 && !villDel(v, dvs, vad)) exv.push(v); });
       var brg = Object.assign({}, S.meta.brigade || {}); Object.keys(d.brigade || {}).forEach(function (k) { if (!brg[k] || (d.brigade[k].ts || 0) > (brg[k].ts || 0)) brg[k] = d.brigade[k]; }); jobs0.push(setMeta('brigade', brg));
       /* спільні налаштування: беремо новіші; план ще й за полем updated (для старих версій) */
       var sts = Object.assign({}, S.meta.sharedTs || {}), dts = d.sharedTs || {}, sh = d.shared || {}, shCh = false;
@@ -2565,8 +2568,8 @@
     var key = function (t) { return t.toLowerCase().replace(/[^а-яіїєґa-z' ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' '); };
     var same = villages().filter(function (x) { return key(x.name) === key(n); })[0];
     if (same) { toast('Таке село вже є: ' + same.name); return cb(same.name); }
-    var ex = (S.meta.extraVillages || []).concat([n]);
-    setMeta('extraVillages', ex).then(function () { toast('Додано село: ' + n); cb(n); });
+    var ex = (S.meta.extraVillages || []).concat([n]), ad = Object.assign({}, S.meta.villAdded || {}); ad[n] = Date.now();
+    Promise.all([setMeta('extraVillages', ex), setMeta('villAdded', ad)]).then(function () { toast('Додано село: ' + n); cb(n); });
   }
   var NEW_V = { v: '__newv', l: '+ Додати нове село', sub: 'якого ще немає в списку', hot: true };
   function pickVillageFor(cur, cb) {
