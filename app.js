@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.20';
+  var VERSION = '0.28.21';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2808,7 +2808,7 @@
         ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div id="photos" class="photos"></div>' +
         '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
-        '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' +
+        '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' + galRow('ph') +
         '<textarea id="note" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
       '<div class="card"><div class="between"><div class="h2">Адреса на карті</div><span class="small mute">вніс: ' + esc(authorOf(p)) + (p.created ? ' · ' + esc(p.created.split('-').reverse().join('.')) : '') + '</span></div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
@@ -2878,14 +2878,20 @@
       box.style.display = ph.length ? '' : 'none';
     });
   }
+  /* фото з галереї (кілька за раз) — поруч із кнопками камери */
+  function galRow(pre) {
+    return '<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="small mute">З галереї:</span>' +
+      '<label class="chip" for="' + pre + '-mg">Лічильник</label><label class="chip" for="' + pre + '-hg">Будинок, хвіртка</label></div>' +
+      '<input id="' + pre + '-mg" type="file" accept="image/*" multiple hidden data-kind="Лічильник"><input id="' + pre + '-hg" type="file" accept="image/*" multiple hidden data-kind="Будинок">';
+  }
   function bindPhotoInputs(pid, sels, boxSel) {
-    (sels || ['#ph-m', '#ph-h']).forEach(function (sel) {
+    (sels || ['#ph-m', '#ph-h']).reduce(function (a, s0) { return a.concat([s0, s0 + 'g']); }, []).forEach(function (sel) {
       var inp = $(sel); if (!inp) return;
       inp.onchange = function () {
-        var file = inp.files[0]; if (!file) return;
-        toast('Зберігаю фото…');
-        compress(file).then(function (b) { return put('photos', { pointId: pid, ts: Date.now(), kind: inp.getAttribute('data-kind'), blob: b }); })
-          .then(function () { inp.value = ''; toast('Фото збережено'); loadPhotos(pid, boxSel); if (boxSel && $('#photos')) loadPhotos(pid); })
+        var files = Array.prototype.slice.call(inp.files || []); if (!files.length) return;
+        toast(files.length > 1 ? 'Зберігаю ' + files.length + ' фото…' : 'Зберігаю фото…');
+        files.reduce(function (pr, file, i) { return pr.then(function () { return compress(file); }).then(function (b) { return put('photos', { pointId: pid, ts: Date.now() + i, kind: inp.getAttribute('data-kind'), blob: b }); }); }, Promise.resolve())
+          .then(function () { inp.value = ''; toast(files.length > 1 ? 'Збережено ' + files.length + ' фото' : 'Фото збережено'); loadPhotos(pid, boxSel); if (boxSel && $('#photos')) loadPhotos(pid); })
           .catch(function () { toast('Не вдалося зберегти фото'); });
       };
     });
@@ -3083,7 +3089,8 @@
         '<div class="row" style="gap:8px"><input id="r-val" class="input" inputmode="decimal" value="' + esc(R.val) + '" style="height:56px;font-size:22px;font-weight:800;min-width:0;flex:1">' +
           '<label for="r-cam" class="photo-btn">' + icon('camera', 20) + '<span>Зробити фото</span></label></div>' +
         '<div id="r-cmp"></div><div id="r-ph"></div>' +
-        '<input id="r-cam" type="file" accept="image/*" capture="environment" hidden>' +
+        '<label for="r-gal" class="small mute" style="align-self:flex-start;text-decoration:underline;padding:2px 0">або вибрати фото з галереї</label>' +
+        '<input id="r-cam" type="file" accept="image/*" capture="environment" hidden><input id="r-gal" type="file" accept="image/*" hidden>' +
         '<div class="prows">' +
         prow('Розміщення', 'placement2', F.placement2, 'Вибрати', !!f.placement && F.placement2 !== f.placement) +
         prow('Примітка', 'noteSel', F.noteSel, 'Без примітки', false, 'r-note') +
@@ -3108,7 +3115,7 @@
     var sf = $('#r-sf'); if (sf) sf.oninput = function () { R.serialFact = sf.value.trim().toUpperCase(); readUi(); };
     $('#r-val').oninput = function () { R.val = this.value.replace(/\s/g, '').replace(',', '.'); readUi(); };
     if ($('#r-note')) $('#r-note').oninput = function () { R.note = this.value; };
-    $('#r-cam').onchange = function () {
+    $('#r-cam').onchange = $('#r-gal').onchange = function () {
       var file = this.files[0]; if (!file) return; toast('Обробляю фото…');
       compress(file).then(function (bl) {
         if (R.photoUrl) URL.revokeObjectURL(R.photoUrl); R.photo = bl; R.photoUrl = URL.createObjectURL(bl);
@@ -3142,7 +3149,7 @@
     return '<div class="card" style="gap:10px"><div class="between"><b>Фото</b><span class="small mute">зберігається одразу, без показника</span></div>' +
       '<div id="photos" class="photos"></div>' +
       '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
-      '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок"></div>';
+      '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' + galRow('ph') + '</div>';
   }
   function cardFind(p) {
     return '<details class="fold-card fold-in"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
@@ -3232,7 +3239,7 @@
         '<div class="card"><div class="h2" style="font-size:16px">Фото</div><div class="small mute" style="margin-top:-6px">Де захований лічильник, хвіртка, будинок. Зберігається одразу, без показника.</div>' +
           '<div id="pe-photos" class="photos"></div>' +
           '<div class="grid2" style="gap:8px"><label class="btn sec" for="pe-ph-m" style="height:50px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="pe-ph-h" style="height:50px">' + icon('camera', 18) + 'Хвіртка, будинок</label></div>' +
-          '<input id="pe-ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="pe-ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок"></div>' +
+          '<input id="pe-ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="pe-ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' + galRow('pe-ph') + '</div>' +
         '<button class="btn sec" data-pe="del" style="color:#B91C1C;height:46px">Видалити точку (дубль)</button>' +
         '</div><div class="seals-foot"><button class="btn" data-pe="save" style="height:58px">Зберегти</button></div>';
     };
