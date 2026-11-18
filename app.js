@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.21';
+  var VERSION = '0.28.22';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2099,8 +2099,9 @@
        а Android може скинути графіку (WebGL). Перезавантажуємо тайли супутника при поверненні, появі мережі,
        відновленні графіки та після помилок тайлів */
     map.on('error', function (e) { if (e && e.sourceId === 'esri') refreshSat(false, 8000); });
-    map.on('webglcontextrestored', function () { reloadTiles(); });
-    map.getCanvas().addEventListener('webglcontextlost', function (ev) { ev.preventDefault(); }, false);
+    /* MapLibre після відновлення графіки плутає текстури (замість супутника — значки з карти), тому карту створюємо заново */
+    map.on('webglcontextrestored', function () { if (thisMap !== map) return; ctxLost = true; if (document.visibilityState === 'visible') setTimeout(mapWake, 200); });
+    var thisMap = map; map.getCanvas().addEventListener('webglcontextlost', function (ev) { ev.preventDefault(); if (thisMap === map) ctxLost = true; }, false);
     /* підстраховка: якщо після зміни шару наші точки зникли, повертаємо їх */
     map.on('styledata', function () { if (map.isStyleLoaded() && !map.getLayer('pts')) addLayers(); });
     map.on('click', function (e) {
@@ -2128,17 +2129,25 @@
   function rebuildMap() {
     if (!map) return;
     var c = map.getCenter(), z = map.getZoom(), bg = map.getBearing();
-    try { map.remove(); } catch (x) {}
+    var old = map; map = null; try { old.remove(); } catch (x) {}
     Array.prototype.forEach.call(document.querySelectorAll('.compass'), function (e) { e.remove(); });
     map = null; mapReady = false; var el = $('#map'); if (el) el.innerHTML = '';
     initMap(); map.jumpTo({ center: c, zoom: z, bearing: bg });
     map.once('style.load', function () { setTimeout(render, 50); });
   }
+  /* Повернення в застосунок: якщо Android забирав графіку — карта створюється заново на тому ж місці (чисто, без
+     залишків старих текстур). Якщо графіка ціла — нічого не перечитуємо (перечитування без мережі стирало
+     вже показаний супутник і лишало схему), лише з інтернетом підтягуємо супутник, як раніше */
+  var ctxLost = false, rebuilding = false;
   function mapWake() {
     if (!map) return;
     var gl = map.painter && map.painter.context && map.painter.context.gl;
-    if (gl && gl.isContextLost && gl.isContextLost()) { setTimeout(function () { if (map && gl.isContextLost()) rebuildMap(); }, 2500); return; }
-    reloadTiles();
+    if (ctxLost || (gl && gl.isContextLost && gl.isContextLost())) {
+      if (rebuilding) return; rebuilding = true;
+      setTimeout(function () { rebuilding = false; ctxLost = false; if (map && $('#map')) rebuildMap(); }, 300);
+      return;
+    }
+    refreshSat(true, 400);
   }
   var satT = 0, satTimer = null;
   function refreshSat(force, delay) {
@@ -4058,7 +4067,7 @@
     }).catch(function (e) { app.innerHTML = '<div class="screen"><h1 class="h1">Помилка сховища</h1><p>' + esc(e && e.message) + '</p></div>'; });
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').then(function (r) { swReg = r; r.update(); }).catch(function () {});
     checkUpdate(false, true);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000) setTimeout(mapWake, 400); if (awayMs > 60000 && watchId !== null) restartGps(); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') S.hiddenAt = Date.now(); syncWake(); if (document.visibilityState === 'visible') { var awayMs = Date.now() - (S.hiddenAt || Date.now()); if (awayMs > 5000 || ctxLost) setTimeout(mapWake, 400); if (awayMs > 60000 && watchId !== null) restartGps(); checkUpdate(); if (!S.meta.ghLast || Date.now() - S.meta.ghLast > 120000) ghSync(false); } });
     window.addEventListener('online', function () { refreshSyncBadge(); refreshSat(true, 800); ghSync(false); });
     window.addEventListener('offline', function () { refreshSyncBadge(); });
     window.addEventListener('resize', function () { placeFabs(); });
