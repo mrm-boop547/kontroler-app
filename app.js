@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.28.17';
+  var VERSION = '0.28.18';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2498,6 +2498,9 @@
       '<a class="btn" href="#bind/new" style="width:auto;flex-shrink:0;height:44px;padding:0 14px;font-size:13px">' + icon('pin', 16) + 'За GPS</a></div></div>'; return; }
     if (!p) {
       var nv = r && !r.ids.length && village() !== ALL ? nextPlanVillage(village()) : null;
+      /* нове село без жодної точки: це не «маршрут пройдено», а початок нанесення */
+      if (village() !== ALL && !villagePoints().length) { el.innerHTML = '<div class="sheet"><div class="h2">Нове село: точок ще немає</div><div class="small mute">Торкніться карти там, де стоїть будинок абонента, або додайте точку за GPS, стоячи біля нього.</div>' +
+        '<a class="btn" href="#bind/new">' + icon('pin', 18) + 'Додати точку за GPS</a></div>'; return; }
       if (r && r.off) { el.innerHTML = '<div class="sheet mini"><div class="between" style="gap:10px"><div class="small mute" style="padding:4px">Торкніться точки на карті. Маршрут вимкнено: увімкнути — шестерня праворуч</div></div></div>'; return; }
       el.innerHTML = r && !r.ids.length ? '<div class="sheet"><div class="h2">Усі адреси в цьому селі пройдено</div><div class="small mute">' + (routeCfg().round === '180' ? 'Список ' + NORM() + ' тут порожній.' : 'Планові адреси пройдено. Далі — друге коло по «Списку ' + NORM() + '».') + '</div>' + (routeCfg().round !== '180' && villagePoints().some(in180) ? '<button class="btn out" data-act="round" data-v="180">Почати коло ' + NORM() + ' · ' + villagePoints().filter(in180).length + ' адрес</button>' : '') +
         (nv ? '<button class="btn" data-act="pickVillage" data-v="' + esc(nv) + '" data-stay="1">Наступне село плану: ' + esc(nv) + icon('arrow', 18, 2.4) + '</button>' : '') + '</div>' : ''; return;
