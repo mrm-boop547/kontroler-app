@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.29.2';
+  var VERSION = '0.29.3';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -611,6 +611,7 @@
     var h = full.slice(1).split('/');
     document.body.classList.remove('fopen'); document.body.classList.toggle('simple', !!S.meta.simple);
     var name = h[0] || 'home', arg = h[1] ? decodeURIComponent(h[1]) : null;
+    if (S.bulk && name !== 'map') { S.bulk = null; bulkDraw(); }
     /* аналітика щоразу відкривається на «Сьогодні»; вибраний період тримається, лише поки ви на цьому екрані */
     if (name === 'report' && S.lastScreen !== 'report') { RP = 'day'; RO = 0; }
     S.lastScreen = name;
@@ -2123,6 +2124,7 @@
     map.on('styledata', function () { if (map.isStyleLoaded() && !map.getLayer('pts')) addLayers(); });
     map.on('click', function (e) {
       if (mapMode !== 'route' && mapMode !== 'all') return;
+      if (S.bulk) { S.bulk.c = { lat: e.lngLat.lat, lon: e.lngLat.lng }; bulkDraw(); return; }
       var x = e.point.x, y = e.point.y;
       var hit = map.getLayer('pts') ? map.queryRenderedFeatures([[x - 14, y - 14], [x + 14, y + 14]], { layers: ['pts'] }) : [];
       if (S.adding) { startAdd(e.lngLat, e.point); return; }
@@ -2663,6 +2665,56 @@
     if (!S.pos) { toast('Шукаю, де ви… Вийдіть на відкрите місце'); startGps(); return; }
     var best = null, bd = 25; S.points.forEach(function (p) { var d = dist(S.pos, p); if (d < bd) { bd = d; best = p; } });
     if (best) go('#card/' + best.id); else go('#bind/new');
+  }
+  /* ---------- Видалення кількох точок у колі (неправильно нанесений будинок) ---------- */
+  function normSt(x) { return String(x || '').toLowerCase().replace(/(вулиця|вул\.?|провулок|пров\.?)/g, '').replace(/[^а-яіїєґa-z0-9]/g, ''); }
+  function bulkList() {
+    var b = S.bulk; if (!b) return [];
+    var out = []; S.points.forEach(function (p) { if (dist(b.c, p) > b.r) return; if (b.only && b.st && p.street && normSt(p.street) !== b.st) return; out.push(p); });
+    return out;
+  }
+  function bulkStart(p) {
+    S.bulk = { c: { lat: p.lat, lon: p.lon }, r: 40, st: normSt(p.street), stName: p.street || '', only: !!p.street };
+    S.sel = null; renderMap.fitNext = false;
+    go('#map');
+    setTimeout(function () { if (map) map.easeTo({ center: [p.lon, p.lat], zoom: 18.3, duration: 400 }); bulkDraw(); }, 300);
+  }
+  function bulkCircle() {
+    var b = S.bulk, cs = [], kx = 111320 * Math.cos(b.c.lat * Math.PI / 180);
+    for (var i = 0; i <= 64; i++) { var a = i / 64 * 2 * Math.PI; cs.push([b.c.lon + Math.cos(a) * b.r / kx, b.c.lat + Math.sin(a) * b.r / 110540]); }
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [cs] }, properties: {} };
+  }
+  function bulkDraw() {
+    var b = S.bulk, ui = $('#bulkui');
+    if (!b) { if (ui) ui.remove(); if (map && map.getLayer('bulk-f')) { map.removeLayer('bulk-f'); map.removeLayer('bulk-l'); map.removeSource('bulk'); } return; }
+    if (map && mapReady) {
+      var fc = { type: 'FeatureCollection', features: [bulkCircle()] };
+      if (map.getSource('bulk')) map.getSource('bulk').setData(fc);
+      else { map.addSource('bulk', { type: 'geojson', data: fc }); map.addLayer({ id: 'bulk-f', type: 'fill', source: 'bulk', paint: { 'fill-color': '#DC2626', 'fill-opacity': 0.18 } }); map.addLayer({ id: 'bulk-l', type: 'line', source: 'bulk', paint: { 'line-color': '#DC2626', 'line-width': 3 } }); }
+    }
+    var L = bulkList();
+    if (!ui) { ui = document.createElement('div'); ui.id = 'bulkui'; ui.className = 'bulkui'; document.body.appendChild(ui);
+      ui.addEventListener('click', function (e) { var t = e.target.closest('[data-bk]'); if (!t) return; var k = t.getAttribute('data-bk');
+        if (k === 'r') { S.bulk.r = +t.getAttribute('data-v'); bulkDraw(); }
+        else if (k === 'only') { S.bulk.only = !S.bulk.only; bulkDraw(); }
+        else if (k === 'x') { S.bulk = null; bulkDraw(); render(); }
+        else if (k === 'go') bulkDel(); }); }
+    ui.innerHTML = '<div class="bigask-sh" style="gap:10px"><div class="between"><b style="font-size:20px">Видалити точки в червоному колі</b><button class="iconbtn" data-bk="x" aria-label="Скасувати" style="box-shadow:none;background:#F1F1F3;width:40px;height:40px">' + icon('close', 18, 2.4) + '</button></div>' +
+      '<div class="small mute">Торкніться карти, щоб пересунути коло. Розмір кола:</div>' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap">' + [15, 25, 40, 60, 100].map(function (r) { return '<button class="chip' + (b.r === r ? ' on' : '') + '" data-bk="r" data-v="' + r + '" style="height:40px;padding:0 14px">' + r + ' м</button>'; }).join('') + '</div>' +
+      (b.st ? '<button class="chip' + (b.only ? ' on' : '') + '" data-bk="only" style="height:40px;align-self:flex-start">' + (b.only ? '✓ ' : '') + 'Лише вулиця ' + esc(b.stName) + '</button>' : '') +
+      '<div class="small" style="max-height:72px;overflow:auto;line-height:1.4">' + (L.length ? L.slice(0, 40).map(function (p) { return esc(addr0(p)); }).join(' · ') + (L.length > 40 ? ' …' : '') : 'У колі немає точок') + '</div>' +
+      '<button class="btn" data-bk="go" style="height:60px;background:#B91C1C;font-size:18px"' + (L.length ? '' : ' disabled') + '>Видалити ' + L.length + ' ' + plural(L.length, 'точку', 'точки', 'точок') + '</button></div>';
+  }
+  function bulkDel() {
+    var L = bulkList(); if (!L.length) return;
+    bigAsk({ title: 'Видалити ' + L.length + ' ' + plural(L.length, 'точку', 'точки', 'точок') + '?', text: 'Їх буде видалено на всіх телефонах. Відмітки візитів зникнуть з карти. Повернути не можна.', a: 'Так, видалити', b: 'Скасувати' }).then(function (r) {
+      if (r !== 'a') return;
+      var tb = Object.assign({}, S.meta.deleted || {}), now = Date.now();
+      L.forEach(function (p) { S.points.delete(p.id); tb[p.id] = now; });
+      Promise.all([setMeta('deleted', tb)].concat(L.map(function (p) { return del('points', p.id); }))).then(function () {
+        S.route = null; S.sel = null; invalidate(); S.bulk = null; bulkDraw(); toast('Видалено ' + L.length + ' ' + plural(L.length, 'точку', 'точки', 'точок')); render(); });
+    });
   }
   function startAdd(ll, pt) {
     var street = '', house = '';
@@ -3320,6 +3372,7 @@
           '<div class="grid2" style="gap:8px"><label class="btn sec" for="pe-ph-m" style="height:50px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="pe-ph-h" style="height:50px">' + icon('camera', 18) + 'Хвіртка, будинок</label></div>' +
           '<input id="pe-ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="pe-ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' + galRow('pe-ph') + '</div>' +
         '<button class="btn sec" data-pe="del" style="color:#B91C1C;height:46px">Видалити точку (дубль)</button>' +
+        '<button class="btn sec" data-pe="bulk" style="color:#B91C1C;height:46px">Видалити кілька точок навколо…</button>' +
         '</div><div class="seals-foot"><button class="btn" data-pe="save" style="height:58px">Зберегти</button></div>';
     };
     ov.addEventListener('click', function (e) {
@@ -3329,6 +3382,7 @@
       if (k === 'st') { E.st = b.getAttribute('data-v'); return draw(); }
       if (k === 'off') { E.off = !E.off; return draw(); }
       if (k === 'tag') { var tv = b.getAttribute('data-v'), ti = E.tags.indexOf(tv); if (ti >= 0) E.tags.splice(ti, 1); else { E.tags.push(tv); if (tv === 'ruin') E.st = 'n'; } return draw(); }
+      if (k === 'bulk') { ov.remove(); return bulkStart(p); }
       if (k === 'del') { ov.remove(); var db = document.createElement('button'); db.setAttribute('data-act', 'deletePoint'); db.setAttribute('data-id', id); document.body.appendChild(db); db.click(); db.remove(); return; }
       if (k === 'v') return pickVillageFor(E.v, function (v) { E.v = v || ''; draw(); });
       if (k === 'bind') { ov.remove(); return go('#bind/' + id); }

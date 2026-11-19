@@ -460,3 +460,5 @@ body.simple .kv span,body.simple .kv b{font-size:16px}
 .sh-all{height:56px;font-size:17px}
 body.simple nav.tabs{grid-template-columns:repeat(3,minmax(0,1fr))}body.simple nav.tabs a{font-size:14px}body.simple nav.tabs a.on{font-size:15px}
 body.simple .screen:not(.showall) .card.visit .kvs .kv:nth-child(n+4){display:none}
+
+.bulkui{position:fixed;left:0;right:0;bottom:0;z-index:40}
