@@ -412,3 +412,30 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .satx{width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;color:#166534;cursor:pointer}
 #sat-st:empty{display:none}
 .sw.on.ruin,.opt.on.ruin .sw{background:#DC2626}.opt.on.ruin{background:#FEF2F2;color:#111;border-color:#DC2626}
+
+/* велике питання (bigAsk) */
+.bigask{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:flex-end}
+.bigask-sh{width:100%;background:#fff;border-radius:28px 28px 0 0;padding:24px 16px calc(24px + var(--safe-b,0px));display:flex;flex-direction:column;gap:12px}
+.bigask-ic{width:56px;height:56px;border-radius:28px;background:#FEF3C7;color:#B45309;display:flex;align-items:center;justify-content:center}
+.bigask-t{font-size:24px;font-weight:800;line-height:1.15}
+.bigask-x{font-size:17px;line-height:1.4;color:#333}
+.bigask .btn{height:64px;font-size:19px}
+.bigask-c{border:0;background:none;color:#555;font:inherit;font-size:16px;font-weight:600;text-decoration:underline;min-height:44px}
+/* рядок стану супутника */
+.satln{display:flex;gap:8px;align-items:center;border-radius:18px;padding:10px 14px;font-size:15px;font-weight:700;width:100%;box-sizing:border-box;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.satln.ok{background:#E8F5EC;color:#14532D}
+.satln.warn{background:#FEF3C7;border:2px solid #F59E0B;color:#78350F;flex-direction:column;align-items:flex-start;gap:2px;font-weight:600}
+.satln.warn b{font-size:17px;font-weight:800}
+/* перемикач простого режиму */
+.simple-sw{display:flex;flex-direction:row;align-items:center;gap:12px;border:0;width:100%;font:inherit;color:inherit;cursor:pointer}
+.sw{width:56px;height:32px;border-radius:16px;background:#D4D4D8;position:relative;flex-shrink:0;transition:background .2s}
+.sw i{position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:12px;background:#fff;transition:left .2s}
+.sw.on{background:#16A34A}.sw.on i{left:28px}
+/* простий режим: менше елементів, більші кнопки й текст */
+.here-btn{height:68px;font-size:21px;font-weight:800;width:100%}
+body.simple .mapui .tilebar,body.simple [data-act=routeCfg],body.simple .fabs [data-act=layer]{display:none!important}
+body.simple .sheet{font-size:17px}
+body.simple .sheet .btn{min-height:60px;font-size:19px}
+body.simple .sheet .h2{font-size:22px}
+body.simple .small{font-size:15px}
+body.simple nav.tabs{font-size:15px}
