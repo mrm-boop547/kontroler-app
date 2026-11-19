@@ -428,9 +428,6 @@ body.kb-open.kb-ui #sheet{display:none !important}
 .satln.warn b{font-size:17px;font-weight:800}
 /* перемикач простого режиму */
 .simple-sw{display:flex;flex-direction:row;align-items:center;gap:12px;border:0;width:100%;font:inherit;color:inherit;cursor:pointer}
-.sw{width:56px;height:32px;border-radius:16px;background:#D4D4D8;position:relative;flex-shrink:0;transition:background .2s}
-.sw i{position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:12px;background:#fff;transition:left .2s}
-.sw.on{background:#16A34A}.sw.on i{left:28px}
 /* простий режим: менше елементів, більші кнопки й текст */
 .here-btn{height:68px;font-size:21px;font-weight:800;width:100%}
 body.simple .mapui .tilebar,body.simple [data-act=routeCfg],body.simple .fabs [data-act=layer]{display:none!important}

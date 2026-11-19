@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.29.0';
+  var VERSION = '0.29.1';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -738,7 +738,7 @@
         '</div>' +
         '<div class="small mute">' + esc((u.district || 'Здолбунівська') + ' дільниця') + ' · на цьому телефоні з ' + (u.since ? dt(u.since) : '—') + '</div>' +
         '<button class="btn" data-act="logout" style="height:44px;background:#2A2A2E;color:#fff">' + icon('user', 18) + 'Вийти / змінити контролера</button></div>' +
-      '<button class="card simple-sw" data-act="simpleMode" role="switch" aria-checked="' + (S.meta.simple ? 'true' : 'false') + '"><div class="col" style="gap:4px;flex-grow:1;min-width:0;text-align:left"><b style="font-size:17px">Простий режим</b><span class="small mute">Великі кнопки, точка ставиться лише там, де ви стоїте. Вимкнути можна тут же.</span></div><span class="sw' + (S.meta.simple ? ' on' : '') + '"><i></i></span></button>' +
+      '<button class="card simple-sw" data-act="simpleMode" role="switch" aria-checked="' + (S.meta.simple ? 'true' : 'false') + '"><div class="col" style="gap:4px;flex-grow:1;min-width:0;text-align:left"><b style="font-size:17px">Простий режим</b><span class="small mute">Великі кнопки, точка ставиться лише там, де ви стоїте. Вимкнути можна тут же.</span></div><span class="sw' + (S.meta.simple ? ' on' : '') + '"></span></button>' +
       '<div class="card"><div class="between"><div class="h2" style="font-size:15px">Мої дані · ' + mkName + '</div><div class="row" style="gap:6px">' + mArrow(-1, mk > first) + mArrow(1, mk < curMk) + '</div></div>' +
         '<div class="grid3"><div class="col"><b style="font-size:24px">' + fmt(visM.length) + '</b><span class="small mute">адрес пройдено</span></div><div class="col"><b style="font-size:24px">' + fmt(readM) + '</b><span class="small mute">зчитано</span></div><div class="col"><b style="font-size:24px">' + fmt(addedM) + '</b><span class="small mute">нових точок</span></div></div>' + (boundM ? '<div class="small mute">Прив\'язано за місяць: ' + fmt(boundM) + '</div>' : '') +
         '<div class="small mute" style="line-height:1.5">За весь час: ' + fmt(vis.length) + ' адрес · ' + fmt(vis.filter(function (v) { return v.result === 'note'; }).length) + ' записок · внесено ' + fmt(added) + ' точок · прив\'язано ' + fmt(bound) + '</div>' +
