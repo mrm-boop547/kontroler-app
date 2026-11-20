@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.29.3';
+  var VERSION = '0.29.4';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -2653,12 +2653,20 @@
   }
   function farAsk(w) { return bigAsk({ title: w.title, text: w.text, a: w.me ? 'Поставити там, де я стою' : '', b: 'Скасувати', c: 'Все одно поставити там' }); }
   /* чи є зараз знімок супутника: з мережею, або село збережене офлайн */
-  function satAvail() { return navigator.onLine || !!(S.meta.satOff || {})[village()]; }
+  /* чи є знімок супутника: з мережею, або збережене село. «Уся дільниця» — село найближчої до центру карти точки */
+  function satAvail() {
+    if (navigator.onLine) return true;
+    var so = S.meta.satOff || {}, v = village();
+    if (v === ALL && map) { var c = map.getCenter(), best = null, bd = Infinity; S.points.forEach(function (p) { var d = Math.abs(p.lat - c.lat) + Math.abs(p.lon - c.lng); if (d < bd) { bd = d; best = p; } }); v = best ? best.village : v; }
+    return !!so[v];
+  }
+  /* попередження лише в простому режимі, і його можна закрити (до перезапуску застосунку) */
   function satLine() {
-    var simple = !!S.meta.simple, sat = (S.meta.layer || 'scheme') === 'sat';
-    if (sat && satAvail()) return simple ? '<div class="satln ok">' + icon('check', 18, 2.6) + '<span>Супутник є' + (posFresh() ? '. Ви на карті: ±' + Math.round(S.pos.acc) + ' м' : '') + '</span></div>' : '';
-    if (!sat && !simple) return '';
-    return '<div class="satln warn"><b>Немає знімка супутника</b><span>Будинків не видно. Точку ставте кнопкою «Я біля будинку», стоячи біля нього.</span></div>';
+    if (!S.meta.simple) return '';
+    var sat = (S.meta.layer || 'scheme') === 'sat';
+    if (sat && satAvail()) return '<div class="satln ok">' + icon('check', 18, 2.6) + '<span>Супутник є' + (posFresh() ? '. Ви на карті: ±' + Math.round(S.pos.acc) + ' м' : '') + '</span></div>';
+    if (S.satHide) return '';
+    return '<div class="satln warn"><div class="between" style="width:100%"><b>Можливо, немає знімка супутника</b><button class="iconbtn" data-act="satHide" aria-label="Закрити" style="width:36px;height:36px;box-shadow:none;background:rgba(0,0,0,.06)">' + icon('close', 16, 2.4) + '</button></div><span>Якщо будинків не видно, ставте точку кнопкою «Я біля будинку», стоячи біля нього.</span></div>';
   }
   /* «Я біля будинку»: поруч є точка — відкриваємо її; немає — додаємо нову за GPS там, де людина стоїть */
   function hereAct() {
@@ -4087,6 +4095,7 @@
       case 'installHide': setMeta('installHide', true).then(render); break;
       case 'keepAwake': setMeta('keepAwake', S.meta.keepAwake === false).then(function () { syncWake(); var y = window.scrollY; render(); window.scrollTo(0, y); }); break;
       case 'here': hereAct(); break;
+      case 'satHide': S.satHide = true; render(); break;
       case 'showAll': (function () { var sc = document.querySelector('#app .screen'); if (sc) { sc.classList.toggle('showall'); el.textContent = sc.classList.contains('showall') ? 'Сховати зайві поля' : 'Усі поля, як у старому застосунку'; } })(); break;
       case 'simpleMode': (function () { var on = !S.meta.simple; setMeta('simple', on).then(function () { if (on && (S.meta.layer || 'scheme') !== 'sat') { if (map) setLayer('sat'); else setMeta('layer', 'sat'); } toast(on ? 'Простий режим увімкнено' : 'Звичайний режим'); render(); }); })(); break;
       case 'aqStreet': (function () { var b = AQ_ST[el.getAttribute('data-v')]; AQ = ''; S.sel = null; renderAll.fitNext = false; renderMap.fitNext = false; render(); if (b && map) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, maxZoom: 17.5, duration: 600 }); })(); break;
