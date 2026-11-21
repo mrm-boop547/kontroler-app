@@ -462,3 +462,6 @@ body.simple nav.tabs{grid-template-columns:repeat(3,minmax(0,1fr))}body.simple n
 body.simple .screen:not(.showall) .card.visit .kvs .kv:nth-child(n+4){display:none}
 
 .bulkui{position:fixed;left:0;right:0;bottom:0;z-index:40}
+
+.biobox{display:flex;gap:10px;align-items:center;background:#FEE2E2;border:2px solid #B91C1C;border-radius:16px;padding:10px 12px;color:#7F1D1D}
+.biobox b{font-size:16px;font-weight:800}.biobox span{font-size:14px;line-height:1.35}.biobox svg{flex-shrink:0}

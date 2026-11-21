@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.29.4';
+  var VERSION = '0.29.5';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -13,7 +13,7 @@
   };
   var ST_ORDER = ['g', 'y', 'r', 'n'];
   var TAGS = [['dog', 'Собака'], ['eve', 'Після 18:00'], ['wk', 'На вихідних'], ['cam', 'Камера'], ['facade', 'На фасаді'],
-    ['call', 'Дзвонити'], ['jur', 'Юридичний'], ['summer', 'Лише влітку'], ['owner', 'Тільки з власником'], ['ruin', 'Аварійний будинок'], ['bad', 'Неадекватний споживач']];
+    ['call', 'Дзвонити'], ['jur', 'Юридичний'], ['summer', 'Лише влітку'], ['owner', 'Тільки з власником'], ['ruin', 'Аварійний будинок'], ['bad', 'Неадекватний споживач'], ['bio', 'Біологічна небезпека']];
   var TAGNAME = {}; TAGS.forEach(function (t) { TAGNAME[t[0]] = t[1]; });
   /* юридичні споживачі: фіолетові на карті, як у MAPS.ME; доступ (зелений/жовтий/червоний) лишається в картці */
   var JUR = '#7C3AED';
@@ -98,8 +98,14 @@
   var BAD_RE = /неадекват|випива|п'яниц|агресивн(ий|а) (власник|господар|жін|чолов|спожив)|обережно|скандал|погрожу|божевіль/i;
   var DOG_RE = /собак|пес\b|псина|вівчар|пітбул|алабай|ротвейлер|🐶/i;
   var CAM_RE = /камер/i;
+  /* біологічна небезпека: сморід, антисанітарія — не заходити за жодних умов (найвищий пріоритет) */
+  var BIO_RE = /смерд|сморід|антисаніт|нечистот|біонебезп|біологічн\S* небезп/i;
+  function isBio(p) { return (p.tags || []).indexOf('bio') >= 0 || BIO_RE.test(p.note || ''); }
+  function bioBox(p) { return isBio(p) ? '<div class="biobox">' + bioSvg(26) + '<div class="col" style="gap:2px;min-width:0"><b>Біологічна небезпека</b><span>Не заходити за жодних умов. Адресу прибрано з маршруту.</span></div></div>' : ''; }
+  function bioSvg(n) { return '<svg aria-hidden="true" width="' + n + '" height="' + n + '" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16.5" fill="#B91C1C" stroke="#fff" stroke-width="2"/><g fill="none" stroke="#fff" stroke-width="2.6"><circle cx="18" cy="12.2" r="5.6"/><circle cx="12.9" cy="21" r="5.6"/><circle cx="23.1" cy="21" r="5.6"/></g><circle cx="18" cy="18" r="2.4" fill="#fff"/></svg>'; }
   function isDanger(p) {
     var t = p.tags || [], n = p.note || '';
+    if (isBio(p)) return 'bio';
     if (t.indexOf('bad') >= 0 || BAD_RE.test(n)) return 'bad';
     if (t.indexOf('dog') >= 0 || DOG_RE.test(n)) return 'dog';
     if (t.indexOf('cam') >= 0 || CAM_RE.test(n)) return 'cam';
@@ -442,7 +448,7 @@
     var cfg = routeCfg(), st = v === ALL ? [] : cfg.streets[v] || [];
     var r180 = cfg.round === '180';
     /* плановий обхід: ще не відвідані цього місяця; коло 180: не зчитані довше за норму */
-    var all = villagePoints(v).filter(function (p) { return p.status !== 'n' && (r180 ? in180(p) && !visitedToday(p) : !doneThisCycle(p)) && (v !== ALL || inPlan(p.village)); });
+    var all = villagePoints(v).filter(function (p) { return p.status !== 'n' && !isBio(p) && (r180 ? in180(p) && !visitedToday(p) : !doneThisCycle(p)) && (v !== ALL || inPlan(p.village)); });
     var cand = all.filter(function (p) { return !S.skipped[p.id] && cfg.types.indexOf(p.status) >= 0 && (!st.length || st.indexOf(p.street) >= 0) && inMySector(p); });
     if (!cfg.auto) return { village: v, ids: [], meters: 0, total: cand.length, off: true };
     if (!cand.length) return { village: v, ids: [], meters: 0, total: 0 };
@@ -2233,6 +2239,11 @@
       g.fillStyle = '#111'; g.strokeStyle = '#111'; draw(g);
       map.addImage(name, g.getImageData(0, 0, 36, 36), { pixelRatio: 3 });
     };
+    if (!map.hasImage('v-bio')) { var bc = document.createElement('canvas'); bc.width = bc.height = 36; var bg = bc.getContext('2d');
+      bg.beginPath(); bg.arc(18, 18, 16, 0, Math.PI * 2); bg.fillStyle = '#B91C1C'; bg.fill(); bg.lineWidth = 2.5; bg.strokeStyle = '#fff'; bg.stroke();
+      bg.lineWidth = 2.6; [[18, 12.2], [12.9, 21], [23.1, 21]].forEach(function (c) { bg.beginPath(); bg.arc(c[0], c[1], 5.6, 0, Math.PI * 2); bg.stroke(); });
+      bg.beginPath(); bg.arc(18, 18, 2.4, 0, Math.PI * 2); bg.fillStyle = '#fff'; bg.fill();
+      map.addImage('v-bio', bg.getImageData(0, 0, 36, 36), { pixelRatio: 3 }); }
     yel('v-bad', function (g) { g.lineWidth = 3.5; g.lineCap = 'round'; g.beginPath(); g.moveTo(18, 12); g.lineTo(18, 20); g.stroke(); g.beginPath(); g.arc(18, 25.5, 1.8, 0, Math.PI * 2); g.fill(); });
     yel('v-dog', function (g) {
       g.beginPath(); g.ellipse(18, 22.5, 6.2, 5.2, 0, 0, Math.PI * 2); g.fill();
@@ -2243,7 +2254,7 @@
       g.beginPath(); g.arc(18, 19.3, 4.2, 0, Math.PI * 2); g.fillStyle = '#F59E0B'; g.fill(); g.beginPath(); g.arc(18, 19.3, 2.2, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
     });
     map.addLayer({ id: 'pts-dng', type: 'symbol', source: 'pts', filter: ['has', 'dng'], layout: {
-      'icon-image': ['match', ['get', 'dng'], 'bad', 'v-bad', 'dog', 'v-dog', 'v-cam'], 'icon-offset': [-18, 4], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.35], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      'icon-image': ['match', ['get', 'dng'], 'bio', 'v-bio', 'bad', 'v-bad', 'dog', 'v-dog', 'v-cam'], 'icon-offset': [-18, 4], 'icon-size': ['case', ['==', ['get', 'sel'], true], 1.7, 1.35], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-opacity': ['case', ['==', ['get', 'dim'], true], 0.12, ['==', ['get', 'fa'], true], 0.35, 1] } });
     mk('v-ok', '#2563EB', '#2563EB', true);
     mk('v-no', '#FFFFFF', '#2563EB', false);
@@ -2543,7 +2554,7 @@
     /* простий режим: лише адреса і дві великі кнопки */
     if (S.meta.simple) {
       var cvs = cycleMap()[p.id];
-      el.innerHTML = '<div class="sheet simple-sheet"><span class="sh-mute">' + (idx === 0 ? 'Наступна адреса' : idx > 0 ? 'Адреса в маршруті' : 'Адреса') + (d ? ' · ' + d : '') + '</span>' +
+      el.innerHTML = '<div class="sheet simple-sheet">' + bioBox(p) + '<span class="sh-mute">' + (idx === 0 ? 'Наступна адреса' : idx > 0 ? 'Адреса в маршруті' : 'Адреса') + (d ? ' · ' + d : '') + '</span>' +
         '<div class="row" style="gap:10px">' + pDot(p) + '<span class="sh-addr">' + esc(addr(p)) + '</span></div>' +
         (cvs ? '<div class="vdone' + (cvs.result === 'ok' ? ' ok' : '') + '">' + icon('check', 16, 3) + '<span>' + esc(RESNAME[cvs.result]) + ' ' + dt(cvs.ts) + '</span></div>' : '') +
         '<a class="btn sh-go" href="#card/' + p.id + '">Відкрити адресу</a>' +
@@ -2559,7 +2570,7 @@
         '<a class="iconbtn" href="#card/' + p.id + '" aria-label="Відкрити картку" style="background:#111;color:#fff;box-shadow:none;width:44px;height:44px">' + icon('arrow', 18, 2.4) + '</a></div></div>';
       return;
     }
-    el.innerHTML = '<div class="sheet"><button class="grip" data-act="toggleSheet" aria-label="Згорнути панель"></button>' +
+    el.innerHTML = '<div class="sheet"><button class="grip" data-act="toggleSheet" aria-label="Згорнути панель"></button>' + bioBox(p) +
       '<div class="between" style="align-items:flex-start"><div class="col" style="gap:4px;min-width:0">' +
       '<div class="row small mute" style="flex-wrap:wrap"><label class="chip" style="height:26px;color:#111">Маршрут №<input id="rno" value="' + esc(rn) + '" placeholder="внести" style="width:84px;border:0;outline:0;background:transparent;font-weight:800"></label>' +
       (r ? (r.off ? 'Авто-маршрут вимкнено' : r.ids.length + ' з ' + r.total + ' адрес · ' + fdist(r.meters) + (r.walk ? ' пішки' : '')) : '') + '</div>' +
@@ -2930,7 +2941,7 @@
       '<div class="card big" style="gap:14px">' +
         '<h1 class="h1" style="font-size:26px">' + esc(addr(p)) + '</h1>' +
         (p.orig && p.orig.replace(/\s/g, '').toLowerCase() !== addr(p).replace(/\s/g, '').toLowerCase() ? '<div class="small mute" style="margin-top:-8px">У MAPS.ME: ' + esc(p.orig) + '</div>' : '') +
-        '<div class="tags">' + (isJur(p) ? '<span class="chip" style="background:#7C3AED;color:#fff">Юридичний</span>' : '') + (isRuin(p) ? '<span class="chip" style="background:#DC2626;color:#fff">Аварійний будинок</span>' : '') + (isOff(p) ? '<span class="chip" style="background:#111;color:#fff">Лічильник відключено</span>' : '') + '<span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') + '<span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
+        bioBox(p) + '<div class="tags">' + (isJur(p) ? '<span class="chip" style="background:#7C3AED;color:#fff">Юридичний</span>' : '') + (isRuin(p) ? '<span class="chip" style="background:#DC2626;color:#fff">Аварійний будинок</span>' : '') + (isOff(p) ? '<span class="chip" style="background:#111;color:#fff">Лічильник відключено</span>' : '') + '<span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') + '<span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
           (splitIdx(p) != null ? '<span class="chip mute"><span class="dot" style="background:' + SEC_COL[splitIdx(p) % SEC_COL.length] + '"></span>' + esc(sectorName(splitIdx(p), splitOf(p.village))) + '</span>' : '') + '</div>' +
         (cv && cv.result === 'note' ? '<div class="small" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;font-weight:700;line-height:1.4">Записку залишено ' + dt(cv.ts) + '. Коли передадуть показник, внесіть його у вкладці «Показники»: він зарахується як «по телефону».</div>' : '') +
         (flags.length ? '<div class="tags">' + flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' : '') +
@@ -3273,7 +3284,7 @@
     var navUrl = 'https://www.google.com/maps/dir/?api=1&travelmode=walking&destination=' + p.lat + ',' + p.lon;
     return '<div class="row"><button class="iconbtn" data-act="back" aria-label="Назад">' + icon('back', 20, 2.4) + '</button><div class="col" style="min-width:0;align-items:flex-start;gap:4px"><button class="vchip" data-act="pointVillage" data-id="' + p.id + '" aria-label="Змінити село">' + icon('village', 14) + esc(p.village || 'Без села') + icon('down', 14, 2.6) + '</button>' + (idx >= 0 ? '<div class="small mute">№' + (idx + 1) + ' у маршруті</div>' : '') + '<div style="font-size:22px;font-weight:800;line-height:1.2">' + esc(addr(p)) + '</div></div></div>' +
       '<div class="card" style="gap:12px">' +
-        '<div class="tags">' + (isJur(p) ? '<span class="chip" style="background:#7C3AED;color:#fff">Юридичний</span>' : '') + (isRuin(p) ? '<span class="chip" style="background:#DC2626;color:#fff">Аварійний будинок</span>' : '') + (isOff(p) ? '<span class="chip" style="background:#111;color:#fff">Лічильник відключено</span>' : '') + '<span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') +
+        bioBox(p) + '<div class="tags">' + (isJur(p) ? '<span class="chip" style="background:#7C3AED;color:#fff">Юридичний</span>' : '') + (isRuin(p) ? '<span class="chip" style="background:#DC2626;color:#fff">Аварійний будинок</span>' : '') + (isOff(p) ? '<span class="chip" style="background:#111;color:#fff">Лічильник відключено</span>' : '') + '<span class="chip">' + dotHtml(p.status) + ST[p.status].label + '</span>' + (in180(p) ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Список ' + NORM() + ' · ' + daysLabel(p) + '</span>' : okMap()[p.id] ? '<span class="chip mute">Зчитано ' + daysLabel(p) + '</span>' : '') +
           '<span class="chip mute">' + monthName() + ': ' + (cv ? RESNAME[cv.result].toLowerCase() + ' ' + dt(cv.ts) + (cv.by && cv.by !== me().id ? ' · ' + esc(peerName(cv.by)) : '') : 'не відвідано') + '</span>' +
           flags.map(function (x) { return '<span class="chip" style="background:#FEF3C7;color:#92400E">' + FLAGNAME[x] + '</span>'; }).join('') + '</div>' +
         (cv && cv.result === 'note' ? '<div class="small" style="background:#F6F6F7;border-radius:14px;padding:10px 12px;font-weight:700;line-height:1.4">Записку залишено ' + dt(cv.ts) + '. Показник, переданий по телефону, внесіть в «Історії» нижче.</div>' : '') +
