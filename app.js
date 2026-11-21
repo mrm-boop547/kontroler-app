@@ -2,7 +2,7 @@
    Усі дані зберігаються лише на цьому телефоні (IndexedDB). */
 (function () {
   'use strict';
-  var VERSION = '0.29.5';
+  var VERSION = '0.29.6';
 
   /* ---------- довідники ---------- */
   var ST = {
@@ -103,6 +103,28 @@
   function isBio(p) { return (p.tags || []).indexOf('bio') >= 0 || BIO_RE.test(p.note || ''); }
   function bioBox(p) { return isBio(p) ? '<div class="biobox">' + bioSvg(26) + '<div class="col" style="gap:2px;min-width:0"><b>Біологічна небезпека</b><span>Не заходити за жодних умов. Адресу прибрано з маршруту.</span></div></div>' : ''; }
   function bioSvg(n) { return '<svg aria-hidden="true" width="' + n + '" height="' + n + '" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16.5" fill="#B91C1C" stroke="#fff" stroke-width="2"/><g fill="none" stroke="#fff" stroke-width="2.6"><circle cx="18" cy="12.2" r="5.6"/><circle cx="12.9" cy="21" r="5.6"/><circle cx="23.1" cy="21" r="5.6"/></g><circle cx="18" cy="18" r="2.4" fill="#fff"/></svg>'; }
+  /* маленькі значки міток — ті самі, що на карті (собака, камера, неадекватний, біонебезпека, аварійний), решта — прості символи */
+  function tagIco(t) {
+    var Y = '#F59E0B', W = '<svg aria-hidden="true" class="tico" width="20" height="20" viewBox="0 0 36 36">', E = '</svg>';
+    var circ = function (fill) { return '<circle cx="18" cy="18" r="16" fill="' + fill + '" stroke="#fff" stroke-width="2.5"/>'; };
+    var tri = function (fill, ink) { return '<path d="M18 3 L33.5 31 L2.5 31 Z" fill="' + fill + '" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M18 12v8" stroke="' + ink + '" stroke-width="3.5" stroke-linecap="round"/><circle cx="18" cy="25.5" r="1.9" fill="' + ink + '"/>'; };
+    var line = function (fill, d) { return circ(fill) + '<g fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</g>'; };
+    switch (t) {
+      case 'dog': return W + circ(Y) + '<ellipse cx="18" cy="22.5" rx="6.2" ry="5.2" fill="#111"/><circle cx="10.5" cy="15.5" r="2.4" fill="#111"/><circle cx="14.8" cy="10.8" r="2.5" fill="#111"/><circle cx="21.2" cy="10.8" r="2.5" fill="#111"/><circle cx="25.5" cy="15.5" r="2.4" fill="#111"/>' + E;
+      case 'cam': return W + circ(Y) + '<path d="M8 15 Q8 13 10 13 L14 13 L15.5 10.5 L20.5 10.5 L22 13 L26 13 Q28 13 28 15 L28 24 Q28 26 26 26 L10 26 Q8 26 8 24 Z" fill="#111"/><circle cx="18" cy="19.3" r="4.2" fill="' + Y + '"/><circle cx="18" cy="19.3" r="2.2" fill="#111"/>' + E;
+      case 'bad': return W + tri(Y, '#111') + E;
+      case 'ruin': return W + tri('#DC2626', '#fff') + E;
+      case 'bio': return bioSvg(20).replace('<svg ', '<svg class="tico" ');
+      case 'jur': return W + circ('#7C3AED') + E;
+      case 'eve': return W + line('#334155', '<circle cx="18" cy="18" r="8"/><path d="M18 13v5l3 2"/>') + E;
+      case 'wk': return W + line('#334155', '<rect x="10" y="11" width="16" height="15" rx="2"/><path d="M10 16h16M14 9v4M22 9v4"/>') + E;
+      case 'facade': return W + line('#334155', '<path d="M10 26V17l8-6 8 6v9z"/><rect x="15.5" y="19" width="5" height="5"/>') + E;
+      case 'call': return W + line('#16A34A', '<path d="M13 10l3 4-2 2c1 3 3 5 6 6l2-2 4 3-2 3c-7 0-13-6-13-13z"/>') + E;
+      case 'summer': return W + line('#EAB308', '<circle cx="18" cy="18" r="4.5"/><path d="M18 8v2.5M18 25.5V28M8 18h2.5M25.5 18H28M11 11l1.8 1.8M23.2 23.2L25 25M11 25l1.8-1.8M23.2 12.8L25 11"/>') + E;
+      case 'owner': return W + line('#334155', '<circle cx="18" cy="14" r="4"/><path d="M10.5 27c1-4.5 4-7 7.5-7s6.5 2.5 7.5 7"/>') + E;
+    }
+    return '';
+  }
   function isDanger(p) {
     var t = p.tags || [], n = p.note || '';
     if (isBio(p)) return 'bio';
@@ -2954,7 +2976,7 @@
       '<div class="seg segw ctabs" style="background:#fff;box-shadow:none;height:48px">' + [['find', 'Як знайти'], ['read', 'Показники'], ['data', 'Дані абонента']].map(function (t) { return '<button data-act="ctab" data-v="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '" style="height:40px">' + t[1] + '</button>'; }).join('') + '</div>' +
       '<div class="cpane col" data-pane="find" style="gap:20px' + (tab === 'find' ? '' : ';display:none') + '">' +
       '<div class="card"><div class="h2" style="font-size:15px">Як знайти</div>' +
-        ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
+        ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + tagIco(t) + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div id="photos" class="photos"></div>' +
         '<div class="grid2" style="gap:8px"><label class="btn sec" for="ph-m" style="height:46px">' + icon('camera', 18) + 'Лічильник</label><label class="btn sec" for="ph-h" style="height:46px">' + icon('camera', 18) + 'Будинок, хвіртка</label></div>' +
         '<input id="ph-m" type="file" accept="image/*" capture="environment" hidden data-kind="Лічильник"><input id="ph-h" type="file" accept="image/*" capture="environment" hidden data-kind="Будинок">' + galRow('ph') +
@@ -3303,7 +3325,7 @@
   }
   function cardFind(p) {
     return '<details class="fold-card fold-in"><summary><span class="row" style="gap:10px">' + icon('pin', 18) + '<b>Як знайти адресата</b></span>' + icon('down', 18, 2.4) + '</summary><div class="fold-body">' +
-        ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
+        ((p.tags || []).length ? '<div class="tags">' + p.tags.map(function (t) { return '<span class="chip on">' + tagIco(t) + esc(TAGNAME[t] || t) + '</span>'; }).join('') + '</div>' : '') +
         '<div class="field"><label for="note">Орієнтир</label><textarea id="note" class="input" placeholder="Колір хвіртки, де лічильник, коли вдома">' + esc(p.note || '') + '</textarea></div>' +
         '<div class="v-sec" style="text-align:left;font-size:15px">Адреса на карті</div>' +
         '<div class="field"><label for="a-v">Село</label><input id="a-v" class="input" list="vlist" value="' + esc(p.village || '') + '"><datalist id="vlist">' + villages().map(function (v) { return '<option value="' + esc(v.name) + '">'; }).join('') + '</datalist></div>' +
@@ -3383,7 +3405,7 @@
         '<div class="card"><div class="h2" style="font-size:16px">Адреса</div>' +
           '<div class="field"><label>Село</label><button type="button" class="input selbtn" data-pe="v"><span class="' + (E.v ? '' : 'mute') + '">' + esc(E.v || 'Без села') + '</span>' + icon('down', 18, 2.4) + '</button></div>' +
           '<div class="grid2" style="grid-template-columns:2fr 1fr;gap:8px"><div class="field"><label for="pe-s">Вулиця</label><input id="pe-s" class="input" value="' + esc(keep.s) + '"></div><div class="field"><label for="pe-h">Будинок</label><input id="pe-h" class="input" inputmode="numeric" data-house="1" autocomplete="off" value="' + esc(keep.h) + '"></div></div></div>' +
-        '<div class="card"><div class="h2" style="font-size:16px">Мітки</div><div class="tags">' + TAGS.filter(function (t) { return t[0] !== 'jur' && t[0] !== 'ruin'; }).map(function (t) { return '<button class="tag' + (E.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-pe="tag" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
+        '<div class="card"><div class="h2" style="font-size:16px">Мітки</div><div class="tags">' + TAGS.filter(function (t) { return t[0] !== 'jur' && t[0] !== 'ruin'; }).map(function (t) { return '<button class="tag' + (E.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-pe="tag" data-v="' + t[0] + '">' + tagIco(t[0]) + t[1] + '</button>'; }).join('') + '</div></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Як знайти</div><textarea id="pe-n" class="input" placeholder="Орієнтир: колір хвіртки, де лічильник, коли вдома">' + esc(keep.n) + '</textarea>' +
           '<button class="btn sec" data-pe="bind" style="justify-content:space-between;padding:0 14px"><span class="row" style="gap:8px">' + icon('pin', 18) + 'Пересунути точку на карті</span><span class="small mute">' + esc(p.src || '') + '</span></button></div>' +
         '<div class="card"><div class="h2" style="font-size:16px">Фото</div><div class="small mute" style="margin-top:-6px">Де захований лічильник, хвіртка, будинок. Зберігається одразу, без показника.</div>' +
@@ -3553,7 +3575,7 @@
         return '<button class="opt' + (V.prof === s ? ' on' : '') + '" data-act="prof" data-v="' + s + '" style="flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;min-height:48px">' + dotHtml(s) + '<b style="font-size:14px">' + ST[s].label + '</b></button>';
       }).join('') + '</div></div>' +
       '<div class="card"><div class="h2">3. Мітки</div><div class="tags">' + TAGS.map(function (t) {
-        return '<button class="tag' + (V.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-act="vtag" data-v="' + t[0] + '">' + t[1] + '</button>';
+        return '<button class="tag' + (V.tags.indexOf(t[0]) >= 0 ? ' on' : '') + '" data-act="vtag" data-v="' + t[0] + '">' + tagIco(t[0]) + t[1] + '</button>';
       }).join('') + '</div><textarea id="vn" class="input" placeholder="Нотатка (необов\'язково)"></textarea></div>' +
       '</div>' +
       '<div style="position:fixed;left:16px;right:16px;bottom:calc(16px + var(--safe-b))"><button class="btn" data-act="saveVisit" data-id="' + id + '" ' + (V.res ? '' : 'disabled') + ' style="height:58px">' +
